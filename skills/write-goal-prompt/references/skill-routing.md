@@ -8,18 +8,24 @@ to invoke per phase and in what order.
 
 ## Task Type → Skill Routing Table
 
-| Task type                 | Primary skill            | Secondary skill                      | Notes                                     |
-| ------------------------- | ------------------------ | ------------------------------------ | ----------------------------------------- |
-| New feature (code)        | `/tdd`                   | `/feature-dev:feature-dev`           | Write failing tests first, then implement |
-| Ambiguous scope           | `/to-prd`                | `/tdd` or `/feature-dev:feature-dev` | Spec before any code                      |
-| New system / architecture | `/codebase-design`       | `/feature-dev:feature-dev`           | Design decision before implementation     |
-| Bug investigation         | `/diagnosing-bugs`       | `/to-issues`                         | Root cause before fixing                  |
-| Issue backlog             | `/to-issues`             | —                                    | Convert findings to issues                |
-| Prototype / validate idea | `/prototype`             | `/tdd`                               | Prove approach before full build          |
-| New skill creation        | `/write-a-skill`         | —                                    | Skill authoring skill                     |
-| Content / copy            | `/cold-email-copywriter` | `/writing-shape`                     | Write → shape → verify                    |
-| Goal prompt itself        | `/write-goal-prompt`     | —                                    | Recursive                                 |
-| UI / frontend             | `/prototype`             | `/codebase-design`                   | Visual validate early                     |
+| Task type                 | Primary skill                        | Secondary skill                      | Notes                                     |
+| ------------------------- | ------------------------------------ | ------------------------------------ | ----------------------------------------- |
+| New feature (code)        | `/tdd`                               | `/feature-dev:feature-dev`           | Write failing tests first, then implement |
+| Ambiguous scope           | `/to-prd`                            | `/tdd` or `/feature-dev:feature-dev` | Spec before any code                      |
+| New system / architecture | `/codebase-design`                   | `/feature-dev:feature-dev`           | Design decision before implementation     |
+| Architecture refactor     | `/improve-codebase-architecture`     | `/tdd`                               | Matt Pocock — systematic refactor with tests |
+| Bug investigation         | `/diagnosing-bugs`                   | `/to-issues`                         | Root cause before fixing                  |
+| Blocker mid-phase         | `/diagnose`                          | `/to-issues`                         | Matt Pocock — Maker hits unknown blocker  |
+| Issue backlog             | `/to-issues`                         | —                                    | Convert findings to issues                |
+| PLATEAU escalation        | `/triage`                            | `/to-issues`                         | Matt Pocock — plateau → GitHub issue → triage queue |
+| Prototype / validate idea | `/prototype`                         | `/tdd`                               | Prove approach before full build          |
+| New skill creation        | `/write-a-skill`                     | —                                    | Skill authoring skill                     |
+| Content / copy            | `/cold-email-copywriter`             | `/writing-shape`                     | Write → shape → verify                    |
+| Goal prompt itself        | `/write-goal-prompt`                 | —                                    | Recursive                                 |
+| UI / frontend             | `/prototype`                         | `/codebase-design`                   | Visual validate early                     |
+| Re-plan after low score   | `/zoom-out`                          | —                                    | Matt Pocock — Checker scores < 3/5; step back before next Maker cycle |
+
+**Matt Pocock skills** (`/tdd`, `/diagnose`, `/improve-codebase-architecture`, `/zoom-out`, `/to-prd`, `/to-issues`, `/triage`) require the repo to be configured via `setup-matt-pocock-skills` first. Configuration lives in `docs/agents/`. Confirm existence before routing.
 
 ---
 
@@ -68,6 +74,37 @@ Use when: "something is broken" without known cause.
 
 Use when: task touches system architecture, data models, or API contracts.
 
+### PLATEAU → Escalation
+
+```
+1. bun scripts/triage.ts log --needs-review 1   — write run record, flag for review
+2. /to-issues     — create GitHub issue with cycle log path + reward signal history
+3. /triage        — apply needs-triage label; route to ready-for-human or ready-for-agent
+```
+
+Use when: 3 consecutive cycles within ±0.1 reward signal. Don't spawn another Maker — escalate.
+
+### Maker Blocker → Unblock
+
+```
+1. /diagnose      — isolate root cause of the blocker with evidence
+2. /to-issues     — file discrete issues from findings (if systemic)
+3. resume Maker   — with diagnosed cause + fix in context
+```
+
+Use when: Maker signals it cannot proceed without more information or a decision.
+
+### Architecture Re-plan (low Checker score)
+
+```
+1. /zoom-out      — step back, identify why the approach scored low
+2. /improve-codebase-architecture  — if structural issues found
+3. /tdd           — re-anchor tests to the corrected design
+4. Maker cycle N+1
+```
+
+Use when: Checker scores architecture dimension < 3/5 across 2 consecutive cycles.
+
 ### Content Batch
 
 ```
@@ -114,12 +151,17 @@ discovering it doesn't exist.
 When the Maker invokes a skill, Checker rubric must encode the skill's quality bar —
 not just "output file exists."
 
-| Skill                      | Quality bar (for Checker rubric)                                                |
-| -------------------------- | ------------------------------------------------------------------------------- |
-| `/tdd`                     | Tests are failing before implementation; all pass after; no `skip` or `xfail`   |
-| `/prototype`               | Prototype renders and shows the core interaction; no placeholder UI             |
-| `/to-prd`                  | PRD has problem statement, user stories, acceptance criteria, out-of-scope list |
-| `/codebase-design`         | ADR has options considered, tradeoffs, decision, consequences                   |
-| `/diagnosing-bugs`         | Root cause identified with reproduction steps; not just symptoms                |
-| `/feature-dev:feature-dev` | Feature works end-to-end; no TODOs in shipped paths                             |
-| `/write-a-skill`           | SKILL.md has frontmatter, phases, reference files; under 100 lines              |
+| Skill                              | Quality bar (for Checker rubric)                                                |
+| ---------------------------------- | ------------------------------------------------------------------------------- |
+| `/tdd`                             | Tests are failing before implementation; all pass after; no `skip` or `xfail`  |
+| `/prototype`                       | Prototype renders and shows the core interaction; no placeholder UI             |
+| `/to-prd`                          | PRD has problem statement, user stories, acceptance criteria, out-of-scope list |
+| `/codebase-design`                 | ADR has options considered, tradeoffs, decision, consequences                   |
+| `/diagnosing-bugs`                 | Root cause identified with reproduction steps; not just symptoms                |
+| `/diagnose`                        | Hypothesis confirmed with evidence; fix verified; not just "it works now"       |
+| `/improve-codebase-architecture`   | Before/after metrics cited; no regressions; ADR written for key decisions       |
+| `/zoom-out`                        | Re-plan produced; identifies *why* prior cycle scored low, not just what failed |
+| `/to-issues`                       | Issues created with acceptance criteria + `ready-for-agent` or `ready-for-human` label |
+| `/triage`                          | PLATEAU issue created in tracker; labeled `needs-triage`; cycle log path linked |
+| `/feature-dev:feature-dev`         | Feature works end-to-end; no TODOs in shipped paths                             |
+| `/write-a-skill`                   | SKILL.md has frontmatter, phases, reference files; under 100 lines              |
