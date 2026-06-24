@@ -1,7 +1,7 @@
 ---
 name: harness-checker
 description: Fresh-context artifact evaluator for goal loops. Reads only final artifacts — never Maker reasoning or PROGRESS.md. Scores each rubric dimension with file:line evidence citations. Writes CYCLE_LOG.md. Decides PASS, ITERATE, or PLATEAU. Use in the Checker phase of any harness eval loop.
-tools: Read, Glob, Write
+tools: Read, Glob, Write, Agent
 model: claude-sonnet-4-6
 ---
 

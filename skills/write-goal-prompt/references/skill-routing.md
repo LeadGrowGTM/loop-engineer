@@ -15,7 +15,7 @@ to invoke per phase and in what order.
 | New system / architecture | `/codebase-design`                   | `/feature-dev:feature-dev`           | Design decision before implementation     |
 | Architecture refactor     | `/improve-codebase-architecture`     | `/tdd`                               | Matt Pocock — systematic refactor with tests |
 | Bug investigation         | `/diagnosing-bugs`                   | `/to-issues`                         | Root cause before fixing                  |
-| Blocker mid-phase         | `/diagnose`                          | `/to-issues`                         | Matt Pocock — Maker hits unknown blocker  |
+| Blocker mid-phase         | `/diagnose`                          | `/to-issues`                         | Matt Pocock — Maker hits unknown blocker (runtime-registered skill — no local SKILL.md; verify via system-reminder available-skills before routing) |
 | Issue backlog             | `/to-issues`                         | —                                    | Convert findings to issues                |
 | PLATEAU escalation        | `/triage`                            | `/to-issues`                         | Matt Pocock — plateau → GitHub issue → triage queue |
 | Prototype / validate idea | `/prototype`                         | `/tdd`                               | Prove approach before full build          |
@@ -23,7 +23,7 @@ to invoke per phase and in what order.
 | Content / copy            | `/cold-email-copywriter`             | `/writing-shape`                     | Write → shape → verify                    |
 | Goal prompt itself        | `/write-goal-prompt`                 | —                                    | Recursive                                 |
 | UI / frontend             | `/prototype`                         | `/codebase-design`                   | Visual validate early                     |
-| Re-plan after low score   | `/zoom-out`                          | —                                    | Matt Pocock — Checker scores < 3/5; step back before next Maker cycle |
+| Re-plan after low score   | `/zoom-out`                          | —                                    | Matt Pocock — Checker scores < 3/5; step back before next Maker cycle (runtime-registered skill — no local SKILL.md; verify via system-reminder available-skills before routing) |
 
 **Matt Pocock skills** (`/tdd`, `/diagnose`, `/improve-codebase-architecture`, `/zoom-out`, `/to-prd`, `/to-issues`, `/triage`) require the repo to be configured via `setup-matt-pocock-skills` first. Configuration lives in `docs/agents/`. Confirm existence before routing.
 

@@ -13,7 +13,7 @@ Your role: decompose the goal, select skill routing, write PLAN.md. You do NOT e
 
 1. Read HARNESS.md at the path in the [HARNESS] block — it contains task-specific PLANNER_BRIEF
 2. Read the full [TASK] block from your invocation context
-3. Read `C:\Users\mitch\Everything_CC\.claude\skills\write-goal-prompt\references\skill-routing.md`
+3. Read `./skills/write-goal-prompt/references/skill-routing.md`
 4. Write PLAN.md to the task working directory
 
 ## PLAN.md must contain

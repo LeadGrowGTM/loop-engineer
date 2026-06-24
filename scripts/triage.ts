@@ -50,7 +50,7 @@ function parseArgs(argv: string[]): { cmd: string; pos: string[]; flags: Record<
 
 // ── commands ──────────────────────────────────────────────────────────────
 
-function cmdList(db: Database) {
+export function cmdList(db: Database) {
   const runs = db
     .query(
       `SELECT id, ts, type, label, verdict, reward_signal, needs_review, status
@@ -95,35 +95,38 @@ function cmdList(db: Database) {
   console.log('\n  review <id> | dismiss <id>');
 }
 
-function cmdReview(db: Database, id: string) {
+export function cmdReview(db: Database, id: string) {
   const result = db
     .query(`UPDATE runs SET status='reviewed', reviewed_at=? WHERE id=? AND status='pending'`)
     .run(now(), Number(id));
   if ((result as any).changes === 0) {
-    console.error(`Run #${id} not found or already reviewed.`);
-    process.exit(1);
+    throw new Error(`Run #${id} not found or already reviewed.`);
   }
   console.log(`Run #${id} marked reviewed.`);
 }
 
-function cmdDismiss(db: Database, id: string) {
+export function cmdDismiss(db: Database, id: string) {
   const result = db
     .query(`UPDATE runs SET status='dismissed', reviewed_at=? WHERE id=? AND status='pending'`)
     .run(now(), Number(id));
   if ((result as any).changes === 0) {
-    console.error(`Run #${id} not found or already actioned.`);
-    process.exit(1);
+    throw new Error(`Run #${id} not found or already actioned.`);
   }
   console.log(`Run #${id} dismissed.`);
 }
 
-function cmdLog(db: Database, flags: Record<string, string>) {
+export function cmdLog(db: Database, flags: Record<string, string>) {
   const type = flags['type'];
   const label = flags['label'];
   if (!type || !label) {
-    console.error('--type and --label are required');
-    process.exit(1);
+    throw new Error('--type and --label are required');
   }
+  // Fix 6: accept '1', 'true', 'yes' as truthy values for --needs-review
+  const needsReview = ['1', 'true', 'yes'].includes(
+    (flags['needs-review'] ?? '').toLowerCase(),
+  )
+    ? 1
+    : 0;
   const result = db
     .query(
       `INSERT INTO runs (ts, type, label, verdict, reward_signal, cycle_log, needs_review)
@@ -136,56 +139,68 @@ function cmdLog(db: Database, flags: Record<string, string>) {
       flags['verdict'] ?? null,
       flags['reward'] != null ? parseFloat(flags['reward']) : null,
       flags['cycle-log'] ?? null,
-      flags['needs-review'] === '1' ? 1 : 0,
+      needsReview,
     );
   const id = (result as any).lastInsertRowid;
   console.log(`Run #${id} logged.`);
 }
 
-function cmdSignal(db: Database, runId: string, flags: Record<string, string>) {
+export function cmdSignal(db: Database, runId: string, flags: Record<string, string>) {
   const category = flags['category'];
   const message = flags['message'];
   if (!runId || !category || !message) {
-    console.error('<run-id>, --category and --message are required');
-    process.exit(1);
+    throw new Error('<run-id>, --category and --message are required');
   }
-  const result = db
-    .query(`INSERT INTO signals (run_id, ts, category, message) VALUES (?, ?, ?, ?)`)
-    .run(Number(runId), now(), category, message);
+  // Fix 4: atomic — signal INSERT + run needs_review UPDATE in one transaction
+  const tx = db.transaction(() => {
+    const result = db
+      .query(`INSERT INTO signals (run_id, ts, category, message) VALUES (?, ?, ?, ?)`)
+      .run(Number(runId), now(), category, message);
+    db.query(`UPDATE runs SET needs_review=1 WHERE id=?`).run(Number(runId));
+    return result;
+  });
+  const result = tx();
   const id = (result as any).lastInsertRowid;
-  // also flag the parent run for review
-  db.query(`UPDATE runs SET needs_review=1 WHERE id=?`).run(Number(runId));
   console.log(`Signal #${id} attached to run #${runId}.`);
 }
 
 // ── main ──────────────────────────────────────────────────────────────────
 
-const { cmd, pos, flags } = parseArgs(process.argv.slice(2));
-const db = openDb();
-
-switch (cmd) {
-  case '':
-  case 'list':
-    cmdList(db);
-    break;
-  case 'review':
-    cmdReview(db, pos[0]);
-    break;
-  case 'dismiss':
-    cmdDismiss(db, pos[0]);
-    break;
-  case 'log':
-    cmdLog(db, flags);
-    break;
-  case 'signal':
-    cmdSignal(db, pos[0], flags);
-    break;
-  default:
-    console.error(`Unknown command: ${cmd}`);
-    console.error(
-      'Commands: list, review <id>, dismiss <id>, log --type --label [...], signal <run-id> --category --message',
-    );
-    process.exit(1);
+if (import.meta.main) {
+  const { cmd, pos, flags } = parseArgs(process.argv.slice(2));
+  const db = openDb();
+  let exitCode = 0;
+  // Fix 5: try/finally ensures db.close() runs on any error path
+  try {
+    switch (cmd) {
+      case '':
+      case 'list':
+        cmdList(db);
+        break;
+      case 'review':
+        cmdReview(db, pos[0]);
+        break;
+      case 'dismiss':
+        cmdDismiss(db, pos[0]);
+        break;
+      case 'log':
+        cmdLog(db, flags);
+        break;
+      case 'signal':
+        cmdSignal(db, pos[0], flags);
+        break;
+      default:
+        console.error(`Unknown command: ${cmd}`);
+        console.error(
+          'Commands: list, review <id>, dismiss <id>, log --type --label [...], signal <run-id> --category --message',
+        );
+        exitCode = 1;
+    }
+  } catch (e: any) {
+    console.error(e.message);
+    exitCode = 1;
+  } finally {
+    db.close();
+  }
+  if (exitCode) process.exit(exitCode);
 }
-
-db.close();
