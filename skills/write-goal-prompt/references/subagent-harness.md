@@ -14,12 +14,13 @@ not its self-talk. Fresh eyes or it doesn't count.
 
 ## Agent Files (Canonical Definitions)
 
-The 3 harness agents are defined as proper Claude Code agents in `.claude/agents/`:
+The 4 harness agents are defined as proper Claude Code agents in `.claude/agents/`:
 
 | File                                | Role                             | tools                                | model      |
 | ----------------------------------- | -------------------------------- | ------------------------------------ | ---------- |
 | `.claude/agents/harness-planner.md` | Decompose goal → BRIEF.md, PLAN.md | Read, Glob, Write                  | sonnet-4-6 |
 | `.claude/agents/harness-maker.md`   | Execute phases, commit           | Read, Glob, Write, Edit, Bash, Agent | haiku-4-5  |
+| `.claude/agents/harness-prover.md`  | Drive running app → PROOF verdict | Read, Bash                          | sonnet-4-6 |
 | `.claude/agents/harness-checker.md` | Score artifacts, write CYCLE_LOG | Read, Glob, Write                    | sonnet-4-6 |
 
 Checker's `tools: Read, Glob, Write` is **mechanical isolation** — it literally cannot run
@@ -27,6 +28,19 @@ Bash, spawn subagents, or access anything the Maker produced via tool calls. Fre
 
 Invoke by name: `Agent({subagent_type: "harness-planner", prompt: "..."})`. HARNESS.md
 supplies task-specific context; the agent files contain structural templates.
+
+### Canonical install paths (3 locations — all must be in sync)
+
+When harness agents are updated, copy to all three:
+
+```
+agent-harness/.claude/agents/harness-*.md   ← source of truth
+~/.claude/agents/harness-*.md               ← global (all repos without local override)
+Everything_CC/.claude/agents/harness-*.md   ← project-scoped override
+```
+
+Maker agents syncing harness files: use `bun -e "import{copyFileSync}from'fs';..."` or direct
+`cp` (not dotenv-adjacent, so hook won't block). `/setup-harness` script handles this automatically.
 
 ---
 
