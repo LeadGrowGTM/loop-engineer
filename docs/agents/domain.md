@@ -28,8 +28,8 @@ Single-context repo:
 | Term | Meaning |
 |---|---|
 | goal | A task statement that drives a harness loop |
-| harness | The planner/maker/checker 3-agent loop |
-| cycle | One planner+maker+checker pass |
+| harness | The planner/maker/prover/checker 4-agent loop |
+| cycle | One planner+maker+prover+checker pass (prover skipped for static artifact goals) |
 | reward signal | Mean score across checker rubric dimensions (0–5) |
 | PLATEAU | 3 consecutive cycles within ±0.1 reward signal — stop, commit best |
 | triage inbox | SQLite run log + `bun scripts/triage.ts` CLI |

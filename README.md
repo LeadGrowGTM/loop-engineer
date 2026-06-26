@@ -1,6 +1,6 @@
 # agent-harness
 
-Goal loop harness system for Claude Code. Separates planning, execution, and verification into isolated agents with mechanical enforcement — not prompt trust.
+Goal loop harness system for Claude Code. Separates planning, execution, and verification into isolated agents with structural enforcement — not prompt trust.
 
 ## What's here
 
@@ -9,6 +9,7 @@ agent-harness/
 ├── .claude/agents/          ← runtime agents (installed at workspace level)
 │   ├── harness-planner.md   — decomposes goal → PLAN.md (sonnet, Read/Glob/Write only)
 │   ├── harness-maker.md     — executes phases, commits (haiku, full tools)
+│   ├── harness-prover.md    — runs live feature (sonnet, Read/Bash only) for running-app goals
 │   └── harness-checker.md   — scores artifacts fresh (sonnet, Read/Glob only)
 └── skills/write-goal-prompt/ ← authoring skill (lives at .claude/skills/ for discovery)
     ├── SKILL.md
@@ -26,19 +27,22 @@ agent-harness/
 
 The model that wrote the code is too generous grading its own homework. Self-eval = agreement loop, not improvement loop.
 
-Fix: **harness-checker** has `tools: Read, Glob, Write` only. It cannot run Bash, spawn agents, or access anything the Maker produced via tool calls. Isolation is mechanical, not a prompt instruction.
+Fix: **harness-checker** has `tools: Read, Glob, Write` only. It cannot run Bash, spawn agents, or access anything the Maker produced via tool calls. This isolation is enforced by the tool layer, not by prompt instruction. The goal agent follows written instructions to invoke the planner, then maker, then prover (for running-app goals), then checker — this ordering is defined in HARNESS.md and relies on the goal agent's instruction-following, not tool enforcement.
 
-## The 3-agent loop
+## The 4-agent loop
 
 ```
 Goal agent (depth 0)
   └── harness-planner (depth 1)  → PLAN.md
   └── harness-maker   (depth 2)  → artifacts + PROGRESS.md (with proof)
-  └── harness-checker (depth 3)  → CYCLE_LOG.md (scores + verdict)
+  └── harness-prover  (depth 3)  → PROOF verdict (running-app goals only)
+  └── harness-checker (depth 4)  → CYCLE_LOG.md (scores + verdict)
        ↑ repeat until PASS or plateau (max 3 cycles)
 ```
 
-Depth budget: goal=0, planner=1, maker=2, checker=3, sub-skills max=4. Never need depth 5.
+Depth budget: goal=0, planner=1, maker=2, prover=3, checker=4, sub-skills max=5. Never need depth 6.
+
+**Prover role:** For goals that produce a running application (browser UI, API, CLI), Prover drives the live feature and returns a binary works/broken verdict before Checker scores. For static artifact goals (docs, code, analysis), skip Prover and go directly to Checker.
 
 ## How goals use this
 
