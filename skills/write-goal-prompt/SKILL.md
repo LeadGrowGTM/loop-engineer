@@ -47,7 +47,7 @@ Produce: single reward signal (programmatic — flag if human judgment required)
 
 ## Phase 0.5: Grill Me
 
-**Execution: spawn 1 Haiku/Explore agent — do not run inline. Run after Phase 0, before Phase 1.**
+**Execution: spawn 1 Sonnet agent — do not run inline. Run after Phase 0, before Phase 1. Use Sonnet (not Haiku) — question quality requires judgment, not just pattern matching.**
 
 **Skip condition:** All Phase 1 fields (Task, Tech/Stack, Done criteria, Context) are fully specified in the user's opening message — no ambiguity. Otherwise always run.
 
