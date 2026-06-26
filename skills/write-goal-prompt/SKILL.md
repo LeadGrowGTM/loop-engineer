@@ -45,6 +45,45 @@ Produce: single reward signal (programmatic — flag if human judgment required)
 
 ---
 
+## Phase 0.5: Grill Me
+
+**Execution: spawn 1 Haiku/Explore agent — do not run inline. Run after Phase 0, before Phase 1.**
+
+**Skip condition:** All Phase 1 fields (Task, Tech/Stack, Done criteria, Context) are fully specified in the user's opening message — no ambiguity. Otherwise always run.
+
+**Agent prompt:**
+
+```
+Read .claude/agent-context/snapshot.md for workspace context before starting.
+You are a goal-grilling agent. Your job is to surface hidden scope gaps, vague done criteria,
+and overnight risks BEFORE a goal prompt is written.
+
+Task description so far: [TASK DESCRIPTION FROM USER]
+
+Generate 3-5 targeted questions. Focus on:
+- Scope edges: what is explicitly NOT included?
+- Done criteria sharpness: is the end state verifiable without judgment?
+- Overnight risk: what could block autonomous execution?
+- Hidden constraints: live data, shared systems, cost ceilings, auth?
+
+Rules:
+- Never ask about fields already answered
+- Questions must be specific to THIS task — not generic checklist
+- Max 5 questions, min 3
+- Return ONLY: an array of {question: string, header: string} — header is ≤12 chars
+
+Example for "build a triage dashboard":
+[
+  {question: "Should unreviewed runs appear or be hidden by default?", header: "Default view"},
+  {question: "Read-only or can it write verdict/dismiss from the UI?", header: "Write access"},
+  {question: "Mobile-responsive or desktop only?", header: "Responsive"}
+]
+```
+
+Collect the agent's questions array. Present all questions in ONE AskUserQuestion call (multiSelect: false per question). Then fold answers into Phase 1 — treat each answer as if the user specified that field upfront.
+
+---
+
 ## Phase 1: Gather Inputs
 
 | Field                 | What you need                                                                 | Required?                                             |
