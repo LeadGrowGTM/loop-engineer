@@ -18,7 +18,7 @@ The 3 harness agents are defined as proper Claude Code agents in `.claude/agents
 
 | File                                | Role                             | tools                                | model      |
 | ----------------------------------- | -------------------------------- | ------------------------------------ | ---------- |
-| `.claude/agents/harness-planner.md` | Decompose goal → PLAN.md         | Read, Glob, Write                    | sonnet-4-6 |
+| `.claude/agents/harness-planner.md` | Decompose goal → BRIEF.md, PLAN.md | Read, Glob, Write                  | sonnet-4-6 |
 | `.claude/agents/harness-maker.md`   | Execute phases, commit           | Read, Glob, Write, Edit, Bash, Agent | haiku-4-5  |
 | `.claude/agents/harness-checker.md` | Score artifacts, write CYCLE_LOG | Read, Glob, Write                    | sonnet-4-6 |
 
@@ -27,6 +27,33 @@ Bash, spawn subagents, or access anything the Maker produced via tool calls. Fre
 
 Invoke by name: `Agent({subagent_type: "harness-planner", prompt: "..."})`. HARNESS.md
 supplies task-specific context; the agent files contain structural templates.
+
+---
+
+## BRIEF.md — Product Brief
+
+**What it is:** Planner writes BRIEF.md as the first artifact (before PLAN.md). It anchors the goal at the product level — why this work matters and what success looks like from the user's perspective.
+
+**Format (3 sections):**
+
+```
+# Goal Brief — <task-slug>
+
+## Problem
+<one sentence — why this work matters, from the user's perspective>
+
+## Success criteria (product-level)
+- <what the user observes when done — not "tests pass", not "file exists">
+- <observable outcome 2>
+
+## Out of scope
+- <explicit exclusion 1 — things NOT being built>
+- <explicit exclusion 2>
+```
+
+**Why separate from PLAN.md:** PLAN.md is technical (phases, skill routing, checker dimensions). BRIEF.md is product — it answers "should we be doing this at all?" and "did we solve the right problem?" Checker uses BRIEF.md to detect scope drift. If Maker produces "all tests pass" but the brief's success criteria are unmet, Checker catches it.
+
+**Cross-reference:** PLAN.md checker rubric must align with BRIEF.md success criteria. If BRIEF.md says "user can generate reports in 2 clicks", the rubric should score UX/ease-of-use. If BRIEF.md excludes mobile, the rubric should not penalize "mobile responsive".
 
 ---
 
@@ -57,12 +84,17 @@ HARNESS.md for the specific task; the agent files contain the structural templat
 
 ### Phase 1: Planner
 
-**Role:** Decompose the goal into phases. Select the right skills. Write the execution
-plan before any artifacts are produced. This is the only phase that reads the full spec.
+**Role:** Decompose the goal into phases. Select the right skills. Write BRIEF.md (product brief)
+and the execution plan before any artifacts are produced. This is the only phase that reads the full spec.
 
 **Inputs:** Goal statement, [TASK] block, [TOOLS] block, HARNESS.md planner brief.
 
-**Output — PLAN.md must contain:**
+**Output — BRIEF.md must contain (written first):**
+- Problem: one sentence on why this work matters
+- Success criteria: product-level observables (not technical)
+- Out of scope: explicit exclusions
+
+**Output — PLAN.md must contain (written second):**
 
 - Phase list with names and ordering (e.g., Phase 1: Research, Phase 2: Draft, Phase 3: Finalize)
 - Skill-per-phase routing: which skill or direct implementation step covers each phase
@@ -70,8 +102,8 @@ plan before any artifacts are produced. This is the only phase that reads the fu
 - Dependency graph: which phases can run in parallel vs. must be sequential
 - Turn budget allocation: estimated turns per phase
 
-**Constraint:** Planner writes PLAN.md and stops. It does not produce task artifacts.
-Maker reads PLAN.md on its first turn.
+**Constraint:** Planner writes BRIEF.md and PLAN.md, then stops. It does not produce task artifacts.
+Maker reads both files on its first turn. Checker reads BRIEF.md to detect scope drift.
 
 **Template prompt for PLAN.md:**
 
