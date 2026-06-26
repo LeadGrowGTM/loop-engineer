@@ -6,7 +6,7 @@ Goal prompt writer + planner/maker/checker harness for Claude Code loop engineer
 
 | Path | What |
 |---|---|
-| `.claude/agents/` | Harness agent definitions (planner, maker, checker) |
+| `.claude/agents/` | Harness agent definitions (planner, maker, prover, checker) |
 | `.claude/state/` | SQLite triage schema + README |
 | `skills/write-goal-prompt/` | Goal authoring skill — phases, eval loop, harness discovery |
 | `skills/write-goal-prompt/references/` | 6 reference files (eval-loop-design, subagent-harness, skill-routing, etc.) |
@@ -18,7 +18,10 @@ Goal prompt writer + planner/maker/checker harness for Claude Code loop engineer
 
 ## Core principle
 
-The model that wrote the code grades its own homework generously. Checker isolation is mechanical — `tools: Read, Glob, Write` only. It cannot see Maker reasoning, run Bash, or spawn agents.
+The model that wrote the code grades its own homework generously. Four-agent loop: Planner → Maker → Prover → Checker.
+
+- **Prover** (`tools: Read, Bash`) drives the running app, returns binary PROOF verdict. Running-app goals only — skip for static artifacts.
+- **Checker** (`tools: Read, Glob, Write`) scores artifacts against rubric. Cannot run Bash, cannot spawn agents. Receives PROOF verdict via invocation context.
 
 ## Key commands
 

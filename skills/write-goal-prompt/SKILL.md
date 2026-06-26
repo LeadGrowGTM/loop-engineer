@@ -115,7 +115,7 @@ Read .harness/skill-routing.md (installed by /setup-harness). If missing, fall b
 Task being goal-prompted: [TASK SUMMARY]
 Skills confirmed available (from Agent 1): [SKILL SCANNER RESULTS]
 
-Write HARNESS.md content with FOUR sections:
+Write HARNESS.md content with FIVE sections:
 
 PLANNER_BRIEF:
 What context files should Planner read first for this task?
@@ -127,6 +127,12 @@ Map each phase to a specific skill from the confirmed list, or "direct" if none 
 Format: "Phase N: <skill-name or direct> — <artifact it produces>"
 Follow skill-routing.md heuristics.
 
+PROVER_BRIEF (include only if goal involves a running app — UI feature, API endpoint, or CLI behaviour; otherwise write "PROVER_BRIEF: N/A — static artifact goal"):
+Feature intent: <one sentence — what the feature should do, from the goal>
+How to exercise: <exact CLI command, curl call, or browser URL + steps>
+Auth: <credentials or "no auth required">
+Accept criteria: <observable output that means "works" — paste-able result>
+
 CHECKER_BRIEF:
 Which artifact paths should Checker evaluate?
 What rubric dimensions (1-5) apply? What does a 5 look like vs a 1 for each?
@@ -135,7 +141,8 @@ Note: checker agent file enforces fresh context — no extra isolation instructi
 
 LOOP_TRACKER:
 A markdown checklist the running agent fills in as the loop progresses.
-Emit exactly this template (fill in phase names from MAKER_ROUTING above):
+Emit exactly this template (fill in phase names from MAKER_ROUTING above;
+omit Prover rows if PROVER_BRIEF is N/A):
 
 ## Loop Tracker
 > Update this file as you complete each step. Check off items in order.
@@ -149,6 +156,7 @@ Emit exactly this template (fill in phase names from MAKER_ROUTING above):
 - [ ] Maker: <Phase 1 name> — artifact: `<path>` — commit: `<SHA>`
 - [ ] Maker: <Phase N name> — artifact: `<path>` — commit: `<SHA>`
 - [ ] Mechanical gate: passed
+- [ ] Prover: PROOF VERDICT received — Feature: works | broken
 - [ ] Checker: CYCLE_LOG.md written: `<path>`
 - [ ] Reward signal: __/5.0 (threshold: <T>/5.0)
 - [ ] Verdict: PASS / ITERATE / PLATEAU
@@ -157,6 +165,7 @@ Emit exactly this template (fill in phase names from MAKER_ROUTING above):
 - [ ] Fix target: <weakest dimension from Cycle 1>
 - [ ] Maker: changes applied — commit: `<SHA>`
 - [ ] Mechanical gate: passed
+- [ ] Prover: PROOF VERDICT received — Feature: works | broken
 - [ ] Checker: CYCLE_LOG.md updated
 - [ ] Reward signal: __/5.0
 - [ ] Verdict: PASS / ITERATE / PLATEAU
@@ -165,6 +174,7 @@ Emit exactly this template (fill in phase names from MAKER_ROUTING above):
 - [ ] Fix target: <weakest dimension from Cycle 2>
 - [ ] Maker: changes applied — commit: `<SHA>`
 - [ ] Mechanical gate: passed
+- [ ] Prover: PROOF VERDICT received — Feature: works | broken
 - [ ] Checker: CYCLE_LOG.md updated
 - [ ] Reward signal: __/5.0
 - [ ] Verdict: PASS / PLATEAU (max cycles reached)
@@ -218,12 +228,16 @@ Use this context:
 <populated from Phase 1.5 discovery — omit entirely if nothing relevant found>
 
 [HARNESS]
-Read HARNESS.md before starting. Three-phase execution:
+Read HARNESS.md before starting. Four-phase execution:
 1. Planner (turns 1-5): decompose task → write PLAN.md (phases, skill routing, checker rubric).
    Do not produce task artifacts until PLAN.md is written.
 2. Maker (turns 6-<N>): execute per PLAN.md, invoke skills per phase, commit at each phase boundary.
-3. Checker: spawn fresh subagent per checker brief in HARNESS.md. Pass artifact paths only —
-   not your reasoning context. Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
+3. Prover (running-app goals only): spawn harness-prover with PROVER_BRIEF from HARNESS.md.
+   Pass feature intent + exercise instructions. Get PROOF VERDICT before Checker.
+   Skip this step entirely for static artifact goals (PROVER_BRIEF: N/A).
+4. Checker: spawn fresh harness-checker subagent with CHECKER_BRIEF from HARNESS.md.
+   Pass artifact paths + PROOF VERDICT (if running-app goal).
+   Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
 
 Work through the task to completion. If you hit a blocker, do not stop. Use mocks, stubs, or documented assumptions. Record each workaround and continue with everything that does not require my decision.
 
