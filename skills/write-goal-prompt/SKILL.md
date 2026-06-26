@@ -85,7 +85,7 @@ Max 8 results. If more match, prefer the most specific.
 
 ```
 Read .claude/agent-context/snapshot.md for workspace context before starting.
-Read C:\Users\mitch\Everything_CC\.claude\rules\workflow.md (Agent Roster section) and
+Read .claude/rules/workflow.md (Agent Roster section) and
 the available agent types listed in the session system reminder.
 Return: array of {agentType, useFor} for agent types relevant to this task: [TASK SUMMARY].
 Also note: is smart-searcher available? is task-orchestrator available?
@@ -106,16 +106,16 @@ Return: array of {tool, purpose, invocation} for up to 5 relevant tools/scripts.
 
 ```
 Read .claude/agent-context/snapshot.md for workspace context before starting.
-Confirm these 3 agent files exist (Glob .claude/agents/harness-*.md):
-  - harness-planner.md
-  - harness-maker.md
-  - harness-checker.md
-Read .claude/skills/write-goal-prompt/references/skill-routing.md.
+Confirm harness agents exist in at least one of these locations (Glob both):
+  - .claude/agents/harness-planner.md, harness-maker.md, harness-checker.md
+  - ~/.claude/agents/harness-planner.md, harness-maker.md, harness-checker.md
+Read .harness/skill-routing.md (installed by /setup-harness). If missing, fall back to
+  .claude/skills/write-goal-prompt/references/skill-routing.md.
 
 Task being goal-prompted: [TASK SUMMARY]
 Skills confirmed available (from Agent 1): [SKILL SCANNER RESULTS]
 
-Write HARNESS.md content with three task-specific sections:
+Write HARNESS.md content with FOUR sections:
 
 PLANNER_BRIEF:
 What context files should Planner read first for this task?
@@ -133,7 +133,46 @@ What rubric dimensions (1-5) apply? What does a 5 look like vs a 1 for each?
 What PASS threshold (default: mean ≥ 3.5/5.0)?
 Note: checker agent file enforces fresh context — no extra isolation instructions needed.
 
-If harness agent files are missing: fall back to prose-based harness (old behavior).
+LOOP_TRACKER:
+A markdown checklist the running agent fills in as the loop progresses.
+Emit exactly this template (fill in phase names from MAKER_ROUTING above):
+
+## Loop Tracker
+> Update this file as you complete each step. Check off items in order.
+
+### Planner
+- [ ] HARNESS.md read
+- [ ] skill-routing.md read
+- [ ] PLAN.md written: `<path>`
+
+### Cycle 1
+- [ ] Maker: <Phase 1 name> — artifact: `<path>` — commit: `<SHA>`
+- [ ] Maker: <Phase N name> — artifact: `<path>` — commit: `<SHA>`
+- [ ] Mechanical gate: passed
+- [ ] Checker: CYCLE_LOG.md written: `<path>`
+- [ ] Reward signal: __/5.0 (threshold: <T>/5.0)
+- [ ] Verdict: PASS / ITERATE / PLATEAU
+
+### Cycle 2 (if ITERATE)
+- [ ] Fix target: <weakest dimension from Cycle 1>
+- [ ] Maker: changes applied — commit: `<SHA>`
+- [ ] Mechanical gate: passed
+- [ ] Checker: CYCLE_LOG.md updated
+- [ ] Reward signal: __/5.0
+- [ ] Verdict: PASS / ITERATE / PLATEAU
+
+### Cycle 3 (if ITERATE again)
+- [ ] Fix target: <weakest dimension from Cycle 2>
+- [ ] Maker: changes applied — commit: `<SHA>`
+- [ ] Mechanical gate: passed
+- [ ] Checker: CYCLE_LOG.md updated
+- [ ] Reward signal: __/5.0
+- [ ] Verdict: PASS / PLATEAU (max cycles reached)
+
+### Final
+- [ ] HANDOFF.md written: `<path>`
+- [ ] HANDOFF.html written: `<path>`
+- [ ] HANDOFF.excalidraw written: `<path>`
 ```
 
 Synthesize Agents 1-3 into `[TOOLS]` block. Agent 4 output becomes `HARNESS.md` (written in Phase 2.5 before length measurement). Omit `[TOOLS]` entirely if nothing relevant found — don't invent tools. Drop CLI tools first if tight on 4000-char limit. Phase 2.5 skills-exist check satisfied by discovery output — no re-glob needed.
@@ -209,6 +248,7 @@ Then execute the task using this loop — repeat up to <max_cycles> times:
      commit current best, note "plateau after N cycles" in HANDOFF.md
 
 Log each cycle to HANDOFF.md: cycle number, mechanical gate result, reward signal score, what changed.
+After each cycle, update the LOOP_TRACKER section in HARNESS.md — check off completed steps, fill in paths, SHAs, and reward signals.
 
 [CONTEXT MANAGEMENT]
 Run /compact when context approaches 170k tokens. After compacting, state your current checkpoint before continuing. Do NOT compact on turn 1.
