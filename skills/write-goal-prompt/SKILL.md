@@ -414,4 +414,18 @@ Emit as a code fence. Add: **"Paste this into a Sonnet session. `/goal clear` to
 | `references/qa-checklist.md`         | Length gate, context verification, dry-run checks, quality floors, git cadence, full condition checklist |
 | `references/morning-report-specs.md` | HTML summary spec, Excalidraw JSON structure, color coding                                               |
 | `references/context-management.md`   | 170k threshold rationale, checkpoint protocol                                                            |
+| `references/execution-mode-routing.md` | Decide task shape before authoring: single-run, goal-loop, time-loop, dynamic-workflow. Decision order, interval guidance, mode-nesting patterns. |
+| `references/first-principles-generation.md` | Planner: decompose from observable outcomes. Maker: state reasoning (1-3 sentences) before code. |
 | `EXAMPLES.md`                        | Full worked example with Phase 0 design and output                                                       |
+
+---
+
+## Execution Mode Routing
+
+Before writing a goal prompt, route the task to the right execution shape using `references/execution-mode-routing.md`. This is about *task shape* (single-run vs goal-loop vs time-loop vs dynamic-workflow), not about harness infrastructure (in-session vs gnhf — that is separate; see global SKILL.md "Execution Router" for infrastructure choice).
+
+The router decision tree is first-match-wins: walk the four questions top-down and stop at the first yes. Dynamic-workflow shape (for parallel verification, adversarial red-team, or 50+ item processing) is exemplified by `.claude/workflows/red-team.js`, which runs four attack roles in parallel, deduplicates findings by severity, and validates both per-role and merged output.
+
+Planner reads `references/execution-mode-routing.md` as the first step after intake, and emits the chosen shape in PLAN.md's "Execution shape" section.
+
+**Note:** This section (task shape) is orthogonal to the "Execution Router" heading in global SKILL.md (infrastructure choice: in-session harness vs gnhf overnight vs treehouse parallel-gnhf). Both axes inform a full execution plan, but they answer different questions — mode routing (this file) is shape, while the global Router is infrastructure.
