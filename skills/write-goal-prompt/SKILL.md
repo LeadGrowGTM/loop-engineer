@@ -1,4 +1,5 @@
 ---
+disable-model-invocation: true
 name: write-goal-prompt
 description: >
   Transforms a task description into a ready-to-paste /goal command for Claude Code.
@@ -8,7 +9,7 @@ description: >
   page, Excalidraw diagram, and fallback guardrails baked in. Triggered by: "write a
   goal prompt", "turn this into a /goal", "overnight task", "run unsupervised",
   "hand off this task".
-version: 3.6.0
+version: 3.7.0
 maturity: validated
 triggers:
   - write a goal prompt
@@ -18,6 +19,11 @@ triggers:
   - hand off this task
   - /goal prompt
   - goal prompt
+  - run with gnhf
+  - autonomous loop
+  - gnhf this
+  - run overnight
+  - parallel agents
 feedback:
   last_reviewed: 2026-06-21
   known_gaps:
@@ -27,7 +33,29 @@ feedback:
 
 # Skill: Write Goal Prompt
 
-Converts a free-form task into a `/goal` command ready to paste into Claude Code. Designed for overnight handoffs — agent runs autonomously, self-evaluates against a fixed signal, leaves a structured morning report. Output: structured goal condition (≤4000 chars) with eval loop, tiered fallbacks, HTML + Excalidraw morning report.
+Converts a free-form task into a `/goal` command ready to paste into Claude Code, OR a `gnhf` autonomous run command for overnight unattended work. Designed for overnight handoffs — agent runs autonomously, self-evaluates against a fixed signal, leaves a structured morning report. Output: structured goal condition (≤4000 chars) with eval loop, tiered fallbacks, HTML + Excalidraw morning report.
+
+## Execution Router (Run Before Phase 0)
+
+Determine execution mode first. Ask if not obvious from context. This is the **infrastructure** axis (where/how the harness runs); it is distinct from the *task-shape* axis in the "Execution Mode Routing" section below (`references/execution-mode-routing.md`).
+
+| Task shape                                   | Mode                                              |
+| -------------------------------------------- | ------------------------------------------------- |
+| < 1 hr, needs back-and-forth decisions       | **in-session harness** - proceed to Phase 0       |
+| > 1 hr, fully specifiable, can run overnight | **gnhf autonomous** - see gnhf Path section below |
+| Multiple independent streams simultaneously  | **parallel gnhf + treehouse** - see gnhf Path     |
+
+**Always register in tasks-axi first (both modes):**
+
+```bash
+tasks-axi add <slug> "<one-line title>"
+tasks-axi start <slug>
+# On completion: tasks-axi done <slug> [--pr <url>]
+```
+
+Slug format: `<domain>-<3-4-word-kebab>` e.g. `outbound-rbs-sequence-v3`, `content-linkedin-batch-q3`.
+
+---
 
 ## What `/goal` Is
 
@@ -421,7 +449,77 @@ Fix any failure before emitting: (1) context verification — subagents confirm 
 
 ## Phase 3: Output
 
-Emit as a code fence. Add: **"Paste this into a Sonnet session. `/goal clear` to abort early."** See `EXAMPLES.md` for a complete worked example.
+**In-session harness mode:** Emit as a code fence. Add: **"Paste this into a Sonnet session. `/goal clear` to abort early."** See `EXAMPLES.md` for a complete worked example.
+
+**gnhf mode:** Skip this phase. Output is the gnhf command block (see gnhf Path below).
+
+---
+
+## gnhf Path (Overnight Autonomous Mode)
+
+Use when execution mode = gnhf (task > 1hr, fully specifiable, can run unattended). The goal condition from Phase 2 becomes the gnhf objective directly — same content, no `/goal` wrapper, no 4000-char limit.
+
+Skip Phase 2.5 QA. Skip Phase 3.
+
+**Preferred — inline detached launch (no terminal drop, survives this session):**
+
+```powershell
+pwsh C:\Users\mitch\Everything_CC\agent-harness\scripts\launch-gnhf.ps1 `
+  -Objective "<full objective from Phase 2>" `
+  -StopWhen "<done condition from Phase 0 eval loop>" -MaxIterations 30
+```
+
+It pre-flights, starts gnhf detached + hidden, logs to `.gnhf-runs/gnhf-<stamp>.log`, and writes a handle JSON (PID + log + args). Register the task in tasks-axi first and mark it done after morning review.
+
+**Manual command block (equivalent, if you prefer to run it yourself):**
+
+```bash
+# 1. Register task
+tasks-axi add <slug> "<title>"
+tasks-axi start <slug>
+
+# 2. Worktree (optional — use for parallel streams or dep-heavy runs)
+# path=$(treehouse get --lease --lease-holder "gnhf-<slug>")
+# cd $path  # then run gnhf from there
+
+# 3. Launch — clean working tree required (git stash if dirty)
+gnhf "<full objective from Phase 2>" \
+  --max-iterations 30 \
+  --stop-when "<done condition from Phase 0 eval loop>"
+
+# 4. Morning review
+git log --oneline gnhf/<slug>
+cat .gnhf/runs/*/notes.md
+
+# 5. Mark done
+tasks-axi done <slug>
+```
+
+**Model: always Opus/frontier (non-negotiable):**
+gnhf main agent = Opus. Cheaper models miss multi-step reasoning and produce cascading iteration failures.
+Enforced via `~/.gnhf/config.yml`:
+
+```yaml
+agentArgsOverride:
+  claude:
+    - '--model'
+    - 'opus'
+```
+
+Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--max-iterations` instead.
+
+**Pre-flight checks (the launcher does these; verify manually if using the command block):**
+
+- `git config --global commit.gpgSign` — must be empty or `false` (gnhf commits unsigned)
+- Working tree clean — `git status` shows nothing (gnhf rejects dirty state)
+- `~/.gnhf/config.yml` — agent = `claude`, `agentArgsOverride.claude` = Opus model
+
+**Treehouse rules:**
+
+- Single stream → skip treehouse, run gnhf in repo root
+- Parallel streams or long-running lease → `treehouse get --lease --lease-holder "gnhf-<slug>"`
+- stdout = worktree path (use it), stderr = banners (ignore)
+- Return when done: `treehouse return $path`
 
 ---
 
@@ -438,12 +536,15 @@ Emit as a code fence. Add: **"Paste this into a Sonnet session. `/goal clear` to
 | `references/execution-mode-routing.md` | Decide task shape before authoring: single-run, goal-loop, time-loop, dynamic-workflow. Decision order, interval guidance, mode-nesting patterns. |
 | `references/first-principles-generation.md` | Planner: decompose from observable outcomes. Maker: state reasoning (1-3 sentences) before code. |
 | `EXAMPLES.md`                        | Full worked example with Phase 0 design and output                                                       |
+| gnhf docs                            | `gnhf --help` - autonomous loop CLI; `~/.gnhf/config.yml` for defaults; `scripts/launch-gnhf.ps1` for inline detached launch |
+| treehouse docs                       | `treehouse --help` - worktree pool; `treehouse.toml` in repo root for pool config                        |
+| tasks-axi docs                       | `tasks-axi --help` - persistent backlog; `.tasks.toml` for per-repo config                               |
 
 ---
 
 ## Execution Mode Routing
 
-Before writing a goal prompt, route the task to the right execution shape using `references/execution-mode-routing.md`. This is about *task shape* (single-run vs goal-loop vs time-loop vs dynamic-workflow), not about harness infrastructure (in-session vs gnhf — that is separate; see global SKILL.md "Execution Router" for infrastructure choice).
+Before writing a goal prompt, route the task to the right execution shape using `references/execution-mode-routing.md`. This is about *task shape* (single-run vs goal-loop vs time-loop vs dynamic-workflow), not about harness infrastructure (in-session vs gnhf — that is separate; see the "Execution Router" section above for infrastructure choice).
 
 The router decision tree is first-match-wins: walk the four questions top-down and stop at the first yes. Dynamic-workflow shape (for parallel verification, adversarial red-team, or 50+ item processing) is exemplified by `.claude/workflows/red-team.js`, which runs four attack roles in parallel, deduplicates findings by severity, and validates both per-role and merged output.
 
@@ -451,4 +552,4 @@ The router decision tree is first-match-wins: walk the four questions top-down a
 
 Planner reads `references/execution-mode-routing.md` as the first step after intake, and emits the chosen shape in PLAN.md's "Execution shape" section.
 
-**Note:** This section (task shape) is orthogonal to the "Execution Router" heading in global SKILL.md (infrastructure choice: in-session harness vs gnhf overnight vs treehouse parallel-gnhf). Both axes inform a full execution plan, but they answer different questions — mode routing (this file) is shape, while the global Router is infrastructure.
+**Note:** This section (task shape) is orthogonal to the "Execution Router" section near the top of this file (infrastructure choice: in-session harness vs gnhf overnight vs treehouse parallel-gnhf). Both axes inform a full execution plan, but they answer different questions — mode routing (this file) is shape, while the Router is infrastructure.
