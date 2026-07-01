@@ -1,7 +1,8 @@
-// Workflow-DSL script. Runs only within the Workflow executor.
-// The `phase()`, `parallel()`, `agent()`, `log()`, and `args` globals are injected at
-// runtime by the executor. Standalone syntax check will fail on top-level `return` — that
-// is expected and correct. The file has valid JS syntax; it is not a standalone module.
+// Workflow-DSL script. Orchestration runs inside run() so the file also imports clean as
+// a plain ESM module (`bun -e "import('./red-team.js')"` exits 0): importing only defines
+// meta + pure helpers and executes nothing. The injected globals (`phase`, `parallel`,
+// `agent`, `log`, `args`) resolve at call time — under the Workflow executor via the
+// guarded auto-invoke at the bottom; never on a bare import.
 
 export const meta = {
   name: 'red-team',
@@ -11,18 +12,6 @@ export const meta = {
     'The verify phase of a goal loop, or any time a feature/flow needs adversarial proof rather than rubric scoring. Pass args.target (what was built, one paragraph), args.paths (files/dirs to read), args.entryPoint (how a user/caller reaches it). Optional args.outOfScope.',
   phases: [{ title: 'Attack' }, { title: 'Merge' }],
 };
-
-// ───────────────────────── args / defaults ─────────────────────────
-const a = args || {};
-const TARGET = a.target;
-const PATHS = a.paths;
-if (!TARGET || !PATHS) {
-  throw new Error(
-    'red-team requires args.target (what was built) and args.paths (files/dirs to read).',
-  );
-}
-const ENTRY = a.entryPoint || '(infer the entry point from the code)';
-const OUT_OF_SCOPE = a.outOfScope || '(nothing explicitly out of scope)';
 
 const FINDINGS_SCHEMA = {
   type: 'object',
@@ -46,17 +35,18 @@ const FINDINGS_SCHEMA = {
 };
 
 // One role's attack brief. Each role is blind to the others and hunts ONLY its angle.
-function attackBrief(role, lens) {
+// Pure: takes the resolved target context so the module stays import-safe.
+function attackBrief(role, lens, { target, entry, outOfScope, paths }) {
   return `You are a red-team agent in the "${role}" role. You did NOT write this code and you owe it no charity. Your only job is to find where it breaks from your angle — do not praise it, do not defend it, do not suggest it's probably fine.
 
 What was built:
 """
-${TARGET}
+${target}
 """
-Entry point (how it's reached): ${ENTRY}
-Out of scope (do not report these): ${OUT_OF_SCOPE}
+Entry point (how it's reached): ${entry}
+Out of scope (do not report these): ${outOfScope}
 
-Read these paths in full before attacking: ${Array.isArray(PATHS) ? PATHS.join(', ') : PATHS}
+Read these paths in full before attacking: ${Array.isArray(paths) ? paths.join(', ') : paths}
 
 Your angle — ${role}: ${lens}
 
@@ -90,32 +80,6 @@ const ROLES = [
   },
 ];
 
-// ───────────────────────── Phase 1: Attack (parallel) ─────────────────────────
-// Barrier is correct here: the merge step dedupes across ALL roles at once
-// (two roles often find the same hole from different angles).
-phase('Attack');
-const perRole = await parallel(
-  ROLES.map((r) => () =>
-    agent(attackBrief(r.role, r.lens), {
-      label: `attack:${r.role.replace(/\s+/g, '-')}`,
-      phase: 'Attack',
-      schema: FINDINGS_SCHEMA,
-      agentType: 'Explore',
-    }).then((res) => ({ role: r.role, findings: (res && res.findings) || [] })),
-  ),
-);
-
-const raw = perRole
-  .filter(Boolean)
-  .flatMap((r) => r.findings.map((f) => ({ ...f, foundBy: r.role })));
-
-// Nothing to merge — short-circuit (mirrors the article's "0 findings → skip verify").
-if (raw.length === 0) {
-  return { holes: [], rolesRun: ROLES.length, note: 'No holes found after a full four-angle attack.' };
-}
-
-// ───────────────────────── Phase 2: Merge (worst-first) ─────────────────────────
-phase('Merge');
 const MERGE_SCHEMA = {
   type: 'object',
   required: ['holes'],
@@ -137,8 +101,54 @@ const MERGE_SCHEMA = {
   },
 };
 
-const merged = await agent(
-  `You are the red-team synthesizer. Below are raw findings from four attack roles against the same target. Merge them into ONE list, worst-first.
+// ───────────────────────── orchestration ─────────────────────────
+// All executor globals (phase/parallel/agent/log/args) are referenced ONLY inside run(),
+// so a bare `import()` defines this and returns without touching them. The executor calls
+// run() through the guarded auto-invoke below.
+export async function run() {
+  const a = args || {};
+  const target = a.target;
+  const paths = a.paths;
+  if (!target || !paths) {
+    throw new Error(
+      'red-team requires args.target (what was built) and args.paths (files/dirs to read).',
+    );
+  }
+  const ctx = {
+    target,
+    paths,
+    entry: a.entryPoint || '(infer the entry point from the code)',
+    outOfScope: a.outOfScope || '(nothing explicitly out of scope)',
+  };
+
+  // ─────────────── Phase 1: Attack (parallel) ───────────────
+  // Barrier is correct here: the merge step dedupes across ALL roles at once
+  // (two roles often find the same hole from different angles).
+  phase('Attack');
+  const perRole = await parallel(
+    ROLES.map((r) => () =>
+      agent(attackBrief(r.role, r.lens, ctx), {
+        label: `attack:${r.role.replace(/\s+/g, '-')}`,
+        phase: 'Attack',
+        schema: FINDINGS_SCHEMA,
+        agentType: 'Explore',
+      }).then((res) => ({ role: r.role, findings: (res && res.findings) || [] })),
+    ),
+  );
+
+  const raw = perRole
+    .filter(Boolean)
+    .flatMap((r) => r.findings.map((f) => ({ ...f, foundBy: r.role })));
+
+  // Nothing to merge — short-circuit (mirrors the article's "0 findings → skip verify").
+  if (raw.length === 0) {
+    return { holes: [], rolesRun: ROLES.length, note: 'No holes found after a full four-angle attack.' };
+  }
+
+  // ─────────────── Phase 2: Merge (worst-first) ───────────────
+  phase('Merge');
+  const merged = await agent(
+    `You are the red-team synthesizer. Below are raw findings from four attack roles against the same target. Merge them into ONE list, worst-first.
 
 Rules:
 - Collapse duplicates: if two roles found the same hole, emit it once with both role names in foundBy. Same root cause = same hole even if worded differently.
@@ -148,15 +158,23 @@ Rules:
 
 Raw findings (JSON):
 ${JSON.stringify(raw, null, 2)}`,
-  { label: 'merge:synthesize', phase: 'Merge', schema: MERGE_SCHEMA },
-);
+    { label: 'merge:synthesize', phase: 'Merge', schema: MERGE_SCHEMA },
+  );
 
-const holes = (merged && merged.holes) || [];
-const bySeverity = { critical: 0, high: 0, medium: 0, low: 0 };
-for (const h of holes) bySeverity[h.severity] = (bySeverity[h.severity] || 0) + 1;
+  const holes = (merged && merged.holes) || [];
+  const bySeverity = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const h of holes) bySeverity[h.severity] = (bySeverity[h.severity] || 0) + 1;
 
-log(
-  `red-team: ${holes.length} holes — ${bySeverity.critical} critical, ${bySeverity.high} high, ${bySeverity.medium} medium, ${bySeverity.low} low`,
-);
+  log(
+    `red-team: ${holes.length} holes — ${bySeverity.critical} critical, ${bySeverity.high} high, ${bySeverity.medium} medium, ${bySeverity.low} low`,
+  );
 
-return { holes, bySeverity, rolesRun: ROLES.length };
+  return { holes, bySeverity, rolesRun: ROLES.length };
+}
+
+// Auto-invoke under the Workflow executor (globals injected → guard true). On a bare
+// `import()` the executor globals are undefined, so this is a no-op and the module loads
+// clean. Top-level await is legal in ESM; top-level `return` is not — run() owns the return.
+if (typeof phase !== 'undefined' && typeof agent !== 'undefined' && typeof parallel !== 'undefined') {
+  await run();
+}

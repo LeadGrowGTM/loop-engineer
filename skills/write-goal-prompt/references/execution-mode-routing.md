@@ -10,12 +10,15 @@ dynamic workflows in Claude Code*. This file codifies their signals into a route
 
 ## The four modes
 
-| Mode | Tool | Ends when | Core fit |
-|---|---|---|---|
-| **Single run** | direct agent / one `/goal`-free pass | output produced | Bounded, one pass, correctness obvious on inspection |
-| **Goal loop** | `/goal <condition>` | success condition met or turn limit | One task, self-paced, needs iteration to *reliably* clear a measurable bar |
-| **Time-based loop** | `/loop`, `/schedule` | you cancel, or the watched work completes | Recurring task with changing inputs, or watching external state you don't control |
-| **Dynamic workflow** | `Workflow` script | script returns | Massively parallel, highly structured, or needs adversarial verification |
+Each mode has a canonical id (the slug in `id`) — use it verbatim when a router, plan, or
+harness has to name the chosen shape in a machine-readable field.
+
+| Mode | id | Tool | Ends when | Core fit |
+|---|---|---|---|---|
+| **Single run** | `single-run` | direct agent / one `/goal`-free pass | output produced | Bounded, one pass, correctness obvious on inspection |
+| **Goal loop** | `goal-loop` | `/goal <condition>` | success condition met or turn limit | One task, self-paced, needs iteration to *reliably* clear a measurable bar |
+| **Time-based loop** | `time-loop` | `/loop`, `/schedule` | you cancel, or the watched work completes | Recurring task with changing inputs, or watching external state you don't control |
+| **Dynamic workflow** | `dynamic-workflow` | `Workflow` script | script returns | Massively parallel, highly structured, or needs adversarial verification |
 
 ## Decision order (first match wins)
 
