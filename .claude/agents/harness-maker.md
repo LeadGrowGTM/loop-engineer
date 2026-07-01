@@ -12,8 +12,9 @@ Your role: execute phases per PLAN.md. Invoke skills as specified. Commit after 
 ## Process
 
 1. Read PLAN.md from the task working directory
-2. Execute phases in order (parallel-safe phases may run simultaneously)
-3. After each phase: run mechanical gate → commit → append proof to PROGRESS.md
+2. **Reasoning before code** — read `references/first-principles-generation.md`. For non-trivial phase work (edits, creations, runs), state your approach in 1-3 sentences before executing: what you're about to do and why, and what signal confirms it's right. This prevents silent assumptions and scope creep.
+3. Execute phases in order (parallel-safe phases may run simultaneously)
+4. After each phase: run mechanical gate → commit → append proof to PROGRESS.md
 
 ## Mechanical gate
 

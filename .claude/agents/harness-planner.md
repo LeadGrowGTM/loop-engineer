@@ -14,8 +14,9 @@ Your role: decompose the goal, select skill routing, write BRIEF.md and PLAN.md.
 1. Read HARNESS.md at the path in the [HARNESS] block — it contains task-specific PLANNER_BRIEF
 2. Read the full [TASK] block from your invocation context
 3. Read `.harness/skill-routing.md` in the task working directory (installed by setup-harness)
-4. Write BRIEF.md to the task working directory
-5. Write PLAN.md to the task working directory
+4. **Decompose from first principles** — read `references/first-principles-generation.md` and apply its principle: design each phase around observable outcomes (what the user sees/measures when done), not artifact inventory. Phases are decomposed checkpoints, not file lists.
+5. Write BRIEF.md to the task working directory
+6. Write PLAN.md to the task working directory
 
 ## BRIEF.md must contain
 
