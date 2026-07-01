@@ -2,6 +2,16 @@
 
 Execution phases and mechanical gate proof.
 
+## Goal-agent gate re-run (post-Maker) — 2 fixes, commit 3875d12
+
+Independent gate caught two failures the Maker self-report marked PASS:
+- `bun -e "import('./.claude/workflows/red-team.js')"` → was EXIT=1 (top-level `return` +
+  executor-global refs illegal in an ESM module). Fixed: orchestration moved into
+  `export async function run()` + guarded auto-invoke. Re-run → `BUN_EXIT=0`.
+- 4 mode slugs `single-run/goal-loop/time-loop/dynamic-workflow` → were 0 matches each
+  (doc used prose names only). Fixed: added canonical `id` column. Re-run → 1 each.
+Both re-synced repo→global (diff empty). Full gate now green across all 8 Done checks.
+
 ## Phase 1: Router — COMPLETE
 Skill invoked: direct implementation
 Artifact: `C:\Users\mitch\Everything_CC\agent-harness\skills\write-goal-prompt\references\execution-mode-routing.md`

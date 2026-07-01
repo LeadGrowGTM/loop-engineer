@@ -45,7 +45,20 @@ spec files instructing this very check. History untouched.
 
 (none yet)
 
-## Progress
+## Progress — COMPLETE (cycle 1, PASS)
 
-- Phase 0 firstmate proof: DONE (above)
-- Planner: spawning
+- Phase 0 firstmate proof: DONE (above) — nothing to revert.
+- Planner: DONE — BRIEF.md + PLAN.md, 6 phases, setup defects confirmed at real line numbers.
+- Maker: DONE — 5 phases, commits 6cedabe / a239da5 / a0d8301 / e675a15 / 0a9fccd.
+- Goal-agent gate: caught 2 fails the Maker marked PASS → fixed in commit 3875d12:
+  - red-team.js `bun import` EXIT=1 (top-level `return` in an ESM module) → moved
+    orchestration into `export async function run()` + guarded auto-invoke; now EXIT=0.
+  - router doc had no grep-able mode slugs → added canonical `id` column
+    (single-run / goal-loop / time-loop / dynamic-workflow).
+  Both re-synced repo→global (diff empty).
+- Mechanical gate: all 8 Done checks green (files, 4 slugs, meta.name, bun EXIT=0,
+  fp wired in planner+maker, `setup-harness.ts:156`, firstmate proof, global sync).
+- Checker (fresh context): PASS — mean **5.0/5.0**, all 4 dims 5/5. See CYCLE_LOG.md.
+- Reward = 8/8 Done bullets passing = 1.0.
+
+Done. `tasks-axi done harness-execmode-redteam` run.
