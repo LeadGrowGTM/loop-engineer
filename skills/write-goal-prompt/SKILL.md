@@ -172,6 +172,12 @@ How to exercise: <exact CLI command, curl call, or browser URL + steps>
 Auth: <credentials or "no auth required">
 Accept criteria: <observable output that means "works" — paste-able result>
 
+REDTEAM_BRIEF (include only if the goal ships a running app, a user-facing flow, or security-sensitive code — otherwise write "REDTEAM_BRIEF: N/A"):
+target: <one paragraph — what was built, written for attackers who owe it no charity>
+paths: <files/dirs the red-team roles must read before attacking>
+entryPoint: <how a user or caller reaches the feature>
+outOfScope: <known-safe things not worth reporting>
+
 CHECKER_BRIEF:
 Which artifact paths should Checker evaluate?
 What rubric dimensions (1-5) apply? What does a 5 look like vs a 1 for each?
@@ -181,7 +187,7 @@ Note: checker agent file enforces fresh context — no extra isolation instructi
 LOOP_TRACKER:
 A markdown checklist the running agent fills in as the loop progresses.
 Emit exactly this template (fill in phase names from MAKER_ROUTING above;
-omit Prover rows if PROVER_BRIEF is N/A):
+omit Prover rows if PROVER_BRIEF is N/A; omit Red-team rows if REDTEAM_BRIEF is N/A):
 
 ## Loop Tracker
 > Update this file as you complete each step. Check off items in order.
@@ -196,6 +202,7 @@ omit Prover rows if PROVER_BRIEF is N/A):
 - [ ] Maker: <Phase N name> — artifact: `<path>` — commit: `<SHA>`
 - [ ] Mechanical gate: passed
 - [ ] Prover: PROOF VERDICT received — Feature: works | broken
+- [ ] Red-team: worst-first holes triaged — critical/high fixed (adversarial goals)
 - [ ] Checker: CYCLE_LOG.md written: `<path>`
 - [ ] Reward signal: __/5.0 (threshold: <T>/5.0)
 - [ ] Verdict: PASS / ITERATE / PLATEAU
@@ -205,6 +212,7 @@ omit Prover rows if PROVER_BRIEF is N/A):
 - [ ] Maker: changes applied — commit: `<SHA>`
 - [ ] Mechanical gate: passed
 - [ ] Prover: PROOF VERDICT received — Feature: works | broken
+- [ ] Red-team: worst-first holes triaged — critical/high fixed (adversarial goals)
 - [ ] Checker: CYCLE_LOG.md updated
 - [ ] Reward signal: __/5.0
 - [ ] Verdict: PASS / ITERATE / PLATEAU
@@ -214,6 +222,7 @@ omit Prover rows if PROVER_BRIEF is N/A):
 - [ ] Maker: changes applied — commit: `<SHA>`
 - [ ] Mechanical gate: passed
 - [ ] Prover: PROOF VERDICT received — Feature: works | broken
+- [ ] Red-team: worst-first holes triaged — critical/high fixed (adversarial goals)
 - [ ] Checker: CYCLE_LOG.md updated
 - [ ] Reward signal: __/5.0
 - [ ] Verdict: PASS / PLATEAU (max cycles reached)
@@ -274,6 +283,10 @@ Read HARNESS.md before starting. Four-phase execution:
 3. Prover (running-app goals only): spawn harness-prover with PROVER_BRIEF from HARNESS.md.
    Pass feature intent + exercise instructions. Get PROOF VERDICT before Checker.
    Skip this step entirely for static artifact goals (PROVER_BRIEF: N/A).
+3b. Red-team (adversarial-verify goals — running app, user-facing flow, or security-sensitive
+   code): run the red-team Workflow (`.claude/workflows/red-team.js`) with REDTEAM_BRIEF from
+   HARNESS.md (target, paths, entryPoint). Feed its worst-first holes back to the Maker as fix
+   input BEFORE Checker scores. Skip for static/internal artifacts (REDTEAM_BRIEF: N/A).
 4. Checker: spawn fresh harness-checker subagent with CHECKER_BRIEF from HARNESS.md.
    Pass artifact paths + PROOF VERDICT (if running-app goal).
    Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
@@ -292,6 +305,8 @@ At turn 1, before any other work, write your eval plan in HANDOFF.md under
 Then execute the task using this loop — repeat up to <max_cycles> times:
   1. Generate output (inputs are fixed — do not change the spec, only the output)
   2. Run mechanical gate — if it fails, fix and re-run before proceeding to step 3
+  2b. Adversarial-verify goals only: run the red-team Workflow (REDTEAM_BRIEF in HARNESS.md).
+     Fix every critical/high hole it returns before step 3. Skip if REDTEAM_BRIEF: N/A.
   3. Spawn checker subagent (checker brief in HARNESS.md) — pass artifact paths only,
      not your context. Checker opens "I did not write this." Writes dimension scores
      + reward signal to CYCLE_LOG.md.
@@ -374,23 +389,29 @@ Before emitting, you MUST run this sequence as actual shell commands (not mental
 Write (tool) → temp/_goal-candidate.txt
 ```
 
-**Step 2 — measure (Python, cross-platform — run via Bash tool):**
+**Step 2 — measure and gate in one command (Bun, cross-platform — run via Bash tool):**
 
 ```bash
-python -c "txt=open('temp/_goal-candidate.txt').read().rstrip('\n'); print(len(txt))"
+bun skills/write-goal-prompt/scripts/check-goal-length.ts temp/_goal-candidate.txt
 ```
 
-`/goal` strips one trailing newline before counting. This command replicates that exactly.
+This counts exactly what `/goal` counts (UTF-16 `String.length` after stripping one trailing newline), prints `[Measured: XXXX chars]`, and **exits non-zero if the candidate is ≥3990** — so a failed gate is a failed command, not a judgment call. Adjust the ceiling with `--target N` / `--cap N` if needed.
+
+Fallback if Bun is unavailable (note the `encoding="utf-8"` — WITHOUT it, Python opens in the Windows codepage and over-counts every non-ASCII char, falsely blocking valid prompts):
+
+```bash
+python -c "txt=open('temp/_goal-candidate.txt', encoding='utf-8').read().rstrip('\n'); print(len(txt))"
+```
 
 **Step 3 — gate:**
 
-- Result **≥ 4000** → BLOCKED. Compress (see `references/qa-checklist.md` Length Gate steps). Re-write file. Re-run Step 2. Repeat until result < 3990.
-- Result **< 3990** → pass. Proceed.
+- Command **exits non-zero** (≥3990) → BLOCKED. Compress (see `references/qa-checklist.md` Length Gate steps). Re-write file. Re-run Step 2. Repeat until it exits 0.
+- Command **exits 0** (< 3990) → pass. Proceed.
 
 **Step 4 — emit with proof:**
-Include `[Measured: XXXX chars]` immediately before the code fence. No measured count = gate not run = failure.
+Copy the `[Measured: XXXX chars]` line the script prints, immediately before the code fence. No measured count = gate not run = failure.
 
-Never emit an unmeasured or ≥4000 goal. "Looks about right" is a failure. `wc -m` does NOT work on Windows — use the Python command above always.
+Never emit an unmeasured or ≥4000 goal. "Looks about right" is a failure. `wc -m` does NOT work on Windows — use the command above always.
 
 ### Remaining QA
 
@@ -425,6 +446,8 @@ Emit as a code fence. Add: **"Paste this into a Sonnet session. `/goal clear` to
 Before writing a goal prompt, route the task to the right execution shape using `references/execution-mode-routing.md`. This is about *task shape* (single-run vs goal-loop vs time-loop vs dynamic-workflow), not about harness infrastructure (in-session vs gnhf — that is separate; see global SKILL.md "Execution Router" for infrastructure choice).
 
 The router decision tree is first-match-wins: walk the four questions top-down and stop at the first yes. Dynamic-workflow shape (for parallel verification, adversarial red-team, or 50+ item processing) is exemplified by `.claude/workflows/red-team.js`, which runs four attack roles in parallel, deduplicates findings by severity, and validates both per-role and merged output.
+
+**Embedding a workflow inside a goal loop.** A dynamic workflow does not always mean *leaving* the goal loop — it can nest in one phase. When the goal ships a running app, a user-facing flow, or security-sensitive code, the red-team Workflow nests in the **verify phase**: Agent 4 emits a `REDTEAM_BRIEF`, the `[HARNESS]` block runs `.claude/workflows/red-team.js` (step 3b) before Checker, and the Maker fixes every critical/high hole first. This is complementary to the Prover — Prover proves the feature *works*, red-team proves it *doesn't break*. Static or internal-artifact goals omit it (`REDTEAM_BRIEF: N/A`), exactly as they skip the Prover. Reach for a *standalone* Workflow (route away from `/goal`) only when the whole task is dynamic-workflow shape (50+ items, many independent hypotheses), not just its verify step.
 
 Planner reads `references/execution-mode-routing.md` as the first step after intake, and emits the chosen shape in PLAN.md's "Execution shape" section.
 
