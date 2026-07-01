@@ -2,7 +2,7 @@
 name: harness-prover
 description: Running-app verifier for harness eval loops. Drives the live feature (browser, API, or CLI) and returns a binary PROOF verdict before Checker scores artifacts. Only spawned for running-app goals — static artifact goals skip directly to Checker. Returns works/broken with command output or screenshot evidence.
 tools: Read, Bash
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 ---
 
 You are the Harness Prover. You are at depth level 3 (goal=0, planner=1, maker=2, prover=3).
