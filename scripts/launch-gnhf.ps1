@@ -5,9 +5,13 @@
   log file and a JSON handle records the PID/log/args for later checking.
 
 .DESCRIPTION
-  Pre-flights (gnhf on PATH, ~/.gnhf/config.yml present, warns on dirty tree), then starts
+  Pre-flights (gnhf on PATH, ~/.gnhf/config.yml present, snapshots a dirty tree), then starts
   gnhf hidden and detached via the .cmd shim. Model + agent come from ~/.gnhf/config.yml
   (Opus is enforced there) - this script does not override them.
+
+  gnhf hard-refuses to start on a dirty working tree. Detached, that abort is silent - it only
+  shows up in the log after the fact. So a dirty tree is snapshotted into a reversible commit
+  before launch, giving gnhf the clean tree it needs. Pass -NoSnapshot to keep warn-only.
 
   NOTE: PowerShell's Start-Process quotes each -ArgumentList item; an objective containing
   literal double-quotes can mis-quote. Keep objectives as plain prose, or pass a short
@@ -22,7 +26,8 @@ param(
   [Parameter(Mandatory = $true)][string]$Objective,
   [string]$StopWhen = "",
   [int]$MaxIterations = 30,
-  [string]$RepoPath = (Get-Location).Path
+  [string]$RepoPath = (Get-Location).Path,
+  [switch]$NoSnapshot
 )
 $ErrorActionPreference = "Stop"
 
@@ -39,9 +44,23 @@ if (-not (Test-Path $RepoPath)) { Write-Error "RepoPath does not exist: $RepoPat
 
 Push-Location $RepoPath
 try {
+  # gnhf hard-refuses a dirty tree ("Working tree is not clean. Commit or stash changes first.").
+  # Detached, that abort never reaches the operator except in the log. Snapshot the dirty state
+  # into a reversible commit so gnhf gets the clean tree it requires and actually starts.
   $dirty = git status --porcelain 2>$null
   if ($dirty) {
-    Write-Warning "Working tree not clean - gnhf commits each iteration on top of the current state."
+    if ($NoSnapshot) {
+      Write-Warning "Working tree not clean and -NoSnapshot set - gnhf will likely abort on a dirty tree."
+    }
+    else {
+      git add -A 2>&1 | Out-Null
+      git commit -m "chore(gnhf): pre-run snapshot before detached launch" 2>&1 | Out-Null
+      $snap = git rev-parse --short HEAD 2>$null
+      if ($LASTEXITCODE -ne 0 -or -not $snap) {
+        Write-Error "Dirty tree and snapshot commit failed - resolve the tree manually, then relaunch. gnhf would abort on a dirty tree."; exit 1
+      }
+      Write-Output "Dirty tree snapshotted to commit $snap (reverse with: git reset $snap~1)."
+    }
   }
 
   $logDir = Join-Path $RepoPath ".gnhf-runs"
@@ -51,8 +70,10 @@ try {
   $errLog = "$log.err"
   $handle = Join-Path $logDir "gnhf-$stamp.handle.json"
 
-  $gnhfArgs = @($Objective, "--max-iterations", "$MaxIterations")
-  if ($StopWhen) { $gnhfArgs += @("--stop-when", $StopWhen) }
+  # Build as single string with explicit quoting - Start-Process + .cmd shims
+  # don't preserve array-element quoting for args containing spaces.
+  $gnhfArgs = "`"$Objective`" --max-iterations $MaxIterations"
+  if ($StopWhen) { $gnhfArgs += " --stop-when `"$StopWhen`"" }
 
   # Detached + hidden: outlives this session. stdout/stderr -> log files.
   $proc = Start-Process -FilePath $gnhf.Source -ArgumentList $gnhfArgs `
