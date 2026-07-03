@@ -37,7 +37,22 @@ Converts a free-form task into a `/goal` command ready to paste into Claude Code
 
 ## Execution Router (Run Before Phase 0)
 
-Determine execution mode first. Ask if not obvious from context. This is the **infrastructure** axis (where/how the harness runs); it is distinct from the _task-shape_ axis in the "Execution Mode Routing" section below (`references/execution-mode-routing.md`).
+**Step 0 — Resolve project scope (do this before anything else).** The loop anchors every artifact to the project it runs in, not the workspace root. Resolve the project root once:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+```
+
+Everything this run writes lives under `$PROJECT_ROOT`:
+
+- **Working dir:** `$PROJECT_ROOT/.harness/goals/<slug>/` — BRIEF.md, PLAN.md, issues/, PROGRESS.md, CYCLE_LOG.md, HANDOFF.*
+- **Backlog:** run tasks-axi from `$PROJECT_ROOT` so it resolves the project-local `.tasks.toml` (seeded by `/setup-harness`), not the monorepo one.
+- **Commits:** the Maker commits to the `$PROJECT_ROOT` repo.
+- **treehouse / gnhf:** launch from `$PROJECT_ROOT` so worktrees and runs anchor to this repo.
+
+Pass the resolved working-dir absolute path to every harness agent — they write bare filenames relative to it. If `$PROJECT_ROOT` is not a git repo, fall back to cwd (old behavior).
+
+Then determine execution mode. Ask if not obvious from context. This is the **infrastructure** axis (where/how the harness runs); it is distinct from the *task-shape* axis in the "Execution Mode Routing" section below (`references/execution-mode-routing.md`).
 
 | Task shape                                   | Mode                                              |
 | -------------------------------------------- | ------------------------------------------------- |
@@ -45,9 +60,10 @@ Determine execution mode first. Ask if not obvious from context. This is the **i
 | > 1 hr, fully specifiable, can run overnight | **gnhf autonomous** - see gnhf Path section below |
 | Multiple independent streams simultaneously  | **parallel gnhf + treehouse** - see gnhf Path     |
 
-**Always register in tasks-axi first (both modes):**
+**Always register in tasks-axi first (both modes) — run from `$PROJECT_ROOT` so it hits the project-local backlog:**
 
 ```bash
+cd "$PROJECT_ROOT"
 tasks-axi add <slug> "<one-line title>"
 tasks-axi start <slug>
 # On completion: tasks-axi done <slug> [--pr <url>]
@@ -416,8 +432,8 @@ The file must contain three sections: `PLANNER_BRIEF`, `MAKER_ROUTING`, `CHECKER
 Then update the `[HARNESS]` block in the goal candidate so the first line reads:
 `Read <absolute-path>/HARNESS.md before starting.`
 
-If the task's working directory is not clear from context, write to
-`temp/goals/<task-slug>/HARNESS.md` and use that absolute path.
+The task working directory is `$PROJECT_ROOT/.harness/goals/<task-slug>/` (resolved in
+Execution Router Step 0). Write HARNESS.md there and use that absolute path.
 
 This step happens before length measurement — HARNESS.md content is NOT inlined
 into the goal prompt. The goal only carries the path reference.
@@ -481,10 +497,12 @@ Skip Phase 2.5 QA. Skip Phase 3.
 **Preferred — inline detached launch (no terminal drop, survives this session):**
 
 ```powershell
-pwsh C:\Users\mitch\Everything_CC\agent-harness\scripts\launch-gnhf.ps1 `
+pwsh C:\Users\mitch\Everything_CC\tools\agent-harness\scripts\launch-gnhf.ps1 `
+  -RepoPath "$PROJECT_ROOT" `
   -Objective "<full objective from Phase 2>" `
   -StopWhen "<done condition from Phase 0 eval loop>" -MaxIterations 30
 ```
+(`-RepoPath "$PROJECT_ROOT"` anchors the run to the resolved project, not the workspace root. The launcher's own default is `Get-Location`.)
 
 It pre-flights, starts gnhf detached + hidden, logs to `.gnhf-runs/gnhf-<stamp>.log`, and writes a handle JSON (PID + log + args). Register the task in tasks-axi first and mark it done after morning review.
 

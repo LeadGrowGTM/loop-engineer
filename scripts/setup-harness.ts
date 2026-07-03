@@ -166,10 +166,26 @@ if (import.meta.main) {
     writeFileSync(join(targetDir, '.harness', 'skill-routing.md'), routing);
     console.log(`Wrote .harness/skill-routing.md (${skills.length} skills scanned)`);
 
+    // Working-dir home for goal runs (BRIEF/PLAN/issues/PROGRESS/CYCLE_LOG/HANDOFF live under here).
+    mkdirSync(join(targetDir, '.harness', 'goals'), { recursive: true });
+
+    // Seed a per-project backlog so tasks-axi scopes to THIS repo, not the monorepo root.
+    mkdirSync(join(targetDir, '.claude'), { recursive: true });
+    const tasksTomlPath = join(targetDir, '.tasks.toml');
+    if (existsSync(tasksTomlPath)) {
+      console.log('.tasks.toml already present — left as-is');
+    } else {
+      writeFileSync(
+        tasksTomlPath,
+        'backend = "markdown"\n\n[markdown]\npath = ".claude/backlog.md"\narchive = ".claude/done-archive.md"\ndone_keep = 30\n',
+      );
+      console.log('Wrote .tasks.toml (per-project backlog → .claude/backlog.md)');
+    }
+
     const claudeMdPath = join(targetDir, 'CLAUDE.md');
     if (existsSync(claudeMdPath)) {
       const sha = (() => { try { return require('child_process').execSync('git -C ' + __dirname + ' rev-parse --short HEAD', { encoding: 'utf8' }).trim(); } catch { return 'unknown'; } })();
-      const block = `## Harness\nInstalled: ${new Date().toISOString().slice(0, 10)}. Source: LeadGrowGTM/loop-engineer@${sha}.\nRouting: \`.harness/skill-routing.md\`. Agents: global (\`~/.claude/agents/\`).`;
+      const block = `## Harness\nInstalled: ${new Date().toISOString().slice(0, 10)}. Source: LeadGrowGTM/loop-engineer@${sha}.\nRouting: \`.harness/skill-routing.md\`. Goals: \`.harness/goals/<slug>/\`. Backlog: \`.tasks.toml\` → \`.claude/backlog.md\` (project-scoped). Agents: global (\`~/.claude/agents/\`).`;
       writeFileSync(claudeMdPath, patchClaudeMd(readFileSync(claudeMdPath, 'utf8'), block));
       console.log('Updated CLAUDE.md ## Harness block');
     }
