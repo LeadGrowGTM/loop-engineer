@@ -182,10 +182,21 @@ if (import.meta.main) {
       console.log('Wrote .tasks.toml (per-project backlog → .claude/backlog.md)');
     }
 
+    // Seed a per-project treehouse pool so parallel worktrees anchor to THIS repo.
+    // treehouse resolves the nearest treehouse.toml from cwd; without one, a run from
+    // the project would fall through to the monorepo pool.
+    const treehouseTomlPath = join(targetDir, 'treehouse.toml');
+    if (existsSync(treehouseTomlPath)) {
+      console.log('treehouse.toml already present — left as-is');
+    } else {
+      writeFileSync(treehouseTomlPath, 'max_trees = 16\nroot = ".tmp/treehouse/"\n');
+      console.log('Wrote treehouse.toml (per-project worktree pool)');
+    }
+
     const claudeMdPath = join(targetDir, 'CLAUDE.md');
     if (existsSync(claudeMdPath)) {
       const sha = (() => { try { return require('child_process').execSync('git -C ' + __dirname + ' rev-parse --short HEAD', { encoding: 'utf8' }).trim(); } catch { return 'unknown'; } })();
-      const block = `## Harness\nInstalled: ${new Date().toISOString().slice(0, 10)}. Source: LeadGrowGTM/loop-engineer@${sha}.\nRouting: \`.harness/skill-routing.md\`. Goals: \`.harness/goals/<slug>/\`. Backlog: \`.tasks.toml\` → \`.claude/backlog.md\` (project-scoped). Agents: global (\`~/.claude/agents/\`).`;
+      const block = `## Harness\nInstalled: ${new Date().toISOString().slice(0, 10)}. Source: LeadGrowGTM/loop-engineer@${sha}.\nRouting: \`.harness/skill-routing.md\`. Goals: \`.harness/goals/<slug>/\`. Backlog: \`.tasks.toml\` → \`.claude/backlog.md\` (project-scoped). Worktrees: \`treehouse.toml\` (project-scoped). Agents: global (\`~/.claude/agents/\`).`;
       writeFileSync(claudeMdPath, patchClaudeMd(readFileSync(claudeMdPath, 'utf8'), block));
       console.log('Updated CLAUDE.md ## Harness block');
     }
