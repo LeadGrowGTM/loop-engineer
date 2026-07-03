@@ -9,10 +9,12 @@ every repo a goal runs in; it does NOT depend on the repo's `docs/agents/issue-t
 
 ## Where slices live
 
-Task working directory (defaults to `temp/goals/<task-slug>/`):
+Task working directory is `$PROJECT_ROOT/.harness/goals/<task-slug>/`, where
+`PROJECT_ROOT = git rev-parse --show-toplevel` (resolved in the Execution Router's
+Step 0). Anchored to the project the goal runs in, not the workspace root:
 
 ```
-temp/goals/<task-slug>/
+<PROJECT_ROOT>/.harness/goals/<task-slug>/
   PRD.md                 <- /to-prd (or Planner) - the product brief
   issues/
     01-<slug>.md         <- one durable slice per phase, numbered from 01
@@ -60,7 +62,7 @@ These are the local-markdown mapping of the five canonical triage roles
 
 - **Interactive** (a human runs `write-goal-prompt`): invoke `/to-prd` to turn the
   conversation into `PRD.md`, then `/to-issues` to decompose it into slice files -
-  targeting `temp/goals/<slug>/issues/` with this local schema, regardless of the
+  targeting `$PROJECT_ROOT/.harness/goals/<slug>/issues/` with this local schema, regardless of the
   repo's default tracker backend.
 - **Autonomous** (the `/goal` loop, no user to quiz): the Planner writes PLAN.md
   `## Phases` as usual, then mirrors each phase into a slice file in this schema (no

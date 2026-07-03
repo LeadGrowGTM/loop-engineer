@@ -29,15 +29,20 @@ Bash, spawn subagents, or access anything the Maker produced via tool calls. Fre
 Invoke by name: `Agent({subagent_type: "harness-planner", prompt: "..."})`. HARNESS.md
 supplies task-specific context; the agent files contain structural templates.
 
-### Canonical install paths (3 locations — all must be in sync)
+### Canonical install paths (agents are global; project state is not)
 
-When harness agents are updated, copy to all three:
+Harness agents install to TWO locations — keep them in sync:
 
 ```
-agent-harness/.claude/agents/harness-*.md   ← source of truth
-~/.claude/agents/harness-*.md               ← global (all repos without local override)
-Everything_CC/.claude/agents/harness-*.md   ← project-scoped override
+tools/agent-harness/.claude/agents/harness-*.md   ← source of truth (loop-engineer repo)
+~/.claude/agents/harness-*.md                     ← installed, global, loaded at runtime for every repo
 ```
+
+Agents are GLOBAL — there is no per-project agent copy (`~/.claude` is the one runtime location;
+on this machine it is a symlink to `Everything_CC/.claude`, so those are the same files, not a
+separate "project override"). What IS project-scoped lives under each project's `.harness/`:
+`skill-routing.md`, `goals/<slug>/` (this run's artifacts), and the per-project `.tasks.toml`
+backlog. `/setup-harness <repo-root>` installs the global agents and seeds that project's `.harness/`.
 
 Maker agents syncing harness files: use `bun -e "import{copyFileSync}from'fs';..."` or direct
 `cp` (not dotenv-adjacent, so hook won't block). `/setup-harness` script handles this automatically.
