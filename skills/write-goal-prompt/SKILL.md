@@ -130,6 +130,8 @@ Collect the agent's questions array. Present all questions in ONE AskUserQuestio
 
 **Intake rules:** Skip if all fields present. Ask Key features + Quality bar together if missing (one question). Extract Tech/Stack from Context if buried. Surface Constraints before emitting if task touches live env, shared DB, or per-call API.
 
+**Ambiguous scope → `/to-prd` intake (optional):** If the task is underspecified and you're authoring interactively, run `/to-prd` first to turn the conversation into a `PRD.md` in the task working dir. The Planner then traces each phase slice's Parent to it (see `references/issue-tracker.md`). Skip for well-specified tasks — don't add ceremony a one-line goal doesn't need.
+
 ---
 
 ## Phase 1.5: Harness Discovery
@@ -306,7 +308,9 @@ Use this context:
 
 [HARNESS]
 Read HARNESS.md before starting. Four-phase execution:
-1. Planner (turns 1-5): decompose task → write PLAN.md (phases, skill routing, checker rubric).
+1. Planner (turns 1-5): decompose task → write PLAN.md (phases, skill routing, checker rubric),
+   then mirror each phase to a durable slice in `issues/NN-<slug>.md` (survives /compact, tracks
+   per-phase Status). PLAN.md `## Phases` stays canonical; slices are the durable drive-list.
    Do not produce task artifacts until PLAN.md is written.
 2. Maker (turns 6-<N>): execute per PLAN.md, invoke skills per phase, commit at each phase boundary.
 3. Prover (running-app goals only): spawn harness-prover with PROVER_BRIEF from HARNESS.md.
@@ -540,20 +544,21 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 
 ## Reference Files
 
-| File                                        | Contents                                                                                                                                          |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `references/eval-loop-design.md`            | Phase 0 four questions, human-judgment flag, task-type lookup                                                                                     |
-| `references/subagent-harness.md`            | Planner/maker/checker templates, budget allocation, checker independence rules                                                                    |
-| `references/skill-routing.md`               | Task type → skill mappings, chaining patterns, quality bars per skill                                                                             |
-| `references/qa-checklist.md`                | Length gate, context verification, dry-run checks, quality floors, git cadence, full condition checklist                                          |
-| `references/morning-report-specs.md`        | HTML summary spec, Excalidraw JSON structure, color coding                                                                                        |
-| `references/context-management.md`          | 170k threshold rationale, checkpoint protocol                                                                                                     |
-| `references/execution-mode-routing.md`      | Decide task shape before authoring: single-run, goal-loop, time-loop, dynamic-workflow. Decision order, interval guidance, mode-nesting patterns. |
-| `references/first-principles-generation.md` | Planner: decompose from observable outcomes. Maker: state reasoning (1-3 sentences) before code.                                                  |
-| `EXAMPLES.md`                               | Full worked example with Phase 0 design and output                                                                                                |
-| gnhf docs                                   | `gnhf --help` - autonomous loop CLI; `~/.gnhf/config.yml` for defaults; `scripts/launch-gnhf.ps1` for inline detached launch                      |
-| treehouse docs                              | `treehouse --help` - worktree pool; `treehouse.toml` in repo root for pool config                                                                 |
-| tasks-axi docs                              | `tasks-axi --help` - persistent backlog; `.tasks.toml` for per-repo config                                                                        |
+| File                                 | Contents                                                                                                 |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `references/eval-loop-design.md`     | Phase 0 four questions, human-judgment flag, task-type lookup                                            |
+| `references/subagent-harness.md`     | Planner/maker/checker templates, budget allocation, checker independence rules                           |
+| `references/skill-routing.md`        | Task type → skill mappings, chaining patterns, quality bars per skill                                    |
+| `references/issue-tracker.md`        | Durable phase-slice tracking: `issues/NN-<slug>.md` schema, Status vocab, `/to-prd` intake, PLATEAU-vs-slice boundary |
+| `references/qa-checklist.md`         | Length gate, context verification, dry-run checks, quality floors, git cadence, full condition checklist |
+| `references/morning-report-specs.md` | HTML summary spec, Excalidraw JSON structure, color coding                                               |
+| `references/context-management.md`   | 170k threshold rationale, checkpoint protocol                                                            |
+| `references/execution-mode-routing.md` | Decide task shape before authoring: single-run, goal-loop, time-loop, dynamic-workflow. Decision order, interval guidance, mode-nesting patterns. |
+| `references/first-principles-generation.md` | Planner: decompose from observable outcomes. Maker: state reasoning (1-3 sentences) before code. |
+| `EXAMPLES.md`                        | Full worked example with Phase 0 design and output                                                       |
+| gnhf docs                            | `gnhf --help` - autonomous loop CLI; `~/.gnhf/config.yml` for defaults; `scripts/launch-gnhf.ps1` for inline detached launch |
+| treehouse docs                       | `treehouse --help` - worktree pool; `treehouse.toml` in repo root for pool config                        |
+| tasks-axi docs                       | `tasks-axi --help` - persistent backlog; `.tasks.toml` for per-repo config                               |
 
 ---
 

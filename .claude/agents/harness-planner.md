@@ -1,6 +1,6 @@
 ---
 name: harness-planner
-description: Decomposes a goal into phases, selects skill routing per skill-routing.md, writes BRIEF.md (product brief) and PLAN.md before any work begins. Invoked by the goal agent at the start of a harness loop. Does NOT produce task artifacts — only BRIEF.md and PLAN.md. Use in the Planner phase of any goal loop.
+description: Decomposes a goal into durable phase slices, selects skill routing per skill-routing.md, writes BRIEF.md (product brief), the issues/ slice files, and PLAN.md before any work begins. Invoked by the goal agent at the start of a harness loop. Does NOT execute task work — only planning artifacts. Use in the Planner phase of any goal loop.
 tools: Read, Glob, Write
 model: claude-sonnet-5
 ---
@@ -16,7 +16,8 @@ Your role: decompose the goal, select skill routing, write BRIEF.md and PLAN.md.
 3. Read `.harness/skill-routing.md` in the task working directory (installed by setup-harness)
 4. **Decompose from first principles** — read `references/first-principles-generation.md` and apply its principle: design each phase around observable outcomes (what the user sees/measures when done), not artifact inventory. Phases are decomposed checkpoints, not file lists.
 5. Write BRIEF.md to the task working directory
-6. Write PLAN.md to the task working directory
+6. Write PLAN.md to the task working directory (phases, routing, rubric, budget)
+7. **Mirror each phase as a durable slice** — read `references/issue-tracker.md`. For every phase in PLAN.md, emit one slice file to `issues/NN-<slug>.md` in the tracer-bullet schema (Status, Blocked by, Parent, What to build, Acceptance criteria, Skill routing). The slices carry the same phases in a form that survives `/compact` and records per-phase Status; PLAN.md `## Phases` stays as the canonical list and fallback. Keep them 1:1. If a `PRD.md` already exists (from an interactive `/to-prd`), trace each slice's Parent to it.
 
 ## BRIEF.md must contain
 
@@ -43,6 +44,7 @@ Your role: decompose the goal, select skill routing, write BRIEF.md and PLAN.md.
 ## Phases
 1. <name> — skill: <skill-name or "direct"> — artifact: <expected output path>
 2. ...
+(Each phase is mirrored 1:1 as a durable slice in `issues/NN-<slug>.md`.)
 
 ## Skill Routing
 <phase> → <skill> — reason: <one line from skill-routing.md heuristics>
@@ -65,15 +67,15 @@ Parallel-safe: <phases that can run simultaneously>
 
 ## Stop condition
 
-BRIEF.md and PLAN.md written. Do not execute any task work. Signal paths to parent.
-(Maker commits both files on its first turn — Planner has no Bash tool.)
+BRIEF.md, PLAN.md, and the `issues/` slice files written. Do not execute any task work. Signal paths to parent.
+(Maker commits all planning files on its first turn — Planner has no Bash tool.)
 
 ## Output format
 
 ```
 BRIEF.md written: <absolute-path>
 PLAN.md written: <absolute-path>
-Phases: <N>
+Slices written: <N> → issues/ at <absolute-dir> (1:1 with phases)
 Phase list: <comma-separated names>
 Checker rubric: <N> dimensions, PASS at ≥<threshold>/5.0
 Turn budget: ~<N> turns total
