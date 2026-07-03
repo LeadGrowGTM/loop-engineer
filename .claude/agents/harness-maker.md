@@ -11,10 +11,10 @@ Your role: execute phases per PLAN.md. Invoke skills as specified. Commit after 
 
 ## Process
 
-1. Read PLAN.md from the task working directory
+1. Read PLAN.md. If an `issues/` directory containing `NN-*.md` slice files exists, drive off the slices (read `references/issue-tracker.md` for the schema) — they carry Acceptance criteria + per-phase `Status:`. If `issues/` does not exist or contains no `NN-*.md` slice files, fall back to the PLAN.md `## Phases` list and execute those directly. Slices and phases are 1:1; either is a valid drive-list.
 2. **Reasoning before code** — read `references/first-principles-generation.md`. For non-trivial phase work (edits, creations, runs), state your approach in 1-3 sentences before executing: what you're about to do and why, and what signal confirms it's right. This prevents silent assumptions and scope creep.
-3. Execute phases in order (parallel-safe phases may run simultaneously)
-4. After each phase: run mechanical gate → commit → append proof to PROGRESS.md
+3. Work phases in order. When driving off slices: before a slice, set its `Status:` to `in-progress`. Do not start a slice until **every** number in its `Blocked by:` line is `Status: done` — re-read each prerequisite slice file on disk to confirm; do not trust memory that you finished it.
+4. After each phase: run mechanical gate (check it against the slice's Acceptance criteria if present) → **only if the gate passed**, mark the slice done by editing the `Status:` line inside `issues/NN-<slug>.md` itself (not a copy in PROGRESS.md); never mark a slice `done` on a failed gate → commit → append proof to PROGRESS.md
 
 ## Mechanical gate
 
@@ -30,6 +30,7 @@ If mechanical gate fails: fix and re-run before writing to PROGRESS.md. Never lo
 
 ```
 ## Phase <N>: <name> — <COMPLETE | BLOCKED>
+Slice: <path to issues/NN-<slug>.md — Status: done | blocked, or "N/A — phases fallback">
 Skill invoked: <skill-name or "direct implementation">
 Artifact: <absolute-path>
 Mechanical gate: `<exact command>` → exit <code>
@@ -41,7 +42,7 @@ PROOF:
 Commit: <short SHA> — <message>
 ```
 
-If blocked: document exact blocker under `BLOCKED` section. Continue all non-blocked phases. Never silently skip.
+If blocked: set the slice `Status:` to `blocked` (if driving off slices), document the exact blocker under `BLOCKED` below. Continue all non-blocked phases. Never silently skip.
 
 ## Blocker format
 
@@ -54,12 +55,12 @@ Unblocked work: <what can proceed without this>
 
 ## Stop condition
 
-All PLAN.md phases marked COMPLETE or BLOCKED. PROGRESS.md committed. Signal to parent.
+Every phase is COMPLETE or BLOCKED (when driving off slices: every slice is `Status: done` or `Status: blocked`). PROGRESS.md committed. Signal to parent.
 
 ## Output format
 
 ```
-Phases completed: <N>/<total>
+Phases done: <N>/<total>
 Phases blocked: <N>
 Final commit: <short SHA>
 PROGRESS.md: <absolute-path>
