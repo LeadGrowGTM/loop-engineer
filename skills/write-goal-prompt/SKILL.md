@@ -9,7 +9,7 @@ description: >
   page, Excalidraw diagram, and fallback guardrails baked in. Triggered by: "write a
   goal prompt", "turn this into a /goal", "overnight task", "run unsupervised",
   "hand off this task".
-version: 3.7.0
+version: 3.8.0
 maturity: validated
 triggers:
   - write a goal prompt
@@ -27,8 +27,8 @@ triggers:
 feedback:
   last_reviewed: 2026-06-21
   known_gaps:
-    - 'Goal evaluator checks existence not quality — quality floors in done criteria are the only defense'
-    - 'HARNESS.md must be written to task working dir before emitting — easy to forget'
+    - "Goal evaluator checks existence not quality — quality floors in done criteria are the only defense"
+    - "HARNESS.md must be written to task working dir before emitting — easy to forget"
 ---
 
 # Skill: Write Goal Prompt
@@ -37,7 +37,7 @@ Converts a free-form task into a `/goal` command ready to paste into Claude Code
 
 ## Execution Router (Run Before Phase 0)
 
-Determine execution mode first. Ask if not obvious from context. This is the **infrastructure** axis (where/how the harness runs); it is distinct from the *task-shape* axis in the "Execution Mode Routing" section below (`references/execution-mode-routing.md`).
+Determine execution mode first. Ask if not obvious from context. This is the **infrastructure** axis (where/how the harness runs); it is distinct from the _task-shape_ axis in the "Execution Mode Routing" section below (`references/execution-mode-routing.md`).
 
 | Task shape                                   | Mode                                              |
 | -------------------------------------------- | ------------------------------------------------- |
@@ -259,6 +259,7 @@ omit Prover rows if PROVER_BRIEF is N/A; omit Red-team rows if REDTEAM_BRIEF is 
 - [ ] HANDOFF.md written: `<path>`
 - [ ] HANDOFF.html written: `<path>`
 - [ ] HANDOFF.excalidraw written: `<path>`
+- [ ] HANDOFF.html published: `<ht-ml.app URL>` (or export fallback + reason in HANDOFF.md)
 ```
 
 Synthesize Agents 1-3 into `[TOOLS]` block. Agent 4 output becomes `HARNESS.md` (written in Phase 2.5 before length measurement). Omit `[TOOLS]` entirely if nothing relevant found — don't invent tools. Drop CLI tools first if tight on 4000-char limit. Phase 2.5 skills-exist check satisfied by discovery output — no re-glob needed.
@@ -377,12 +378,24 @@ Every completed phase needs proof, not assertion. After each phase append to PRO
 Never write "Phase N complete" without proof on the line below it.
 
 [MORNING REPORT]
-By morning, leave me three files in the task's working directory:
+By morning, leave me the morning report in the task's working directory:
 1. HANDOFF.md — what completed, workarounds, needs my decision, evidence
 2. HANDOFF.html — single-page visual summary (see references/morning-report-specs.md)
 3. HANDOFF.excalidraw — architecture/flow diagram (see references/morning-report-specs.md)
 
-[TURN LIMIT] Stop after <max_turns> turns. If not done, write all three files anyway.
+Then PUBLISH the report so I wake up to a link, not a file on disk:
+4. Run `lavish-axi share HANDOFF.html --password <fresh-random-pw>` — publishes to a
+   hosted URL (headless-safe HTTPS POST, no browser needed). --password is mandatory
+   (pages are public by default; this is client/business work). Record ONLY the hosted
+   URL in a "## 📋 Published Report" block at the TOP of HANDOFF.md. Write the password
+   and update_key to HANDOFF.secret.local and add that filename to .gitignore
+   immediately — the update_key is update/delete-capable and MUST NEVER be committed
+   to any repo. If ht-ml.app is unreachable, fall back to
+   `lavish-axi export HANDOFF.html --out HANDOFF.export.html` and note why in HANDOFF.md.
+   See references/morning-report-specs.md.
+
+[TURN LIMIT] Stop after <max_turns> turns. If not done, write all three files anyway,
+then publish per step 4.
 ```
 
 ---
@@ -487,7 +500,9 @@ gnhf "<full objective from Phase 2>" \
   --max-iterations 30 \
   --stop-when "<done condition from Phase 0 eval loop>"
 
-# 4. Morning review
+# 4. Morning review — open the published report first (URL is atop HANDOFF.md)
+head -n 8 HANDOFF.md          # published URL
+cat HANDOFF.secret.local      # password + update_key (never committed)
 git log --oneline gnhf/<slug>
 cat .gnhf/runs/*/notes.md
 
@@ -502,8 +517,8 @@ Enforced via `~/.gnhf/config.yml`:
 ```yaml
 agentArgsOverride:
   claude:
-    - '--model'
-    - 'opus'
+    - "--model"
+    - "opus"
 ```
 
 Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--max-iterations` instead.
@@ -525,30 +540,30 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 
 ## Reference Files
 
-| File                                 | Contents                                                                                                 |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `references/eval-loop-design.md`     | Phase 0 four questions, human-judgment flag, task-type lookup                                            |
-| `references/subagent-harness.md`     | Planner/maker/checker templates, budget allocation, checker independence rules                           |
-| `references/skill-routing.md`        | Task type → skill mappings, chaining patterns, quality bars per skill                                    |
-| `references/qa-checklist.md`         | Length gate, context verification, dry-run checks, quality floors, git cadence, full condition checklist |
-| `references/morning-report-specs.md` | HTML summary spec, Excalidraw JSON structure, color coding                                               |
-| `references/context-management.md`   | 170k threshold rationale, checkpoint protocol                                                            |
-| `references/execution-mode-routing.md` | Decide task shape before authoring: single-run, goal-loop, time-loop, dynamic-workflow. Decision order, interval guidance, mode-nesting patterns. |
-| `references/first-principles-generation.md` | Planner: decompose from observable outcomes. Maker: state reasoning (1-3 sentences) before code. |
-| `EXAMPLES.md`                        | Full worked example with Phase 0 design and output                                                       |
-| gnhf docs                            | `gnhf --help` - autonomous loop CLI; `~/.gnhf/config.yml` for defaults; `scripts/launch-gnhf.ps1` for inline detached launch |
-| treehouse docs                       | `treehouse --help` - worktree pool; `treehouse.toml` in repo root for pool config                        |
-| tasks-axi docs                       | `tasks-axi --help` - persistent backlog; `.tasks.toml` for per-repo config                               |
+| File                                        | Contents                                                                                                                                          |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `references/eval-loop-design.md`            | Phase 0 four questions, human-judgment flag, task-type lookup                                                                                     |
+| `references/subagent-harness.md`            | Planner/maker/checker templates, budget allocation, checker independence rules                                                                    |
+| `references/skill-routing.md`               | Task type → skill mappings, chaining patterns, quality bars per skill                                                                             |
+| `references/qa-checklist.md`                | Length gate, context verification, dry-run checks, quality floors, git cadence, full condition checklist                                          |
+| `references/morning-report-specs.md`        | HTML summary spec, Excalidraw JSON structure, color coding                                                                                        |
+| `references/context-management.md`          | 170k threshold rationale, checkpoint protocol                                                                                                     |
+| `references/execution-mode-routing.md`      | Decide task shape before authoring: single-run, goal-loop, time-loop, dynamic-workflow. Decision order, interval guidance, mode-nesting patterns. |
+| `references/first-principles-generation.md` | Planner: decompose from observable outcomes. Maker: state reasoning (1-3 sentences) before code.                                                  |
+| `EXAMPLES.md`                               | Full worked example with Phase 0 design and output                                                                                                |
+| gnhf docs                                   | `gnhf --help` - autonomous loop CLI; `~/.gnhf/config.yml` for defaults; `scripts/launch-gnhf.ps1` for inline detached launch                      |
+| treehouse docs                              | `treehouse --help` - worktree pool; `treehouse.toml` in repo root for pool config                                                                 |
+| tasks-axi docs                              | `tasks-axi --help` - persistent backlog; `.tasks.toml` for per-repo config                                                                        |
 
 ---
 
 ## Execution Mode Routing
 
-Before writing a goal prompt, route the task to the right execution shape using `references/execution-mode-routing.md`. This is about *task shape* (single-run vs goal-loop vs time-loop vs dynamic-workflow), not about harness infrastructure (in-session vs gnhf — that is separate; see the "Execution Router" section above for infrastructure choice).
+Before writing a goal prompt, route the task to the right execution shape using `references/execution-mode-routing.md`. This is about _task shape_ (single-run vs goal-loop vs time-loop vs dynamic-workflow), not about harness infrastructure (in-session vs gnhf — that is separate; see the "Execution Router" section above for infrastructure choice).
 
 The router decision tree is first-match-wins: walk the four questions top-down and stop at the first yes. Dynamic-workflow shape (for parallel verification, adversarial red-team, or 50+ item processing) is exemplified by `.claude/workflows/red-team.js`, which runs four attack roles in parallel, deduplicates findings by severity, and validates both per-role and merged output.
 
-**Embedding a workflow inside a goal loop.** A dynamic workflow does not always mean *leaving* the goal loop — it can nest in one phase. When the goal ships a running app, a user-facing flow, or security-sensitive code, the red-team Workflow nests in the **verify phase**: Agent 4 emits a `REDTEAM_BRIEF`, the `[HARNESS]` block runs `.claude/workflows/red-team.js` (step 3b) before Checker, and the Maker fixes every critical/high hole first. This is complementary to the Prover — Prover proves the feature *works*, red-team proves it *doesn't break*. Static or internal-artifact goals omit it (`REDTEAM_BRIEF: N/A`), exactly as they skip the Prover. Reach for a *standalone* Workflow (route away from `/goal`) only when the whole task is dynamic-workflow shape (50+ items, many independent hypotheses), not just its verify step.
+**Embedding a workflow inside a goal loop.** A dynamic workflow does not always mean _leaving_ the goal loop — it can nest in one phase. When the goal ships a running app, a user-facing flow, or security-sensitive code, the red-team Workflow nests in the **verify phase**: Agent 4 emits a `REDTEAM_BRIEF`, the `[HARNESS]` block runs `.claude/workflows/red-team.js` (step 3b) before Checker, and the Maker fixes every critical/high hole first. This is complementary to the Prover — Prover proves the feature _works_, red-team proves it _doesn't break_. Static or internal-artifact goals omit it (`REDTEAM_BRIEF: N/A`), exactly as they skip the Prover. Reach for a _standalone_ Workflow (route away from `/goal`) only when the whole task is dynamic-workflow shape (50+ items, many independent hypotheses), not just its verify step.
 
 Planner reads `references/execution-mode-routing.md` as the first step after intake, and emits the chosen shape in PLAN.md's "Execution shape" section.
 

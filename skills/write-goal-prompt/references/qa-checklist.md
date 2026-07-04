@@ -170,7 +170,8 @@ Before emitting, verify the condition:
 - [ ] **Stated check** — how Claude proves done (test exit code, file exists, etc.)
 - [ ] **Context-based compaction** at 170k tokens (not turn-based)
 - [ ] **Turn limit** included — default 80, never omit
-- [ ] **Three morning report files** — HANDOFF.md + HANDOFF.html + HANDOFF.excalidraw
+- [ ] **Morning report deliverables** — HANDOFF.md + HANDOFF.html + HANDOFF.excalidraw
+- [ ] **Report published** — `lavish-axi share HANDOFF.html --password …` step present; URL captured in HANDOFF.md; password + update_key saved to HANDOFF.secret.local (gitignored, never committed)
 - [ ] **Overnight framing** — reads as a handoff, not a command
 - [ ] **Total length** under 4000 characters (Phase 2.5 length gate passed)
 - [ ] No vague verbs like "implement" or "handle" without a measurable check
