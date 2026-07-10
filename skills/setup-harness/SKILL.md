@@ -39,9 +39,11 @@ bun C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\setup-harness
 This does atomically:
 1. Copies `harness-planner.md`, `harness-maker.md`, `harness-checker.md` → `~/.claude/agents/`
 2. Scans `<repo-root>` for SKILL.md files
-3. Seeds `.harness/skill-routing.md` from `routing-template.md` + repo-specific skills
-4. Patches `CLAUDE.md` with `## Harness` block (install date + source SHA)
-5. Runs smoke test — prints ✓/✗ per check
+3. Seeds `.harness/skill-routing.md` from `routing-template.md` + repo-specific skills, and `.harness/goals/` (working dir for goal runs)
+4. Seeds a per-project `.tasks.toml` (tasks-axi backlog → `.claude/backlog.md`) and `treehouse.toml` (worktree pool), if not already present
+5. Adds `.tmp/treehouse/` and `.gnhf-runs/` to `.gitignore`
+6. Patches `CLAUDE.md` with `## Harness` block (install date + source SHA)
+7. Runs smoke test — prints ✓/✗ per check (5 checks: 3 agent files, skill-routing.md, `## Harness` block)
 
 ### 4. Present smoke test results
 
@@ -65,5 +67,5 @@ Tell the user:
 ## Reference
 
 - Script: `tools/agent/agent-harness/scripts/setup-harness.ts`
-- Routing seed: `agent-harness/skills/setup-harness/routing-template.md`
-- Harness agents: `agent-harness/.claude/agents/harness-*.md` (source of truth)
+- Routing seed: `tools/agent/agent-harness/skills/setup-harness/routing-template.md`
+- Harness agents: `tools/agent/agent-harness/.claude/agents/harness-*.md` (source of truth)

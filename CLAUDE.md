@@ -9,10 +9,15 @@ Goal prompt writer + planner/maker/checker harness for Claude Code loop engineer
 | `.claude/agents/` | Harness agent definitions (planner, maker, prover, checker) |
 | `.claude/state/` | SQLite triage schema + README |
 | `skills/write-goal-prompt/` | Goal authoring skill — phases, eval loop, harness discovery |
-| `skills/write-goal-prompt/references/` | 6 reference files (eval-loop-design, subagent-harness, skill-routing, etc.) |
+| `skills/write-goal-prompt/references/` | 11 reference files (eval-loop-design, subagent-harness, skill-routing, clarity-gate, issue-tracker, parallel-execution, etc.) |
 | `skills/write-goal-prompt/docs/` | Architecture map, reference index |
 | `skills/write-goal-prompt/kb/` | KB scaffold — LOG.md, signals/, docs/ |
 | `scripts/triage.ts` | Bun CLI: list/review/dismiss/log/signal for the triage inbox |
+| `scripts/launch-gnhf.ps1` | Detached gnhf launcher — repo-safety guards, auto-lease treehouse worktree on parallel/collision |
+| `scripts/validate-pipeline-layout.ps1` | Pre-flight pipeline-layout check called by `launch-gnhf.ps1` |
+| `scripts/setup-harness.ts` | Installs harness agents + seeds `.harness/`, `.tasks.toml`, `treehouse.toml` into a repo |
+| `scripts/rename-to-loop-engineer.ps1` | One-shot: rename this repo's dir `agent-harness` → `loop-engineer` + fix refs (not yet run) |
+| `treehouse.toml` | This repo's own treehouse worktree-pool config (`max_trees`, `root`) |
 | `docs/agents/` | Matt Pocock engineering skill configuration |
 | `docs/adr/` | Architectural decision records |
 

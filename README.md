@@ -17,7 +17,12 @@ agent-harness/
     └── references/
         ├── eval-loop-design.md
         ├── subagent-harness.md   ← patterns, depth budget, fork mode, independence rules
+        ├── clarity-gate.md       ← Phase 0.5 grill vs /wayfinder routing
+        ├── issue-tracker.md      ← durable phase-slice schema (issues/NN-<slug>.md)
         ├── skill-routing.md      ← task type → skill mapping + chaining patterns
+        ├── execution-mode-routing.md
+        ├── parallel-execution.md ← treehouse worktree isolation, auto-lease on collision
+        ├── first-principles-generation.md
         ├── qa-checklist.md
         ├── morning-report-specs.md
         └── context-management.md
