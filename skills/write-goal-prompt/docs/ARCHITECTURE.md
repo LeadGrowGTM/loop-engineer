@@ -20,13 +20,19 @@ run Bash, spawn subagents, or see anything Maker produced via tool calls. Indepe
 ## File Paths Each Agent Reads / Writes
 
 ```
-goal-workspace/
+$PROJECT_ROOT/.harness/goals/<slug>/
 ├── PLAN.md          ← Planner writes; Maker + Checker read
+├── issues/NN-<slug>.md ← Planner mirrors each PLAN.md phase 1:1; Maker drives off these
+│                        when present (Status: ready-for-agent → in-progress → done|blocked)
 ├── PROGRESS.md      ← Maker writes after each phase; Checker must NOT read
 ├── CYCLE_LOG.md     ← Checker writes (appends); Planner reads on re-plan
 ├── HARNESS.md       ← Goal loop writes before spawning; all agents read
 └── <task-artifacts> ← Maker writes; Checker scores (reads only)
 ```
+
+Anchored to `$PROJECT_ROOT` (the project the goal is about, resolved via `git rev-parse
+--show-toplevel`), never the workspace monorepo root. See `references/issue-tracker.md`
+for the slice schema and `references/parallel-execution.md` for worktree isolation.
 
 **Hard rule:** Checker reads PLAN.md + final artifact files only. It never reads PROGRESS.md
 or any file the Maker wrote about its own process. Reading Maker self-assessment = echo chamber.
