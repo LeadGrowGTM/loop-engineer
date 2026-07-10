@@ -42,6 +42,58 @@ if (-not $gnhf) { $gnhf = Get-Command "gnhf" -ErrorAction SilentlyContinue }
 if (-not $gnhf) { Write-Error "gnhf not on PATH - npm i -g gnhf."; exit 1 }
 if (-not (Test-Path $RepoPath)) { Write-Error "RepoPath does not exist: $RepoPath"; exit 1 }
 
+# gnhf anchors runs, logs, and --worktree siblings to cwd's git toplevel. Launch from the
+# nested pipeline repo, not the Everything_CC monorepo root or pipelines/ parent.
+$gitDir = Join-Path $RepoPath ".git"
+if (-not (Test-Path $gitDir)) {
+  Write-Error @"
+RepoPath is not a git repository (no .git): $RepoPath
+GNHF must run from the target nested repo (e.g. C:\Users\mitch\Everything_CC\pipelines\gtm-orchestrator), not the workspace root or a parent folder.
+Pass -RepoPath explicitly after cd'ing to the repo, or cd there before launch.
+"@
+  exit 1
+}
+
+$ecRoot = "C:\Users\mitch\Everything_CC"
+try {
+  $resolvedRepo = (Resolve-Path $RepoPath).Path
+  $resolvedEc = (Resolve-Path $ecRoot).Path
+} catch {
+  $resolvedRepo = $RepoPath
+  $resolvedEc = $ecRoot
+}
+if ($resolvedRepo -ieq $resolvedEc) {
+  Write-Error @"
+Refusing GNHF launch from Everything_CC monorepo root: $RepoPath
+cd to the nested repo first (e.g. pipelines\gtm-orchestrator), then relaunch with -RepoPath or from that directory.
+See: C:\Users\mitch\Everything_CC\.claude\reference\pipeline-allowlist.md
+"@
+  exit 1
+}
+
+$pipelinesRoot = Join-Path $ecRoot "pipelines"
+if (Test-Path $pipelinesRoot) {
+  try {
+    $resolvedPipelines = (Resolve-Path $pipelinesRoot).Path
+    if ($resolvedRepo -ieq $resolvedPipelines) {
+      Write-Error @"
+Refusing GNHF launch from pipelines/ parent (not a repo): $RepoPath
+cd into the target pipeline repo (gtm-orchestrator, leadgrow-video, or design-pipeline) before launch.
+"@
+      exit 1
+    }
+  } catch { }
+}
+
+$validateScript = Join-Path (Split-Path $MyInvocation.MyCommand.Path -Parent) "validate-pipeline-layout.ps1"
+if (Test-Path $validateScript) {
+  & $validateScript -RepoRoot $resolvedEc
+  if ($LASTEXITCODE -ne 0) {
+    Write-Error "Pipeline layout invalid - fix before GNHF launch. See .claude/reference/pipeline-allowlist.md"
+    exit 1
+  }
+}
+
 Push-Location $RepoPath
 try {
   # gnhf hard-refuses a dirty tree ("Working tree is not clean. Commit or stash changes first.").
@@ -53,8 +105,14 @@ try {
       Write-Warning "Working tree not clean and -NoSnapshot set - gnhf will likely abort on a dirty tree."
     }
     else {
+      # Windows PowerShell 5.1: stderr redirection on a native command under
+      # ErrorActionPreference=Stop turns benign git warnings (e.g. CRLF) into a
+      # terminating NativeCommandError. Relax it around the git calls.
+      $prevEap = $ErrorActionPreference
+      $ErrorActionPreference = "Continue"
       git add -A 2>&1 | Out-Null
       git commit -m "chore(gnhf): pre-run snapshot before detached launch" 2>&1 | Out-Null
+      $ErrorActionPreference = $prevEap
       $snap = git rev-parse --short HEAD 2>$null
       if ($LASTEXITCODE -ne 0 -or -not $snap) {
         Write-Error "Dirty tree and snapshot commit failed - resolve the tree manually, then relaunch. gnhf would abort on a dirty tree."; exit 1
