@@ -57,7 +57,7 @@ Depth budget: goal=0, planner=1, maker=2, prover=3, checker=4, sub-skills max=5.
 
 Every phase completion requires actual command output, not assertion:
 - "47 passed, 0 failed" not "tests pass"
-- "312 lines" not "file written"  
+- "312 lines" not "file written"
 - "34 grep matches" not "well-sourced"
 
 Checker cites `file:line` evidence for every dimension score. Scores without citations are invalid.
