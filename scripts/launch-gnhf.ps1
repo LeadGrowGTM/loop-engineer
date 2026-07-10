@@ -27,9 +27,20 @@ param(
   [string]$StopWhen = "",
   [int]$MaxIterations = 30,
   [string]$RepoPath = (Get-Location).Path,
-  [switch]$NoSnapshot
+  [switch]$NoSnapshot,
+  [switch]$Parallel
 )
 $ErrorActionPreference = "Stop"
+
+# Derive a short kebab slug from the objective for the treehouse lease-holder label.
+function Get-Slug([string]$text) {
+  $s = ($text.ToLower() -replace '[^a-z0-9]+', '-').Trim('-')
+  $words = ($s -split '-') | Where-Object { $_ } | Select-Object -First 4
+  $slug = ($words -join '-')
+  if ($slug.Length -gt 40) { $slug = $slug.Substring(0, 40).Trim('-') }
+  if (-not $slug) { $slug = 'run' }
+  return $slug
+}
 
 # --- Pre-flight ---------------------------------------------------------------
 $configPath = Join-Path $HOME ".gnhf\config.yml"
@@ -94,7 +105,48 @@ if (Test-Path $validateScript) {
   }
 }
 
-Push-Location $RepoPath
+# --- Worktree isolation (auto-lease on collision) -----------------------------
+# Two detached gnhf runs in the same working tree step on each other. Detect a live
+# run anchored to this repo and, if found (or -Parallel forced), lease an isolated
+# treehouse worktree and run gnhf there instead. Handle/log/collision state always
+# anchor to the ORIGINAL repo so the next launch can still see this run.
+$RunPath = $RepoPath
+$leasePath = $null
+$slug = Get-Slug $Objective
+
+$runsDir = Join-Path $RepoPath ".gnhf-runs"
+$collision = $false
+if (Test-Path $runsDir) {
+  foreach ($h in Get-ChildItem -Path $runsDir -Filter "*.handle.json" -ErrorAction SilentlyContinue) {
+    try {
+      $meta = Get-Content $h.FullName -Raw | ConvertFrom-Json
+      if ($meta.pid -and (Get-Process -Id $meta.pid -ErrorAction SilentlyContinue)) { $collision = $true; break }
+    } catch { }
+  }
+}
+
+if ($Parallel -or $collision) {
+  $treehouse = Get-Command "treehouse" -ErrorAction SilentlyContinue
+  if (-not $treehouse) {
+    Write-Error "Parallel run needed (collision=$collision, -Parallel=$Parallel) but treehouse not on PATH. Install treehouse or wait for the live run to finish."; exit 1
+  }
+  if ($collision -and -not $Parallel) {
+    Write-Warning "Live gnhf run detected in $RepoPath - auto-leasing an isolated worktree to avoid collision."
+  }
+  # --lease prints ONLY the worktree path to stdout; banners go to stderr.
+  $prevEap = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  $leasePath = (& $treehouse.Source get --lease --lease-holder "gnhf-$slug" | Select-Object -Last 1)
+  $ErrorActionPreference = $prevEap
+  if ($leasePath) { $leasePath = $leasePath.Trim() }
+  if (-not $leasePath -or -not (Test-Path $leasePath)) {
+    Write-Error "treehouse lease failed (returned '$leasePath'). Pool may be exhausted (max_trees) - run 'treehouse status', return a stale lease, then relaunch."; exit 1
+  }
+  Write-Output "Leased isolated worktree: $leasePath (holder: gnhf-$slug)"
+  $RunPath = $leasePath
+}
+
+Push-Location $RunPath
 try {
   # gnhf hard-refuses a dirty tree ("Working tree is not clean. Commit or stash changes first.").
   # Detached, that abort never reaches the operator except in the log. Snapshot the dirty state
@@ -135,7 +187,7 @@ try {
 
   # Detached + hidden: outlives this session. stdout/stderr -> log files.
   $proc = Start-Process -FilePath $gnhf.Source -ArgumentList $gnhfArgs `
-    -WorkingDirectory $RepoPath -WindowStyle Hidden -PassThru `
+    -WorkingDirectory $RunPath -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $log -RedirectStandardError $errLog
 
   [ordered]@{
@@ -146,13 +198,20 @@ try {
     maxIterations = $MaxIterations
     stopWhen      = $StopWhen
     repo          = $RepoPath
+    runPath       = $RunPath
+    lease         = $leasePath
     started       = $stamp
   } | ConvertTo-Json | Set-Content -Path $handle -Encoding utf8
 
   Write-Output "gnhf launched DETACHED. PID=$($proc.Id)"
+  Write-Output "cwd:    $RunPath"
   Write-Output "log:    $log"
   Write-Output "handle: $handle"
   Write-Output "check:  Get-Content '$log' -Tail 20   (or)   Get-Process -Id $($proc.Id)"
   Write-Output "stop:   Stop-Process -Id $($proc.Id)"
+  if ($leasePath) {
+    # Detached runs can't auto-return on exit - return the lease after morning review.
+    Write-Output "return: treehouse return '$leasePath'   (run AFTER reviewing the morning report - frees the worktree)"
+  }
 }
 finally { Pop-Location }

@@ -89,42 +89,19 @@ Produce: single reward signal (programmatic — flag if human judgment required)
 
 ---
 
-## Phase 0.5: Grill Me
+## Phase 0.5: Clarity Gate
 
-**Execution: spawn 1 Sonnet agent — do not run inline. Run after Phase 0, before Phase 1. Use Sonnet (not Haiku) — question quality requires judgment, not just pattern matching.**
+**Run after Phase 0, before Phase 1.** Resolve ambiguity BEFORE authoring the goal. Do not skip lightly - an unclear goal wastes an unsupervised run. Route on task size; branch bodies live in `references/clarity-gate.md`.
 
-**Skip condition:** All Phase 1 fields (Task, Tech/Stack, Done criteria, Context) are fully specified in the user's opening message — no ambiguity. Otherwise always run.
+**Skip only when** all Phase 1 fields (Task, Tech/Stack, Done criteria, Context) are fully specified in the user's opening message with no open scope questions. When in doubt, do not skip - grill.
 
-**Agent prompt:**
+| Signal | Route |
+| --- | --- |
+| Fully specified, zero ambiguity | **Skip** → Phase 1 |
+| Large / multi-session / >~5 open scope questions / investigative unknowns | **`/wayfinder`** — chart the work as an investigation-ticket map, resolve, then resume Phase 1 with decisions folded in (Branch B) |
+| Single-session scope with some ambiguity | **grill** — `/grilling` for deep interactive depth, or the batch-question agent for one `AskUserQuestion` round (Branch A) |
 
-```
-Read .claude/agent-context/snapshot.md for workspace context before starting.
-You are a goal-grilling agent. Your job is to surface hidden scope gaps, vague done criteria,
-and overnight risks BEFORE a goal prompt is written.
-
-Task description so far: [TASK DESCRIPTION FROM USER]
-
-Generate 3-5 targeted questions. Focus on:
-- Scope edges: what is explicitly NOT included?
-- Done criteria sharpness: is the end state verifiable without judgment?
-- Overnight risk: what could block autonomous execution?
-- Hidden constraints: live data, shared systems, cost ceilings, auth?
-
-Rules:
-- Never ask about fields already answered
-- Questions must be specific to THIS task — not generic checklist
-- Max 5 questions, min 3
-- Return ONLY: an array of {question: string, header: string} — header is ≤12 chars
-
-Example for "build a triage dashboard":
-[
-  {question: "Should unreviewed runs appear or be hidden by default?", header: "Default view"},
-  {question: "Read-only or can it write verdict/dismiss from the UI?", header: "Write access"},
-  {question: "Mobile-responsive or desktop only?", header: "Responsive"}
-]
-```
-
-Collect the agent's questions array. Present all questions in ONE AskUserQuestion call (multiSelect: false per question). Then fold answers into Phase 1 — treat each answer as if the user specified that field upfront.
+Fold every answer (or the wayfinder map's decisions) into Phase 1 as if the user specified those fields upfront. See `references/clarity-gate.md` for the grill agent prompt and the full wayfinder routing test.
 
 ---
 
@@ -494,14 +471,17 @@ Use when execution mode = gnhf (task > 1hr, fully specifiable, can run unattende
 
 Skip Phase 2.5 QA. Skip Phase 3.
 
-**Preferred — inline detached launch (no terminal drop, survives this session):**
+**Present, do not launch.** Never run `launch-gnhf.ps1`, `gnhf`, or any autonomous command yourself. Emit the command block below, then STOP and wait for the operator's explicit "go". This holds for both modes: a `/goal` prompt is pasted by the operator; a gnhf run is launched by the operator. The skill's deliverable is the reviewed command, not a running process.
+
+**Inline detached launch (no terminal drop, survives this session) — hand this to the operator to run:**
 
 ```powershell
-pwsh C:\Users\mitch\Everything_CC\tools\agent-harness\scripts\launch-gnhf.ps1 `
+pwsh C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\launch-gnhf.ps1 `
   -RepoPath "$PROJECT_ROOT" `
   -Objective "<full objective from Phase 2>" `
   -StopWhen "<done condition from Phase 0 eval loop>" -MaxIterations 30
 ```
+(Add `-Parallel` to force an isolated treehouse worktree; the launcher auto-leases one anyway if it detects a live gnhf run in the repo.)
 (`-RepoPath "$PROJECT_ROOT"` anchors the run to the resolved project, not the workspace root. The launcher's own default is `Get-Location`.)
 
 It pre-flights, starts gnhf detached + hidden, logs to `.gnhf-runs/gnhf-<stamp>.log`, and writes a handle JSON (PID + log + args). Register the task in tasks-axi first and mark it done after morning review.
@@ -551,12 +531,7 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 - Working tree clean — `git status` shows nothing (gnhf rejects dirty state)
 - `~/.gnhf/config.yml` — agent = `claude`, `agentArgsOverride.claude` = Opus model
 
-**Treehouse rules:**
-
-- Single stream → skip treehouse, run gnhf in repo root
-- Parallel streams or long-running lease → `treehouse get --lease --lease-holder "gnhf-<slug>"`
-- stdout = worktree path (use it), stderr = banners (ignore)
-- Return when done: `treehouse return $path`
+**Parallel streams / worktree isolation:** the launcher auto-leases an isolated treehouse worktree when it detects a live gnhf run (or on `-Parallel`); leases are held until returned by hand after review. Full model, lease lifecycle, and manual commands: `references/parallel-execution.md`.
 
 ---
 
@@ -565,6 +540,8 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 | File                                 | Contents                                                                                                 |
 | ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | `references/eval-loop-design.md`     | Phase 0 four questions, human-judgment flag, task-type lookup                                            |
+| `references/clarity-gate.md`         | Phase 0.5 branch bodies: grill agent prompt + `/grilling`; wayfinder routing test for large tasks        |
+| `references/parallel-execution.md`   | Worktree isolation: treehouse pool, auto-lease on collision, lease lifecycle, manual parallel-stream commands |
 | `references/subagent-harness.md`     | Planner/maker/checker templates, budget allocation, checker independence rules                           |
 | `references/skill-routing.md`        | Task type → skill mappings, chaining patterns, quality bars per skill                                    |
 | `references/issue-tracker.md`        | Durable phase-slice tracking: `issues/NN-<slug>.md` schema, Status vocab, `/to-prd` intake, PLATEAU-vs-slice boundary |

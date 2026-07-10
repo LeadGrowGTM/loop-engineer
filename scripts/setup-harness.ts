@@ -193,10 +193,22 @@ if (import.meta.main) {
       console.log('Wrote treehouse.toml (per-project worktree pool)');
     }
 
+    // Keep worktree pool + detached-run logs out of git. Without this, treehouse's
+    // .tmp/treehouse/ and the launcher's .gnhf-runs/ get committed as noise.
+    const gitignorePath = join(targetDir, '.gitignore');
+    const ignoreLines = ['.tmp/treehouse/', '.gnhf-runs/'];
+    const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
+    const missing = ignoreLines.filter((l) => !existingIgnore.split(/\r?\n/).includes(l));
+    if (missing.length) {
+      const sep = existingIgnore && !existingIgnore.endsWith('\n') ? '\n' : '';
+      writeFileSync(gitignorePath, existingIgnore + sep + missing.join('\n') + '\n');
+      console.log(`Added ${missing.join(', ')} to .gitignore`);
+    }
+
     const claudeMdPath = join(targetDir, 'CLAUDE.md');
     if (existsSync(claudeMdPath)) {
       const sha = (() => { try { return require('child_process').execSync('git -C ' + __dirname + ' rev-parse --short HEAD', { encoding: 'utf8' }).trim(); } catch { return 'unknown'; } })();
-      const block = `## Harness\nInstalled: ${new Date().toISOString().slice(0, 10)}. Source: LeadGrowGTM/loop-engineer@${sha}.\nRouting: \`.harness/skill-routing.md\`. Goals: \`.harness/goals/<slug>/\`. Backlog: \`.tasks.toml\` → \`.claude/backlog.md\` (project-scoped). Worktrees: \`treehouse.toml\` (project-scoped). Agents: global (\`~/.claude/agents/\`).`;
+      const block = `## Harness\nInstalled: ${new Date().toISOString().slice(0, 10)}. Source: LeadGrowGTM/loop-engineer@${sha}.\nRouting: \`.harness/skill-routing.md\`. Goals: \`.harness/goals/<slug>/\`. Backlog: \`.tasks.toml\` → \`.claude/backlog.md\` (project-scoped). Worktrees: \`treehouse.toml\` (project-scoped; \`launch-gnhf.ps1\` auto-leases an isolated worktree when a parallel gnhf run is detected). Agents: global (\`~/.claude/agents/\`).`;
       writeFileSync(claudeMdPath, patchClaudeMd(readFileSync(claudeMdPath, 'utf8'), block));
       console.log('Updated CLAUDE.md ## Harness block');
     }
