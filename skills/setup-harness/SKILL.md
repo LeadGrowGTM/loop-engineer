@@ -33,7 +33,7 @@ Then ask one question: **"Install or update?"** Default: install. If everything 
 Run the install script from the agent-harness repo:
 
 ```bash
-bun C:\Users\mitch\Everything_CC\tools\agent-harness\scripts\setup-harness.ts install <repo-root>
+bun C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\setup-harness.ts install <repo-root>
 ```
 
 This does atomically:
@@ -50,7 +50,7 @@ If all 5 checks pass — done. Tell the user which engineering workflows are now
 If any check fails — show the failing line, diagnose, fix manually, re-run smoke:
 
 ```bash
-bun C:\Users\mitch\Everything_CC\tools\agent-harness\scripts\setup-harness.ts smoke <repo-root> ~/.claude/agents
+bun C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\setup-harness.ts smoke <repo-root> ~/.claude/agents
 ```
 
 ### 5. Done
@@ -64,6 +64,6 @@ Tell the user:
 
 ## Reference
 
-- Script: `tools/agent-harness/scripts/setup-harness.ts`
+- Script: `tools/agent/agent-harness/scripts/setup-harness.ts`
 - Routing seed: `agent-harness/skills/setup-harness/routing-template.md`
 - Harness agents: `agent-harness/.claude/agents/harness-*.md` (source of truth)
