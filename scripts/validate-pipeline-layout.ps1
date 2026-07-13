@@ -19,7 +19,11 @@ $ErrorActionPreference = "Stop"
 $Allowlist = @(
   "gtm-orchestrator",
   "leadgrow-video",
-  "design-pipeline"
+  "design-pipeline",
+  "content",
+  "newsletter-pipeline",
+  "outbound",
+  "leadgrow-video-storyboard-clean"
 )
 
 $PipelinesRoot = Join-Path $RepoRoot "pipelines"
