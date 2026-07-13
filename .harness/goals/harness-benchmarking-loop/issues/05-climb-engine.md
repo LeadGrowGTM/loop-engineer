@@ -1,6 +1,17 @@
 # 05 - climb engine (invent -> checks -> measure -> keep)
-Status: ready-for-agent
+Status: done
 Blocked by: 02, 06
+
+## Completion note
+`.claude/workflows/benchmark-climb.js` built (Workflow-DSL shape, red-team.js discipline).
+Bare `import()` loads clean (mechanical-gate parse check). run() drives the live climb:
+invent (inventor agent) -> in-bounds (harness-inbounds-checker, SEPARATE agent) -> novelty
+(harness-novelty-checker, SEPARATE agent) -> exogenous measure -> Pareto keep. VIOLATION and
+DUPLICATE both kill the variant pre-measurement and do NOT count as a cycle. Stop =
+first-of(target/plateau/budget) via pure `evaluateStop`, always returns best-so-far. Stop logic
+demonstrable at zero cost: `bun .claude/workflows/benchmark-climb.js --selftest` -> 15/15 pure
+assertions pass (target/budget/plateau trips, Pareto dominance, explore/exploit, best-so-far).
+Traces ADR-0001 (stop) + ADR-0003 (climb + bounded independently-checked invention).
 
 ## Parent
 PRD.md "In scope" 4; ADR-0001 (stop), ADR-0003 (climb + bounded invention).
