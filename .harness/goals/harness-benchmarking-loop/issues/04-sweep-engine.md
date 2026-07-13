@@ -1,6 +1,17 @@
 # 04 - sweep engine (run-all -> rank -> pick -> ledger)
-Status: ready-for-agent
+Status: done
 Blocked by: 02
+
+## Done
+`.claude/workflows/benchmark-sweep.js` - import-clean (guarded by `import.meta.main`),
+runnable `bun .claude/workflows/benchmark-sweep.js <spec.json>`. Runs each candidate's
+local command via an inline instant adapter (`measureInstant`, command -> last-numeric
+stdout token), ranks by `benchmark.direction`, picks the winner, writes
+`ledger.jsonl` + `best.json` + `snapshot.json` + `ledger.md` per the P2 schemas.
+Fixture: `fixtures/sweep-smoke.spec.json` (two `bun -e` candidates). Prover smoke test
+green: both candidates scored (0.42, 0.87), winner v0002 candidate-b, exactly one
+`is_best_so_far`. Run outputs `.harness/goals/*/runs/` gitignored (regenerable).
+Note: inline `measureInstant` will be extracted to P7's formal adapter contract.
 
 ## Parent
 PRD.md "In scope" 4; ADR-0003 (sweep).

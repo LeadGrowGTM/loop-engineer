@@ -9,3 +9,7 @@
 /PROGRESS.md
 /CYCLE_LOG.md
 /HANDOFF.md
+
+# Ephemeral benchmarking-loop run outputs (ledger/snapshot/best regenerated each run;
+# the fixture specs under fixtures/ stay tracked). See docs/benchmarking/variant-ledger.md.
+.harness/goals/*/runs/
