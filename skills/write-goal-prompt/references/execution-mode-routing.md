@@ -8,6 +8,34 @@ multi-agent workflow. Picking wrong wastes turns (over-engineered) or under-deli
 Sources: Anthropic, *Getting started with loops* and *A harness for every task:
 dynamic workflows in Claude Code*. This file codifies their signals into a router.
 
+## Prior axis: benchmark detection (build loop vs benchmarking loop)
+
+Before the four task-shape modes below, decide the *loop type*. This is a separate,
+earlier axis: it picks which of the two front doors owns the goal, not the execution
+shape. See ADR-0004 and root `CONTEXT.md` ("Benchmark detection").
+
+**Benchmark-detection key:** *does the goal name a measurable benchmark - a metric plus
+a direction to move it?* ("get reply rate up", "make it faster", "cheapest provider that
+still passes", "highest eval score"). If yes -> **benchmarking loop**. If the goal only
+names an artifact to build with a quality bar (no exogenous metric+direction) -> **build
+loop**.
+
+**Two doors, one grill (ADR-0004).** `/write-goal-prompt` and `/benchmarking-loop` are
+both thin routers into the *same* shared grill. Detection fires from **either** door, so
+a mis-invoked command is caught mid-interview:
+
+- `/write-goal-prompt` on a goal that names a metric+direction -> **offer to switch** to
+  `/benchmarking-loop`, then load `references/benchmark-intake.md` (the lazy branch; a
+  plain build goal never loads it).
+- `/benchmarking-loop` on a goal with no measurable metric (just "build X"), or whose
+  rule-derived rubric cannot be frozen (ADR-0006) -> **offer to switch** back to
+  `/write-goal-prompt` (a build goal with a quality gate, not a benchmark).
+
+Only after this axis settles the loop type does the build path proceed to the four
+task-shape modes below (a benchmarking goal instead follows `benchmark-intake.md` ->
+`/benchmarking-loop`). The two axes are orthogonal: benchmark detection picks the door;
+task shape picks the runtime shape behind the build door.
+
 ## The four modes
 
 Each mode has a canonical id (the slug in `id`) — use it verbatim when a router, plan, or

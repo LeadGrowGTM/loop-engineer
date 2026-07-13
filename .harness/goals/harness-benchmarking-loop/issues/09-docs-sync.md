@@ -1,6 +1,17 @@
 # 09 - docs sync (CONTEXT, README, SKILL routing section)
-Status: ready-for-agent
+Status: done
 Blocked by: 01, 02, 03, 04, 05, 06, 07, 08
+
+## Completion note
+- `CONTEXT.md` gains an "Artifact map" table cross-linking every glossary term to its
+  built artifact + ADR; glossary body stays implementation-free. All 14 paths verified
+  to resolve.
+- `README.md` gains a "Second goal path: the benchmarking loop" section - names the path
+  beside the build loop with a full file map (P1-P7 artifacts) and the sweep/climb +
+  anti-gaming summary tracing ADR-0001/0003.
+- `SKILL.md` Execution Mode Routing section runs benchmark detection first and names
+  `/benchmarking-loop` as the second front door (one lean paragraph, lazy-reference
+  discipline preserved - benchmark-intake.md only loads on the benchmark fork).
 
 ## Parent
 PRD.md "In scope" 8.

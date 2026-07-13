@@ -118,3 +118,21 @@ Template = the recipe you re-point. Snapshot = the in-progress game you resume.
 - **Planner / Maker / Prover / Checker** — the four-agent build loop.
 - **Reward signal** — numeric score a cycle earns; drives PASS / ITERATE / PLATEAU.
 - **Mechanical gate** — grep/parse checks that must pass before qualitative eval.
+
+## Artifact map (glossary term -> built artifact + ADR)
+
+Cross-links only; the definitions above stay implementation-free. Every path is real.
+
+| Glossary term | Built artifact | ADR |
+|---|---|---|
+| Benchmarking loop / entry command | `.claude/commands/benchmarking-loop.md` | 0004 |
+| Two front doors, one grill | `.claude/commands/benchmarking-loop.md`, `skills/write-goal-prompt/SKILL.md`, `skills/write-goal-prompt/references/execution-mode-routing.md` | 0004 |
+| Benchmark detection | `skills/write-goal-prompt/references/benchmark-intake.md`, `skills/write-goal-prompt/references/execution-mode-routing.md` | 0004 |
+| Stop condition | `.claude/workflows/benchmark-climb.js` (`evaluateStop`) | 0001 |
+| Benchmark / flavors + rule-derived guardrail | `skills/write-goal-prompt/references/benchmark-intake.md` | 0006 |
+| Measurement cadence (instant / lagging) | `docs/benchmarking/measurement-adapter.md`, `scripts/benchmark-adapters/instant.ts`, `scripts/benchmark-adapters/lagging-emit.ts` | 0002 |
+| Search mode (sweep / climb) | `.claude/workflows/benchmark-sweep.js`, `.claude/workflows/benchmark-climb.js` | 0003 |
+| Search space (levers / invariants) | `skills/write-goal-prompt/references/benchmark-intake.md` | 0003 |
+| Pre-measurement checks (in-bounds / novelty) | `.claude/agents/harness-inbounds-checker.md`, `.claude/agents/harness-novelty-checker.md` | 0003 |
+| Variant ledger | `docs/benchmarking/variant-ledger.md` | 0003 |
+| Saved loop (template / snapshot) | `.harness/loops/README.md`, `docs/benchmarking/snapshot-store.md` | 0005 |

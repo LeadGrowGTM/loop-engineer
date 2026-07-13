@@ -75,9 +75,22 @@ Reload the snapshot in place from `.harness/goals/<slug>/runs/<run-id>/` (schema
   improvements (Pareto), and halts on the **first of** target / plateau / budget
   (ADR-0001), always returning best-so-far.
 
-Both engines write the append-only variant ledger (`docs/benchmarking/variant-ledger.md`)
-plus `best.json` + `snapshot.json` under the run directory. Measurement is **exogenous**
-(the reward comes from the benchmark command / external orchestrator, never the model).
+Both engines produce the append-only variant ledger (`docs/benchmarking/variant-ledger.md`)
+plus `best.json` + `snapshot.json` under the run directory, but persistence differs by
+engine shape:
+
+- **sweep** is a plain `bun` CLI - it writes `ledger.jsonl` + `best.json` +
+  `snapshot.json` to disk itself.
+- **climb** is a Workflow-DSL script (like `.claude/workflows/red-team.js`) and runs in a
+  sandbox with **no filesystem access**, so it cannot write files mid-run. Its `run()`
+  **returns** the full `ledger` (+ best-so-far) to the caller, and the command (the
+  orchestrator) persists that return value to the run directory in the same schema. On a
+  lagging climb the persisted snapshot is what `--resume` reloads (ADR-0005).
+
+Measurement is **exogenous** in both: the reward is read from the benchmark command /
+external orchestrator, never invented by the model (sweep via the instant adapter's
+`measureInstant`; climb via a measure step that runs the benchmark command and reports its
+output - the model does not author the number).
 
 ## Cadence note (ADR-0002)
 

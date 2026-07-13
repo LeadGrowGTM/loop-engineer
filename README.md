@@ -53,6 +53,42 @@ Depth budget: goal=0, planner=1, maker=2, prover=3, checker=4, sub-skills max=5.
 
 `write-goal-prompt` skill (Phase 1.5) spawns a Harness Architect agent that customizes `HARNESS.md` for the specific task. The goal template's `[HARNESS]` block points to that file. Runtime agents read it for task-specific context; their structural logic is in the agent files.
 
+## Second goal path: the benchmarking loop
+
+The build loop above produces an *artifact*. The **benchmarking loop** is the second
+goal path - it *optimizes a measurable dimension* (a metric read exogenously) instead of
+producing a fixed artifact. It slots beside `/write-goal-prompt` as a second thin front
+door, `/benchmarking-loop`, over the same shared grill (ADR-0004). Glossary: root
+`CONTEXT.md`; decisions: `docs/adr/0001`-`0006`.
+
+```
+benchmarking loop/
+├── .claude/commands/benchmarking-loop.md      ← thin router: fresh spec | template | --resume (P3)
+├── .claude/workflows/
+│   ├── benchmark-sweep.js                      ← sweep engine: run all candidates → rank → pick (P4)
+│   └── benchmark-climb.js                      ← climb engine: invent → in-bounds → novelty → measure → keep (P5)
+├── .claude/agents/
+│   ├── harness-inbounds-checker.md             ← invariant check, fresh-context, separate from inventor (P6)
+│   └── harness-novelty-checker.md              ← ledger dedup check, fresh-context, separate from inventor (P6)
+├── skills/write-goal-prompt/references/
+│   └── benchmark-intake.md                     ← lazy grill branch: benchmark · measurement · search · stop (P1)
+├── docs/benchmarking/
+│   ├── variant-ledger.md                       ← append-only ledger.jsonl + best.json schema (P2)
+│   ├── snapshot-store.md                        ← run-id-keyed spec+ledger+best, --resume contract (P2)
+│   └── measurement-adapter.md                  ← exogenous reward contract: instant + lagging (P7)
+├── .harness/loops/README.md                    ← loop registry / template store (P2/P5)
+└── scripts/benchmark-adapters/
+    ├── instant.ts                              ← command→number reference impl (P7)
+    └── lagging-emit.ts                         ← emit-job stub for external orchestrator (P7, never run live)
+```
+
+**Sweep vs climb (ADR-0003).** Sweep runs a fixed candidate set and skips the two
+pre-measurement checks (candidates are pre-declared). Climb invents variants over
+declared levers and, before spending any measurement, clears an **in-bounds** check then
+a **novelty** check - both run by agents *separate from the inventor* (anti-gaming is
+non-negotiable). Both stop on first-of(target / plateau / budget) and always return
+best-so-far (ADR-0001). Measurement is exogenous throughout.
+
 ## Proof protocol
 
 Every phase completion requires actual command output, not assertion:

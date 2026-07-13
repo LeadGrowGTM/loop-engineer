@@ -1,6 +1,18 @@
 # 08 - routing / benchmark auto-detect + offer-to-switch
-Status: ready-for-agent
+Status: done
 Blocked by: 01, 03
+
+## Completion note
+Wired benchmark auto-detect into the shared grill (ADR-0004):
+- `execution-mode-routing.md` gains a "Prior axis: benchmark detection" section naming
+  the metric+direction detection key, the two-doors-one-grill routing, and offer-to-switch
+  in both directions - added above the existing four task-shape modes without altering
+  build-path routing text.
+- `SKILL.md` Execution Mode Routing section now runs benchmark detection first and offers
+  to switch to `/benchmarking-loop` (loading the lazy `benchmark-intake.md`) before the
+  build phases - one lean paragraph, no SKILL.md bloat.
+- `/benchmarking-loop` command already carried the reciprocal offer-to-switch (build goal
+  -> `/write-goal-prompt`) from P3; both doors now auto-detect from either side.
 
 ## Parent
 PRD.md "In scope" 2; ADR-0004 (auto-detect fallback).
