@@ -1,6 +1,16 @@
 # 07 - measurement adapter contract (instant + lagging)
-Status: ready-for-agent
+Status: done
 Blocked by: 02
+
+## Completion note
+Delivered `docs/benchmarking/measurement-adapter.md` (shared reward contract, instant
+stdout->last-number rule, lagging emit-job payload schema - one loop two clocks per
+ADR-0002), `scripts/benchmark-adapters/instant.ts` (measureInstant/parseReward reference
+impl, canonical for the rule sweep inlines; 7/7 parse selftest; live `echo latency 42.7`
+-> reward 42.7), and `scripts/benchmark-adapters/lagging-emit.ts` (buildEmitJob/writeEmitJob
+stub, dispatched_live=false + job_ref=null always, 11/11 selftest incl. resume_key=run_id
+bridge and missing-settle_window throw). Both import-clean (side-effect-free named exports),
+guarded by import.meta.main. No regression: sweep smoke re-ran green (winner v0002=0.87).
 
 ## Parent
 PRD.md "In scope" 7; ADR-0002 (instant vs lagging cadence).
