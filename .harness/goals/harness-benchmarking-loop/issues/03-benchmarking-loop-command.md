@@ -1,6 +1,17 @@
 # 03 - /benchmarking-loop command (thin router)
-Status: ready-for-agent
+Status: done
 Blocked by: 01, 02
+
+## Done
+`.claude/commands/benchmarking-loop.md` - thin front-door router (slash name
+`/benchmarking-loop`) with three first-match-wins modes: `--resume <run-id>` (warm-start
+from the snapshot store, skips known variants via the novelty check, no double-count) |
+`<template-name>` (instantiate `.harness/loops/<name>.json` fresh, honoring `repoint`) |
+fresh goal text (grill via the lazy `benchmark-intake.md`, offer-to-switch on
+mis-routing, ADR-0004/0006). Dispatches by `spec.search.mode` to the sweep engine
+(`bun .claude/workflows/benchmark-sweep.js <spec.json>`) or the climb engine
+(`.claude/workflows/benchmark-climb.js`, P5). Cadence note documents lagging =
+emit-stub + snapshot only. Traces ADR-0002/0003/0004/0005/0006.
 
 ## Parent
 PRD.md "In scope" 3; ADR-0004, ADR-0005.
