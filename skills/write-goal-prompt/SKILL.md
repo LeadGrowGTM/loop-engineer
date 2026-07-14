@@ -490,10 +490,10 @@ pwsh C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\launch-gnhf.
   -Objective "<full objective from Phase 2>" `
   -StopWhen "<done condition from Phase 0 eval loop>" -MaxIterations 30
 ```
-(Add `-Parallel` to force an isolated treehouse worktree; the launcher auto-leases one anyway if it detects a live gnhf run in the repo.)
+(Add `-Parallel` to force an isolated treehouse worktree; the launcher auto-leases one anyway if it detects a live gnhf run in the repo, or if `-RepoPath` is a canonical monorepo-tracked pipeline like `content`/`outbound` — see `references/parallel-execution.md`.)
 (`-RepoPath "$PROJECT_ROOT"` anchors the run to the resolved project, not the workspace root. The launcher's own default is `Get-Location`.)
 
-It pre-flights, starts gnhf detached + hidden, logs to `.gnhf-runs/gnhf-<stamp>.log`, and writes a handle JSON (PID + log + args). Register the task in tasks-axi first and mark it done after morning review.
+It pre-flights, starts gnhf detached + hidden, logs to `.gnhf-runs/gnhf-<stamp>.log` (or `%TEMP%\gnhf-runs\<slug>\` for monorepo-tracked pipelines), and writes a handle JSON (PID + log + args). Register the task in tasks-axi first and mark it done after morning review.
 
 **Manual command block (equivalent, if you prefer to run it yourself):**
 
@@ -540,7 +540,7 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 - Working tree clean — `git status` shows nothing (gnhf rejects dirty state)
 - `~/.gnhf/config.yml` — agent = `claude`, `agentArgsOverride.claude` = Opus model
 
-**Parallel streams / worktree isolation:** the launcher auto-leases an isolated treehouse worktree when it detects a live gnhf run (or on `-Parallel`); leases are held until returned by hand after review. Full model, lease lifecycle, and manual commands: `references/parallel-execution.md`.
+**Parallel streams / worktree isolation:** the launcher auto-leases an isolated treehouse worktree when it detects a live gnhf run, on `-Parallel`, or when `-RepoPath` is a canonical monorepo-tracked pipeline (no own `.git`); leases are held until returned by hand after review. Full model, lease lifecycle, and manual commands: `references/parallel-execution.md`.
 
 ---
 

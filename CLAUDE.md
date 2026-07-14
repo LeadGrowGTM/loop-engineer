@@ -13,7 +13,7 @@ Goal prompt writer + planner/maker/checker harness for Claude Code loop engineer
 | `skills/write-goal-prompt/docs/` | Architecture map, reference index |
 | `skills/write-goal-prompt/kb/` | KB scaffold — LOG.md, signals/, docs/ |
 | `scripts/triage.ts` | Bun CLI: list/review/dismiss/log/signal for the triage inbox |
-| `scripts/launch-gnhf.ps1` | Detached gnhf launcher — repo-safety guards, auto-lease treehouse worktree on parallel/collision |
+| `scripts/launch-gnhf.ps1` | Detached gnhf launcher — repo-safety guards, auto-lease treehouse worktree on parallel/collision/monorepo-tracked pipelines |
 | `scripts/validate-pipeline-layout.ps1` | Pre-flight pipeline-layout check called by `launch-gnhf.ps1` |
 | `scripts/setup-harness.ts` | Installs harness agents + seeds `.harness/`, `.tasks.toml`, `treehouse.toml` into a repo |
 | `scripts/rename-to-loop-engineer.ps1` | One-shot: rename this repo's dir `agent-harness` → `loop-engineer` + fix refs (not yet run) |
