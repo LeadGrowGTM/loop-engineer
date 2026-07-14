@@ -1,9 +1,0 @@
-# agent-harness
-
-Goal loop harness for Claude Code - separates planning, execution, and verification into isolated agents with structural enforcement.
-
-## Context
-
-- Type: tool
-- Category: tools/
-- Key files: skills/write-goal-prompt/, .claude/agents/, scripts/triage.ts
