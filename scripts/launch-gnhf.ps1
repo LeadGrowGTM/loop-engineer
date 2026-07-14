@@ -136,12 +136,15 @@ if (Test-Path $validateScript) {
 # Two detached gnhf runs in the same working tree step on each other. Detect a live
 # run anchored to this repo and, if found (or -Parallel forced), lease an isolated
 # treehouse worktree and run gnhf there instead. Handle/log/collision state always
-# anchor to the ORIGINAL repo so the next launch can still see this run.
+# anchor to the ORIGINAL repo so the next launch can still see this run - except for
+# canonical monorepo pipelines (content, outbound), which have no own .git and are
+# force-included in Everything_CC's tracked tree: their state anchors to a TEMP scratch
+# dir instead, so runs never leave untracked files in the live monorepo working tree.
 $RunPath = $RepoPath
 $leasePath = $null
 $slug = Get-Slug $Objective
 
-$runsDir = Join-Path $RepoPath ".gnhf-runs"
+$runsDir = if ($isCanonicalMonorepoPipeline) { Join-Path $env:TEMP (Join-Path "gnhf-runs" $slug) } else { Join-Path $RepoPath ".gnhf-runs" }
 $collision = $false
 if (Test-Path $runsDir) {
   foreach ($h in Get-ChildItem -Path $runsDir -Filter "*.handle.json" -ErrorAction SilentlyContinue) {
@@ -179,6 +182,7 @@ if ($Parallel -or $collision -or $isCanonicalMonorepoPipeline) {
   if ($isCanonicalMonorepoPipeline) {
     $leasedPipelinePath = Join-Path $leasePath (Join-Path "pipelines" $canonicalPipelineName)
     if (-not (Test-Path $leasedPipelinePath)) {
+      & $treehouse.Source return $leasePath | Out-Null
       Write-Error "Leased worktree is missing pipelines/$canonicalPipelineName at ${leasedPipelinePath}: pool worktree may be stale. Run 'treehouse prune' then relaunch."; exit 1
     }
     $RunPath = $leasedPipelinePath
@@ -214,7 +218,7 @@ try {
     }
   }
 
-  $logDir = Join-Path $RepoPath ".gnhf-runs"
+  $logDir = $runsDir
   New-Item -ItemType Directory -Force -Path $logDir | Out-Null
   $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
   $log = Join-Path $logDir "gnhf-$stamp.log"
