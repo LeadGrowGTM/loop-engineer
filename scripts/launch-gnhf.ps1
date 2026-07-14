@@ -55,16 +55,6 @@ if (-not (Test-Path $RepoPath)) { Write-Error "RepoPath does not exist: $RepoPat
 
 # gnhf anchors runs, logs, and --worktree siblings to cwd's git toplevel. Launch from the
 # nested pipeline repo, not the Everything_CC monorepo root or pipelines/ parent.
-$gitDir = Join-Path $RepoPath ".git"
-if (-not (Test-Path $gitDir)) {
-  Write-Error @"
-RepoPath is not a git repository (no .git): $RepoPath
-GNHF must run from the target nested repo (e.g. C:\Users\mitch\Everything_CC\pipelines\gtm-orchestrator), not the workspace root or a parent folder.
-Pass -RepoPath explicitly after cd'ing to the repo, or cd there before launch.
-"@
-  exit 1
-}
-
 $ecRoot = "C:\Users\mitch\Everything_CC"
 try {
   $resolvedRepo = (Resolve-Path $RepoPath).Path
@@ -73,6 +63,43 @@ try {
   $resolvedRepo = $RepoPath
   $resolvedEc = $ecRoot
 }
+
+# Some pipelines (content, outbound) are deliberately monorepo-tracked, not nested repos -
+# see .gitignore's "!pipelines/<name>/" exceptions and .claude/reference/pipeline-allowlist.md.
+# They have no own .git, so they can't give gnhf a scoped repo toplevel directly. Detect them
+# here and force treehouse worktree isolation below instead of erroring on missing .git.
+function Get-CanonicalMonorepoPipelines([string]$ecRootPath) {
+  $giPath = Join-Path $ecRootPath ".gitignore"
+  $names = @()
+  if (Test-Path $giPath) {
+    Get-Content $giPath | ForEach-Object {
+      if ($_ -match '^!pipelines/([a-zA-Z0-9_-]+)/$') { $names += $Matches[1] }
+    }
+  }
+  return $names
+}
+$isCanonicalMonorepoPipeline = $false
+$canonicalPipelineName = $null
+foreach ($name in (Get-CanonicalMonorepoPipelines $resolvedEc)) {
+  $candidate = Join-Path (Join-Path $resolvedEc "pipelines") $name
+  try { $candidate = (Resolve-Path $candidate -ErrorAction SilentlyContinue).Path } catch { }
+  if ($candidate -and ($resolvedRepo -ieq $candidate)) {
+    $isCanonicalMonorepoPipeline = $true
+    $canonicalPipelineName = $name
+    break
+  }
+}
+
+$gitDir = Join-Path $RepoPath ".git"
+if (-not $isCanonicalMonorepoPipeline -and -not (Test-Path $gitDir)) {
+  Write-Error @"
+RepoPath is not a git repository (no .git): $RepoPath
+GNHF must run from the target nested repo (e.g. C:\Users\mitch\Everything_CC\pipelines\gtm-orchestrator), not the workspace root or a parent folder.
+Pass -RepoPath explicitly after cd'ing to the repo, or cd there before launch.
+"@
+  exit 1
+}
+
 if ($resolvedRepo -ieq $resolvedEc) {
   Write-Error @"
 Refusing GNHF launch from Everything_CC monorepo root: $RepoPath
@@ -125,13 +152,19 @@ if (Test-Path $runsDir) {
   }
 }
 
-if ($Parallel -or $collision) {
+if ($Parallel -or $collision -or $isCanonicalMonorepoPipeline) {
   $treehouse = Get-Command "treehouse" -ErrorAction SilentlyContinue
   if (-not $treehouse) {
+    if ($isCanonicalMonorepoPipeline) {
+      Write-Error "pipelines/$canonicalPipelineName is monorepo-tracked (no own .git) - gnhf needs a treehouse-leased worktree for git isolation, but treehouse is not on PATH. Install treehouse first."; exit 1
+    }
     Write-Error "Parallel run needed (collision=$collision, -Parallel=$Parallel) but treehouse not on PATH. Install treehouse or wait for the live run to finish."; exit 1
   }
   if ($collision -and -not $Parallel) {
     Write-Warning "Live gnhf run detected in $RepoPath - auto-leasing an isolated worktree to avoid collision."
+  }
+  if ($isCanonicalMonorepoPipeline) {
+    Write-Output "pipelines/$canonicalPipelineName is monorepo-tracked - leasing an isolated Everything_CC worktree so gnhf's git operations stay scoped there, not on your live tree."
   }
   # --lease prints ONLY the worktree path to stdout; banners go to stderr.
   $prevEap = $ErrorActionPreference
@@ -143,7 +176,15 @@ if ($Parallel -or $collision) {
     Write-Error "treehouse lease failed (returned '$leasePath'). Pool may be exhausted (max_trees) - run 'treehouse status', return a stale lease, then relaunch."; exit 1
   }
   Write-Output "Leased isolated worktree: $leasePath (holder: gnhf-$slug)"
-  $RunPath = $leasePath
+  if ($isCanonicalMonorepoPipeline) {
+    $leasedPipelinePath = Join-Path $leasePath (Join-Path "pipelines" $canonicalPipelineName)
+    if (-not (Test-Path $leasedPipelinePath)) {
+      Write-Error "Leased worktree is missing pipelines/$canonicalPipelineName at ${leasedPipelinePath}: pool worktree may be stale. Run 'treehouse prune' then relaunch."; exit 1
+    }
+    $RunPath = $leasedPipelinePath
+  } else {
+    $RunPath = $leasePath
+  }
 }
 
 Push-Location $RunPath
@@ -185,10 +226,19 @@ try {
   $gnhfArgs = "`"$Objective`" --max-iterations $MaxIterations"
   if ($StopWhen) { $gnhfArgs += " --stop-when `"$StopWhen`"" }
 
-  # Detached + hidden: outlives this session. stdout/stderr -> log files.
+  # Detached + hidden: outlives this session. stdout/stderr -> log files. stdin -> NUL:
+  # without an explicit redirect, a hidden/detached process's inherited stdin handle can be
+  # unusable, and any git hook subprocess gnhf shells out to (e.g. pre-commit) that tries to
+  # attach a console over that handle hangs forever at ~0% CPU instead of erroring. Seen live:
+  # the post-iteration `git commit` stalled indefinitely on a stdin/console wait after
+  # iteration 1 succeeded. Feeding a real (empty) stdin avoids the hang.
+  # PowerShell's -RedirectStandardInput resolves its argument as a real file path (it can't
+  # take the \\.\NUL device path directly) - an empty file gives the same immediate-EOF stdin.
+  $stdinNul = Join-Path $env:TEMP "gnhf-launcher-stdin-nul.txt"
+  if (-not (Test-Path $stdinNul)) { New-Item -ItemType File -Path $stdinNul -Force | Out-Null }
   $proc = Start-Process -FilePath $gnhf.Source -ArgumentList $gnhfArgs `
     -WorkingDirectory $RunPath -WindowStyle Hidden -PassThru `
-    -RedirectStandardOutput $log -RedirectStandardError $errLog
+    -RedirectStandardOutput $log -RedirectStandardError $errLog -RedirectStandardInput $stdinNul
 
   [ordered]@{
     pid           = $proc.Id
