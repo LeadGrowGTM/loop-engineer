@@ -19,10 +19,10 @@ root = ".tmp/treehouse/"
 `scripts/launch-gnhf.ps1` isolates automatically - the operator does not lease by hand:
 
 1. Before launch it scans `<repo>/.gnhf-runs/*.handle.json` and checks each recorded PID with `Get-Process`.
-2. If a **live** gnhf run is anchored to this repo (or `-Parallel` is passed), it runs `treehouse get --lease --lease-holder "gnhf-<slug>"`, gets back an isolated worktree path, and launches gnhf there.
-3. Handle + log + collision state stay anchored to the **original** repo's `.gnhf-runs/`, so the next launch still sees this run and isolates against it too.
+2. It leases an isolated worktree via `treehouse get --lease --lease-holder "gnhf-<slug>"` and launches gnhf there when any of three conditions hold: a **live** gnhf run is anchored to this repo, `-Parallel` is passed, or `-RepoPath` resolves to a canonical monorepo-tracked pipeline (`content`, `outbound` - declared by the workspace `.gitignore`'s `!pipelines/<name>/` exceptions). Those pipelines have no own `.git`, so isolation is forced rather than optional: it's the only way gnhf gets a scoped git toplevel. `RunPath` is set to the leased worktree's `pipelines/<name>/` subdir so gnhf's git operations never touch the live monorepo tree.
+3. Handle + log + collision state stay anchored to the **original** repo's `.gnhf-runs/`, so the next launch still sees this run and isolates against it too - except for canonical monorepo pipelines, which have no `.gnhf-runs/` of their own to anchor to; their state lives under `%TEMP%\gnhf-runs\<slug>` instead.
 
-Single stream, no live run → no lease, gnhf runs in the repo root (fast path). Force isolation with `-Parallel` even when no collision is detected.
+Single stream, no live run, not a monorepo-tracked pipeline → no lease, gnhf runs in the repo root (fast path). Force isolation with `-Parallel` even when no collision is detected.
 
 ## Lease lifecycle - return is manual for detached runs
 
