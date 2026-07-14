@@ -26,6 +26,20 @@ To compress when over:
 
 ---
 
+## Brevity Pass — SUBTRACTIVE, runs even when under the cap
+
+Everything else in this checklist is additive ("did you INCLUDE X"). Left unchecked, that pushes every prompt to the ceiling — which is why prompts drift long. This pass is the counterweight. Run it whenever the length gate prints **WARN** (over the brevity budget), and ideally always. **4000 is the reject line; the target is the shortest prompt that still passes the dry-run self-check.**
+
+Go block by block and cut, don't add:
+
+1. **Every block earns its place.** If removing a block wouldn't change what the turn-1 agent does, remove it. Default-present blocks (fallbacks, quality floors, constraints) are only warranted when the task actually has that risk — a no-cost single-artifact task does not need a tiered-fallback ladder or a cost ceiling.
+2. **Inline only what changes turn-1 behavior.** Phase plans, rubrics, briefs, copy rules, brand pillars → a reference file in the task working dir, referenced by path. The goal carries the path, not the content. (HARNESS.md is already handled this way — apply the same rule to everything bulky.)
+3. **One statement per idea.** Collapse restated done criteria, merge overlapping constraints, kill "in order to / it is important that / make sure to" scaffolding.
+4. **No filler verbs or adjectives.** "implement a robust solution for" → "build". "comprehensive" / "seamless" / "properly" add chars, not meaning.
+5. **Re-measure.** If it's now under the brevity budget, emit. If it's still large *after* honest subtraction, that's a real signal the task is too big for one goal — split it, don't pad the gate margin.
+
+---
+
 ## Context Verification (via subagents)
 
 Spawn 1-3 lightweight subagents (Haiku-tier / Explore) in parallel to confirm:
@@ -174,6 +188,7 @@ Before emitting, verify the condition:
 - [ ] **Report published** — `lavish-axi share HANDOFF.html --password …` step present; URL captured in HANDOFF.md; password + update_key saved to HANDOFF.secret.local (gitignored, never committed)
 - [ ] **Overnight framing** — reads as a handoff, not a command
 - [ ] **Total length** under 4000 characters (Phase 2.5 length gate passed)
+- [ ] **Brevity Pass run** — shortest prompt that passes the dry-run, not the longest that fits; if the gate printed WARN, the subtractive pass above was applied and every remaining block earns its place
 - [ ] No vague verbs like "implement" or "handle" without a measurable check
 - [ ] **Context verified** — all paths, skills, patterns confirmed to exist (Phase 2.5)
 - [ ] **Dry-run passed** — agent can start from [TASK] without asking questions
