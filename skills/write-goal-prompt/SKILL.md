@@ -415,9 +415,13 @@ Execution Router Step 0). Write HARNESS.md there and use that absolute path.
 This step happens before length measurement — HARNESS.md content is NOT inlined
 into the goal prompt. The goal only carries the path reference.
 
-### HARD LENGTH GATE — BLOCKING, MEASURED, NO EXCEPTIONS
+### LENGTH GATE — TWO-SIDED, MEASURED, NO EXCEPTIONS
 
-`/goal` **rejects any condition ≥4000 characters** ("Goal condition is limited to 4000 characters"). A rejected goal is a failed deliverable. This gate is mechanical — DO NOT eyeball it.
+**4000 is the rejection line, NOT a budget to fill.** `/goal` rejects any condition ≥4000 characters ("Goal condition is limited to 4000 characters") — a rejected goal is a failed deliverable. But a prompt that merely *clears* 4000 can still be bloated. The default equilibrium of this skill is drift toward the ceiling: the QA checklist only ever tells you to ADD blocks, so an unchecked prompt fills to ~3990. That is the failure the last few long prompts came from.
+
+So the gate is two-sided:
+- **Hard cap 4000 / safe target 3990** — over this is BLOCKED, non-negotiable (mechanical, DO NOT eyeball).
+- **Brevity budget ~2200** (single-phase) / **~2800** (multi-phase) — over this is a WARN, not a block. It means: compress unless every block earns its place. Aim for the *shortest* prompt that still passes the dry-run self-check, not the longest that fits.
 
 Before emitting, you MUST run this sequence as actual shell commands (not mentally):
 
@@ -441,10 +445,13 @@ Fallback if Bun is unavailable (note the `encoding="utf-8"` — WITHOUT it, Pyth
 python -c "txt=open('temp/_goal-candidate.txt', encoding='utf-8').read().rstrip('\n'); print(len(txt))"
 ```
 
+The script prints `WARN` when the candidate is over the brevity budget but under the cap. Pass `--brevity 2800` for a genuinely multi-phase task; do not raise it just to silence the warning.
+
 **Step 3 — gate:**
 
 - Command **exits non-zero** (≥3990) → BLOCKED. Compress (see `references/qa-checklist.md` Length Gate steps). Re-write file. Re-run Step 2. Repeat until it exits 0.
-- Command **exits 0** (< 3990) → pass. Proceed.
+- Command prints **WARN** (≥ brevity budget, < 3990) → not blocked, but run the necessity pass in `references/qa-checklist.md` (Brevity Pass) before emitting: cut filler, move inlined detail to a reference file. Emit only what survives.
+- Command **exits 0 with OK** (< brevity budget) → pass. Proceed.
 
 **Step 4 — emit with proof:**
 Copy the `[Measured: XXXX chars]` line the script prints, immediately before the code fence. No measured count = gate not run = failure.
@@ -468,6 +475,8 @@ Fix any failure before emitting: (1) context verification — subagents confirm 
 ## gnhf Path (Overnight Autonomous Mode)
 
 Use when execution mode = gnhf (task > 1hr, fully specifiable, can run unattended). The goal condition from Phase 2 becomes the gnhf objective directly — same content, no `/goal` wrapper, no 4000-char limit.
+
+**No hard cap is not license to sprawl.** The brevity discipline still applies: the objective should be the shortest brief that a fresh unattended agent can start from without asking questions. Long spec detail (phase plans, rubrics, briefs) belongs in files the agent reads at runtime (`.harness/goals/<slug>/`), referenced by path — not inlined into the objective. Keep the objective itself tight and push the bulk behind path references.
 
 Skip Phase 2.5 QA. Skip Phase 3.
 
@@ -560,6 +569,8 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 ## Execution Mode Routing
 
 Before writing a goal prompt, route the task to the right execution shape using `references/execution-mode-routing.md`. This is about _task shape_ (single-run vs goal-loop vs time-loop vs dynamic-workflow), not about harness infrastructure (in-session vs gnhf — that is separate; see the "Execution Router" section above for infrastructure choice).
+
+**Benchmark detection runs first (ADR-0004).** Before task shape, apply the benchmark-detection key from `references/execution-mode-routing.md` ("Prior axis"): does the goal name a measurable benchmark — a metric plus a direction? If yes, this is a benchmarking goal, not a build goal — **offer to switch** to `/benchmarking-loop` and load `references/benchmark-intake.md` (the lazy branch; a plain build goal never loads it, so this stays lean). `/write-goal-prompt` and `/benchmarking-loop` are two front doors over one shared grill, so detection catches a mis-invoked door from either side. Only if the goal is a plain build goal (artifact + quality bar, no exogenous metric+direction) do you continue with the phases below.
 
 The router decision tree is first-match-wins: walk the four questions top-down and stop at the first yes. Dynamic-workflow shape (for parallel verification, adversarial red-team, or 50+ item processing) is exemplified by `.claude/workflows/red-team.js`, which runs four attack roles in parallel, deduplicates findings by severity, and validates both per-role and merged output.
 

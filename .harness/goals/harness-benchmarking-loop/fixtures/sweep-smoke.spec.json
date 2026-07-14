@@ -1,0 +1,24 @@
+{
+  "run_id": "sweep-smoke",
+  "slug": "harness-benchmarking-loop",
+  "benchmark": {
+    "flavor": "programmatic-kpi",
+    "metric": "eval_score",
+    "direction": "maximize"
+  },
+  "measurement": {
+    "cadence": "instant",
+    "command": null
+  },
+  "search": {
+    "mode": "sweep",
+    "candidates": [
+      { "label": "candidate-a", "command": "bun -e \"console.log(0.42)\"" },
+      { "label": "candidate-b", "command": "bun -e \"console.log(0.87)\"" }
+    ]
+  },
+  "stop": {
+    "plateau": { "cycles": 3, "min_gain_pct": 1.0 },
+    "budget": { "max_cycles": 10, "max_spend_usd": null, "max_tokens": null }
+  }
+}
