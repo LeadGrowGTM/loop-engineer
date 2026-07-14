@@ -1,18 +1,24 @@
 # QA Checklist Reference
 
-## Length Gate — HARD, MEASURED, BLOCKING
+## Length Gate — TWO-SIDED, MEASURED, BLOCKING
 
 `/goal` rejects any condition **≥4000 characters** outright ("Goal condition is limited to 4000 characters"). Emitting an over-length goal = failed deliverable. **Measure, never eyeball.**
 
-Write the candidate to a temp file via the Write tool, then measure (Bash tool, Python — works on Windows and Linux):
+Write the candidate to a temp file via the Write tool, then measure with the gate script (Bash tool, Bun — works on Windows and Linux):
 
 ```bash
-python -c "txt=open('temp/_goal-candidate.txt').read().rstrip('\n'); print(len(txt))"
+bun skills/write-goal-prompt/scripts/check-goal-length.ts temp/_goal-candidate.txt
 ```
 
-`/goal` strips one trailing newline before counting — this replicates that exactly. Target **<3990** (≥10 char margin). If result ≥4000 you are BLOCKED — compress and re-measure until it passes. Include `[Measured: XXXX chars]` before emitting. No count shown = gate not run = failure.
+`/goal` strips one trailing newline before counting — the script replicates that exactly. Target **<3990** (≥10 char margin, exit non-zero at/above it = BLOCKED). The script also prints **WARN** (exit 0, not blocked) once the candidate clears a soft `--brevity` budget (default 2200, `--brevity 2800` for genuinely multi-phase tasks) — that WARN means run the Brevity Pass below before emitting. Include `[Measured: XXXX chars]` before emitting. No count shown = gate not run = failure.
 
-**Do NOT use `wc -m` — it does not work on Windows (PowerShell). Use the Python command above always.**
+Fallback if Bun is unavailable (note `encoding="utf-8"` — without it Python over-counts on Windows and falsely blocks valid prompts):
+
+```bash
+python -c "txt=open('temp/_goal-candidate.txt', encoding='utf-8').read().rstrip('\n'); print(len(txt))"
+```
+
+**Do NOT use `wc -m` — it does not work on Windows (PowerShell). Use the commands above always.**
 
 To compress when over:
 
