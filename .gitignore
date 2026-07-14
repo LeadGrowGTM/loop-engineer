@@ -13,3 +13,8 @@
 # Ephemeral benchmarking-loop run outputs (ledger/snapshot/best regenerated each run;
 # the fixture specs under fixtures/ stay tracked). See docs/benchmarking/variant-ledger.md.
 .harness/goals/*/runs/
+
+# gnhf/goal scratch - regenerated, never tracked
+temp/
+.cursor/
+backlog.md
