@@ -37,17 +37,17 @@ bun C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\setup-harness
 ```
 
 This does atomically:
-1. Copies `harness-planner.md`, `harness-maker.md`, `harness-checker.md` → `~/.claude/agents/`
+1. Copies `harness-planner.md`, `harness-maker.md`, `harness-prover.md`, `harness-checker.md` → `~/.claude/agents/`
 2. Scans `<repo-root>` for SKILL.md files
 3. Seeds `.harness/skill-routing.md` from `routing-template.md` + repo-specific skills, and `.harness/goals/` (working dir for goal runs)
 4. Seeds a per-project `.tasks.toml` (tasks-axi backlog → `.claude/backlog.md`) and `treehouse.toml` (worktree pool), if not already present
 5. Adds `.tmp/treehouse/` and `.gnhf-runs/` to `.gitignore`
 6. Patches `CLAUDE.md` with `## Harness` block (install date + source SHA)
-7. Runs smoke test — prints ✓/✗ per check (5 checks: 3 agent files, skill-routing.md, `## Harness` block)
+7. Runs smoke test — prints ✓/✗ per check (6 checks: 4 agent files, skill-routing.md, `## Harness` block)
 
 ### 4. Present smoke test results
 
-If all 5 checks pass — done. Tell the user which engineering workflows are now available.
+If all 6 checks pass — done. Tell the user which engineering workflows are now available.
 
 If any check fails — show the failing line, diagnose, fix manually, re-run smoke:
 
