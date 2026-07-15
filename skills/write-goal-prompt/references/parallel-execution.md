@@ -11,7 +11,7 @@ max_trees = 16
 root = ".tmp/treehouse/"
 ```
 
-- Seeded automatically by `/setup-harness` in target projects, and present in the agent-harness repo itself.
+- Seeded automatically by `/setup-harness` in target projects, and present in the loop-engineer repo itself.
 - `.tmp/treehouse/` and `.gnhf-runs/` must be gitignored (setup-harness adds both; verify in older installs).
 
 ## Auto-lease on collision (the launcher does this)

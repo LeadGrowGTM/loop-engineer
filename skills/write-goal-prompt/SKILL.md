@@ -485,7 +485,7 @@ Skip Phase 2.5 QA. Skip Phase 3.
 **Inline detached launch (no terminal drop, survives this session) — hand this to the operator to run:**
 
 ```powershell
-pwsh C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\launch-gnhf.ps1 `
+pwsh <loop-engineer>\scripts\launch-gnhf.ps1 `
   -RepoPath "$PROJECT_ROOT" `
   -Objective "<full objective from Phase 2>" `
   -StopWhen "<done condition from Phase 0 eval loop>" -MaxIterations 30

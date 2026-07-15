@@ -30,10 +30,10 @@ Then ask one question: **"Install or update?"** Default: install. If everything 
 
 ### 3. Install
 
-Run the install script from the agent-harness repo:
+Run the install script from your loop-engineer clone:
 
 ```bash
-bun C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\setup-harness.ts install <repo-root>
+bun <loop-engineer>/scripts/setup-harness.ts install <repo-root>
 ```
 
 This does atomically:
@@ -52,7 +52,7 @@ If all 5 checks pass — done. Tell the user which engineering workflows are now
 If any check fails — show the failing line, diagnose, fix manually, re-run smoke:
 
 ```bash
-bun C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\setup-harness.ts smoke <repo-root> ~/.claude/agents
+bun <loop-engineer>/scripts/setup-harness.ts smoke <repo-root> ~/.claude/agents
 ```
 
 ### 5. Done
@@ -62,10 +62,10 @@ Tell the user:
 - Harness is ready. Planner reads `.harness/skill-routing.md` — edit it to tune routing for this repo.
 - Run `/write-goal-prompt` to create a harness-wired goal prompt.
 - Re-run `/setup-harness` if you add new skills and want them auto-added to the routing table.
-- To update agents: re-run `/setup-harness` — it overwrites `~/.claude/agents/harness-*.md` with the latest from agent-harness.
+- To update agents: re-run `/setup-harness` — it overwrites `~/.claude/agents/harness-*.md` with the latest from loop-engineer.
 
 ## Reference
 
-- Script: `tools/agent/agent-harness/scripts/setup-harness.ts`
-- Routing seed: `tools/agent/agent-harness/skills/setup-harness/routing-template.md`
-- Harness agents: `tools/agent/agent-harness/.claude/agents/harness-*.md` (source of truth)
+- Script: `<loop-engineer>/scripts/setup-harness.ts`
+- Routing seed: `<loop-engineer>/skills/setup-harness/routing-template.md`
+- Harness agents: `<loop-engineer>/.claude/agents/harness-*.md` (source of truth)

@@ -2,7 +2,7 @@
 > Auto-generated at 2026-07-13 20:58:11 for agent: Checker phase - score artifacts
 
 ## Git State
-- **Repo:** agent-harness
+- **Repo:** loop-engineer
 - **Branch:** gnhf/read-harness-goals-h-12ad46
 - **Remote:** https://github.com/LeadGrowGTM/loop-engineer.git
 
