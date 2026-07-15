@@ -1,7 +1,7 @@
 import { test, expect, describe } from 'bun:test';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
-import { scanSkills, seedRoutingTable, patchClaudeMd, smokeTest } from './setup-harness';
+import { scanSkills, seedRoutingTable, patchClaudeMd, smokeTest, HARNESS_AGENTS } from './setup-harness';
 
 // ── test fixtures ──────────────────────────────────────────────────────────
 
@@ -134,20 +134,45 @@ Routing: \`.harness/skill-routing.md\`. Agents: global (\`~/.claude/agents/\`).`
 
 // ── smokeTest ──────────────────────────────────────────────────────────────
 
+describe('HARNESS_AGENTS', () => {
+  test('is the full 4-agent set including the prover', () => {
+    expect(HARNESS_AGENTS).toContain('harness-planner.md');
+    expect(HARNESS_AGENTS).toContain('harness-maker.md');
+    expect(HARNESS_AGENTS).toContain('harness-prover.md');
+    expect(HARNESS_AGENTS).toContain('harness-checker.md');
+    expect(HARNESS_AGENTS).toHaveLength(4);
+  });
+});
+
 describe('smokeTest', () => {
   test('all pass when all files exist', () => {
     const dir = scaffold({
       '.harness/skill-routing.md': Array(11).fill('| row |').join('\n'),
       'CLAUDE.md': '## Harness\nInstalled.',
     });
-    const agentsDir = scaffold({
-      'harness-planner.md': '---\nname: harness-planner\n---',
-      'harness-maker.md': '---\nname: harness-maker\n---',
-      'harness-checker.md': '---\nname: harness-checker\n---',
-    });
+    const agentsDir = scaffold(
+      Object.fromEntries(HARNESS_AGENTS.map((f) => [f, `---\nname: ${f.replace('.md', '')}\n---`])),
+    );
 
     const results = smokeTest(dir, agentsDir);
     expect(results.every((r) => r.passed)).toBe(true);
+  });
+
+  test('fails when harness-prover.md missing from agents dir', () => {
+    const dir = scaffold({
+      '.harness/skill-routing.md': Array(11).fill('| row |').join('\n'),
+      'CLAUDE.md': '## Harness\nInstalled.',
+    });
+    // every agent except the prover
+    const agentsDir = scaffold(
+      Object.fromEntries(
+        HARNESS_AGENTS.filter((f) => f !== 'harness-prover.md').map((f) => [f, '---']),
+      ),
+    );
+
+    const results = smokeTest(dir, agentsDir);
+    const proverCheck = results.find((r) => r.check.includes('harness-prover'));
+    expect(proverCheck?.passed).toBe(false);
   });
 
   test('fails when harness-planner.md missing from agents dir', () => {

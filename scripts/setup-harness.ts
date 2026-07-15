@@ -13,6 +13,19 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs';
 import { join, dirname } from 'path';
 
+// ── constants ──────────────────────────────────────────────────────────────
+
+// The harness agent set — single source of truth for both `install` (what to copy)
+// and `smokeTest` (what to verify), so the two can never drift out of sync. The
+// prover was previously missing from both lists, so fresh installs silently shipped
+// a 3-agent harness with no running-app proof step (issue #13).
+export const HARNESS_AGENTS = [
+  'harness-planner.md',
+  'harness-maker.md',
+  'harness-prover.md',
+  'harness-checker.md',
+] as const;
+
 // ── types ──────────────────────────────────────────────────────────────────
 
 export interface SkillEntry {
@@ -109,18 +122,10 @@ export function smokeTest(targetDir: string, agentsDir: string): SmokeResult[] {
     readFileSync(routingPath, 'utf8').split('\n').length >= 10;
 
   return [
-    {
-      check: 'harness-planner.md in agents dir',
-      passed: existsSync(join(agentsDir, 'harness-planner.md')),
-    },
-    {
-      check: 'harness-maker.md in agents dir',
-      passed: existsSync(join(agentsDir, 'harness-maker.md')),
-    },
-    {
-      check: 'harness-checker.md in agents dir',
-      passed: existsSync(join(agentsDir, 'harness-checker.md')),
-    },
+    ...HARNESS_AGENTS.map((f) => ({
+      check: `${f} in agents dir`,
+      passed: existsSync(join(agentsDir, f)),
+    })),
     {
       check: 'skill-routing.md exists and ≥ 10 lines',
       passed: routingOk,
@@ -152,8 +157,17 @@ if (import.meta.main) {
     const agentsDir = join(process.env.HOME ?? process.env.USERPROFILE ?? '', '.claude', 'agents');
     const sourceAgentsDir = join(import.meta.dir, '../.claude/agents');
 
+    // Fail loudly if a source agent is missing rather than installing a silently
+    // incomplete harness (issue #13).
+    const missingAgents = HARNESS_AGENTS.filter((f) => !existsSync(join(sourceAgentsDir, f)));
+    if (missingAgents.length) {
+      console.error(`✗ source agents missing from ${sourceAgentsDir}: ${missingAgents.join(', ')}`);
+      console.error('  Aborting — the installed harness would be incomplete.');
+      process.exit(1);
+    }
+
     mkdirSync(agentsDir, { recursive: true });
-    for (const f of ['harness-planner.md', 'harness-maker.md', 'harness-checker.md']) {
+    for (const f of HARNESS_AGENTS) {
       copyFileSync(join(sourceAgentsDir, f), join(agentsDir, f));
       console.log(`Copied ${f} → ${agentsDir}`);
     }
