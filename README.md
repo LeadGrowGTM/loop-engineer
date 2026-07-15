@@ -1,11 +1,11 @@
-# agent-harness
+# loop-engineer
 
 Goal loop harness system for Claude Code. Separates planning, execution, and verification into isolated agents with structural enforcement — not prompt trust.
 
 ## What's here
 
 ```
-agent-harness/
+loop-engineer/
 ├── .claude/agents/          ← runtime agents (installed at workspace level)
 │   ├── harness-planner.md   — decomposes goal → PLAN.md (sonnet, Read/Glob/Write only)
 │   ├── harness-maker.md     — executes phases, commits (haiku, full tools)
@@ -100,6 +100,10 @@ Checker cites `file:line` evidence for every dimension score. Scores without cit
 
 ## Installation
 
-Agent files live at `C:\Users\mitch\Everything_CC\.claude\agents\` (workspace-level discovery).
-Skill lives at `C:\Users\mitch\Everything_CC\.claude\skills\write-goal-prompt\`.
-This repo is the canonical source — workspace copies stay in sync.
+Install into a target repo by running, from your `loop-engineer` clone:
+
+```bash
+bun scripts/setup-harness.ts install <target-repo-root>
+```
+
+Agents install to `~/.claude/agents/` and the skill to `~/.claude/skills/write-goal-prompt/` (workspace-level discovery). This repo is the canonical source — workspace copies stay in sync.
