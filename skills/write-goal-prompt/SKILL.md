@@ -493,7 +493,7 @@ Skip Phase 2.5 QA. Skip Phase 3.
 **Inline detached launch (no terminal drop, survives this session) — hand this to the operator to run:**
 
 ```powershell
-pwsh <loop-engineer>\scripts\launch-gnhf.ps1 `
+pwsh "${CLAUDE_PLUGIN_ROOT}\scripts\launch-gnhf.ps1" `
   -RepoPath "$PROJECT_ROOT" `
   -Objective "<full objective from Phase 2>" `
   -StopWhen "<done condition from Phase 0 eval loop>" -MaxIterations 30

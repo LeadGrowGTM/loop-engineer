@@ -34,7 +34,7 @@ supplies task-specific context; the agent files contain structural templates.
 Harness agents install to TWO locations — keep them in sync:
 
 ```
-tools/agent/agent-harness/.claude/agents/harness-*.md   ← source of truth (loop-engineer repo)
+${CLAUDE_PLUGIN_ROOT}/.claude/agents/harness-*.md   ← source of truth (loop-engineer plugin)
 ~/.claude/agents/harness-*.md                     ← installed, global, loaded at runtime for every repo
 ```
 

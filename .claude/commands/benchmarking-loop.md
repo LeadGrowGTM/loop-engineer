@@ -62,13 +62,13 @@ Reload the snapshot in place from `.harness/goals/<slug>/runs/<run-id>/` (schema
 
 ## Dispatch (by `spec.search.mode`, ADR-0003)
 
-- **`sweep`** -> the **sweep engine** `.claude/workflows/benchmark-sweep.js`:
-  `bun .claude/workflows/benchmark-sweep.js <spec.json>`. Runs all N pre-declared
+- **`sweep`** -> the **sweep engine** `${CLAUDE_PLUGIN_ROOT}/.claude/workflows/benchmark-sweep.js`:
+  `bun "${CLAUDE_PLUGIN_ROOT}/.claude/workflows/benchmark-sweep.js" <spec.json>`. Runs all N pre-declared
   candidates -> measures each via the instant adapter -> ranks by `benchmark.direction`
   -> picks the winner -> writes the variant ledger. No explore/exploit, no plateau; stop
   = candidate list exhausted (a `budget` cap still applies). Sweep skips both
   pre-measurement checks (candidates are fixed + pre-declared).
-- **`climb`** -> the **climb engine** `.claude/workflows/benchmark-climb.js`: each cycle
+- **`climb`** -> the **climb engine** `${CLAUDE_PLUGIN_ROOT}/.claude/workflows/benchmark-climb.js`: each cycle
   invents a variant, clears the two independent pre-measurement checks run by agents
   **other than the inventor** (`harness-inbounds-checker` in-bounds, then
   `harness-novelty-checker` novelty - anti-gaming is non-negotiable), measures, keeps
@@ -105,7 +105,7 @@ The `measurement.cadence` field selects where the loop runs, not a different loo
 ## Related
 
 - Spec intake: `skills/write-goal-prompt/references/benchmark-intake.md`
-- Engines: `.claude/workflows/benchmark-sweep.js`, `.claude/workflows/benchmark-climb.js`
+- Engines: `${CLAUDE_PLUGIN_ROOT}/.claude/workflows/benchmark-sweep.js`, `${CLAUDE_PLUGIN_ROOT}/.claude/workflows/benchmark-climb.js`
 - Independent checkers: `.claude/agents/harness-inbounds-checker.md`,
   `.claude/agents/harness-novelty-checker.md`
 - Registry / snapshot / ledger: `.harness/loops/README.md`,

@@ -33,7 +33,7 @@ Then ask one question: **"Install or update?"** Default: install. If everything 
 Run the install script from your loop-engineer clone:
 
 ```bash
-bun <loop-engineer>/scripts/setup-harness.ts install <repo-root>
+bun "${CLAUDE_PLUGIN_ROOT}/scripts/setup-harness.ts" install <repo-root>
 ```
 
 This does atomically:
@@ -52,7 +52,7 @@ If all 8 checks pass — done. Tell the user which engineering workflows are now
 If any check fails — show the failing line, diagnose, fix manually, re-run smoke:
 
 ```bash
-bun <loop-engineer>/scripts/setup-harness.ts smoke <repo-root> ~/.claude/agents
+bun "${CLAUDE_PLUGIN_ROOT}/scripts/setup-harness.ts" smoke <repo-root>
 ```
 
 ### 5. Done
@@ -66,6 +66,6 @@ Tell the user:
 
 ## Reference
 
-- Script: `<loop-engineer>/scripts/setup-harness.ts`
-- Routing seed: `<loop-engineer>/skills/setup-harness/routing-template.md`
-- Harness agents: `<loop-engineer>/.claude/agents/harness-*.md` (source of truth)
+- Script: `${CLAUDE_PLUGIN_ROOT}/scripts/setup-harness.ts`
+- Routing seed: `${CLAUDE_PLUGIN_ROOT}/skills/setup-harness/routing-template.md`
+- Harness agents: `${CLAUDE_PLUGIN_ROOT}/.claude/agents/harness-*.md` (source of truth)
