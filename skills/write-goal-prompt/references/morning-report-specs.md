@@ -47,7 +47,7 @@ lavish-axi share HANDOFF.html --password <pw>
   prints a **visitable URL** and a one-time secret **`update_key`**. No account or API
   key needed. It does NOT need a browser or a running Lavish server, so it works inside
   a detached overnight gnhf run.
-- **--password <pw> is MANDATORY.** ht-ml.app pages are PUBLIC by default and may be
+- **`--password <pw>` is MANDATORY.** ht-ml.app pages are PUBLIC by default and may be
   indexed/scraped. Morning reports describe client and business work - never publish
   one without a password. Generate a fresh random password per report (do not reuse a
   hardcoded one, do not commit it to a public repo).
