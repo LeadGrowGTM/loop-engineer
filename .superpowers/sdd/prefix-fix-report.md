@@ -121,4 +121,6 @@ Commit message:
 fix(agents): address plugin agents by their loop-engineer scoped names; v1.0.1
 ```
 
-SHA: filled in after commit (see final report line).
+SHA: `b40974aa7b54c3b0f48e7d4693450d4a01707d4e`
+
+Pushed to `charles-fork` on origin (`5e9e52d..b40974a`).
