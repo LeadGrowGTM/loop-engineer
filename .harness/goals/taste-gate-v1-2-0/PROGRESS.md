@@ -118,4 +118,4 @@ PROOF — All 8 verification checks:
 8. grep -c '"version": "1.2.0"' .claude-plugin/plugin.json → 1
    1
 
-Commit: (pending — to be created)
+Commit: 44aac4b — chore(taste-gate): bump plugin to v1.2.0 and pass verification sweep
