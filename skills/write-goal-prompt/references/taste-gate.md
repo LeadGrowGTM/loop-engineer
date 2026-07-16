@@ -18,7 +18,7 @@ Answer: is this goal taste-relevant?
 | Backend, infra, migration, data schema, mechanical tooling, internal systems, API guts, database design | **NO** | Skip taste gate. No approval step. No compilation. Continue to Phase 2. |
 | Ambiguous (could be either — e.g., "refactor authentication") | **AMBIGUOUS** | Ask the user ONE clarifying question: "Is this for a user-facing feature or an internal system?" Never ask when default is clear. |
 
-**Rule:** Do not use user judgment to resolve ambiguity post-hoc. Ask once, inline, in the question round. Default to NO when uncertain.
+**Rule:** Never ask when the default is clear. For a genuinely ambiguous shape, ask the ONE question above, inline, in the single question round — then route on the answer.
 
 ## The approval table (present after loading)
 
@@ -80,9 +80,9 @@ If no entries were approved: `Taste applied: none`
 2. Repo taste (`.harness/taste.md`)
 3. Personal taste (`ux-taste.md`, `ui-taste.md`, `copy-taste.md`, `opinions.md`)
 
-Later entries override earlier ones if two taste files propose conflicting rules. Present all three layers in the approval table so the user can re-rank or drop lower-precedence entries.
+When two layers propose conflicting rules, the higher-precedence layer wins: client brand beats repo, repo beats personal. Present all three layers in the approval table so the user can re-rank or drop lower-precedence entries.
 
-**For internal goals** (NO route, or infrastructure/backend):
+**For internal goals** (taste-relevant but not client-facing):
 1. Personal taste first (no client brand or repo taste to consult)
 2. Repo taste (`.harness/taste.md` — optional)
 3. Client brand (skip entirely for internal goals)
