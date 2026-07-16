@@ -221,7 +221,7 @@ if (import.meta.main) {
 
     const claudeMdPath = join(targetDir, 'CLAUDE.md');
     if (existsSync(claudeMdPath)) {
-      const sha = (() => { try { return require('child_process').execSync('git -C ' + __dirname + ' rev-parse --short HEAD', { encoding: 'utf8' }).trim(); } catch { return 'unknown'; } })();
+      const sha = (() => { try { return require('child_process').execSync('git -C ' + import.meta.dir + ' rev-parse --short HEAD', { encoding: 'utf8' }).trim(); } catch { return 'unknown'; } })();
       const block = `## Harness\nInstalled: ${new Date().toISOString().slice(0, 10)}. Source: LeadGrowGTM/loop-engineer@${sha}.\nRouting: \`.harness/skill-routing.md\`. Goals: \`.harness/goals/<slug>/\`. Backlog: \`.tasks.toml\` → \`.claude/backlog.md\` (project-scoped). Worktrees: \`treehouse.toml\` (project-scoped; \`launch-gnhf.ps1\` auto-leases an isolated worktree when a parallel gnhf run is detected). Agents: global (\`~/.claude/agents/\`).`;
       writeFileSync(claudeMdPath, patchClaudeMd(readFileSync(claudeMdPath, 'utf8'), block));
       console.log('Updated CLAUDE.md ## Harness block');
