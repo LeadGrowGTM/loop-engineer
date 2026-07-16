@@ -1,0 +1,16 @@
+{
+  "description": "loop-engineer hooks: auto-update the marketplace on session start",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/update-marketplace.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
