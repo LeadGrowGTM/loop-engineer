@@ -9,6 +9,7 @@ All reference files for the write-goal-prompt skill.
 | [subagent-harness.md](../references/subagent-harness.md)                       | 4-agent loop design, depth budget, checker independence rules           |
 | [eval-loop-design.md](../references/eval-loop-design.md)                       | Reward signal design, pass thresholds, cycle budget                     |
 | [clarity-gate.md](../references/clarity-gate.md)                               | Phase 0.5 grill vs `/wayfinder` routing, grill agent prompt             |
+| [spec-intake.md](../references/spec-intake.md)                                 | Branch S: superpowers spec → goal, checkability gate, no grill          |
 | [issue-tracker.md](../references/issue-tracker.md)                             | Durable phase-slice schema (`issues/NN-<slug>.md`), Status vocab        |
 | [skill-routing.md](../references/skill-routing.md)                             | Which skill to invoke per task type                                     |
 | [execution-mode-routing.md](../references/execution-mode-routing.md)           | Task-shape routing: single-run, goal-loop, time-loop, dynamic-workflow  |

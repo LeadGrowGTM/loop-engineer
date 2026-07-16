@@ -95,16 +95,21 @@ A goal without an eval is a task description. Output: completed `[EVAL LOOP]` bl
 
 Produce: single reward signal (programmatic — flag if human judgment required) · mechanical gate (binary, seconds, no LLM) · qualitative gate (scored) · max_cycles (default 3) · done condition (exact threshold).
 
+Spec mode: derive all five from the spec's verification/testing section per `references/spec-intake.md` instead of authoring fresh; if the spec yields no checkable done conditions, bounce per that file's gate.
+
 ---
 
 ## Phase 0.5: Clarity Gate
 
 **Run after Phase 0, before Phase 1.** Resolve ambiguity BEFORE authoring the goal. Do not skip lightly - an unclear goal wastes an unsupervised run. Route on task size; branch bodies live in `references/clarity-gate.md`.
 
+**Spec mode (Branch S):** if the user provides a superpowers spec/plan path or says "from the spec", skip the grill entirely - the spec already answered it. Read `references/spec-intake.md` and follow its mapping + gate, then continue at Phase 1 with the fields pre-filled.
+
 **Skip only when** all Phase 1 fields (Task, Tech/Stack, Done criteria, Context) are fully specified in the user's opening message with no open scope questions. When in doubt, do not skip - grill.
 
 | Signal | Route |
 | --- | --- |
+| A superpowers spec/plan file is provided or referenced | **Spec mode** — `references/spec-intake.md`: map spec → goal, no grill (Branch S) |
 | Fully specified, zero ambiguity | **Skip** → Phase 1 |
 | Large / multi-session / >~5 open scope questions / investigative unknowns | **`/wayfinder`** — chart the work as an investigation-ticket map, resolve, then resume Phase 1 with decisions folded in (Branch B) |
 | Single-session scope with some ambiguity | **grill** — `/grilling` for deep interactive depth, or the batch-question agent for one `AskUserQuestion` round (Branch A) |
@@ -560,6 +565,7 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 | ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | `references/eval-loop-design.md`     | Phase 0 four questions, human-judgment flag, task-type lookup                                            |
 | `references/clarity-gate.md`         | Phase 0.5 branch bodies: grill agent prompt + `/grilling`; wayfinder routing test for large tasks        |
+| `references/spec-intake.md`          | Branch S: superpowers spec/plan → goal mapping, checkability gate, no-grill chaining                     |
 | `references/parallel-execution.md`   | Worktree isolation: treehouse pool, auto-lease on collision, lease lifecycle, manual parallel-stream commands |
 | `references/subagent-harness.md`     | Planner/maker/checker templates, budget allocation, checker independence rules                           |
 | `references/skill-routing.md`        | Task type → skill mappings, chaining patterns, quality bars per skill                                    |
