@@ -164,4 +164,4 @@ PROOF:
   Verification 8 — Tooling note present:
   Section includes: "When available, use installed skills to run the procedure: grill-me ... grill-with-docs ... If neither skill is available, run the procedure inline..."
 
-Commit: [pending git commit]
+Commit: 4dbea61 — docs(grill-gate): add grill gate section to spec-intake and wire SKILL.md
