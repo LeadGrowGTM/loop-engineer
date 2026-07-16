@@ -52,6 +52,14 @@ Everything this run writes lives under `$PROJECT_ROOT`:
 
 Pass the resolved working-dir absolute path to every harness agent — they write bare filenames relative to it. If `$PROJECT_ROOT` is not a git repo, fall back to cwd (old behavior).
 
+**Step 0.1 — Launcher preflight.** The gnhf autonomous path requires `gnhf` and `pwsh` on PATH. Check once per session:
+
+```bash
+command -v gnhf >/dev/null && command -v pwsh >/dev/null && echo "gnhf stack: available" || echo "gnhf stack: NOT available - in-session harness only"
+```
+
+If NOT available: do not offer, emit, or reference the gnhf / `launch-gnhf.ps1` path anywhere in this run. Route every task shape to the **in-session harness** and tell the operator once, in one line: "gnhf stack not installed on this machine, using the in-session path." The mode table below only applies in full when the stack is available.
+
 Then determine execution mode. Ask if not obvious from context. This is the **infrastructure** axis (where/how the harness runs); it is distinct from the *task-shape* axis in the "Execution Mode Routing" section below (`references/execution-mode-routing.md`).
 
 | Task shape                                   | Mode                                              |
