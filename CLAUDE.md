@@ -6,10 +6,11 @@ Goal prompt writer + planner/maker/checker harness for Claude Code loop engineer
 
 | Path | What |
 |---|---|
-| `.claude/agents/` | Harness agent definitions (planner, maker, prover, checker) |
+| `.claude/agents/` | Harness agent definitions (planner, maker, prover, checker, shipper) + benchmarking checkers (inbounds, novelty) |
 | `.claude/state/` | SQLite triage schema + README |
+| `docs/DEPENDENCIES.md` | Every external tool the loop uses — Required/Optional/Bundled tiers, verify commands, what breaks without each |
 | `skills/write-goal-prompt/` | Goal authoring skill — phases, eval loop, harness discovery |
-| `skills/write-goal-prompt/references/` | 11 reference files (eval-loop-design, subagent-harness, skill-routing, clarity-gate, issue-tracker, parallel-execution, etc.) |
+| `skills/write-goal-prompt/references/` | 12 reference files (eval-loop-design, subagent-harness, skill-routing, clarity-gate, issue-tracker, parallel-execution, benchmark-intake, etc.) |
 | `skills/write-goal-prompt/docs/` | Architecture map, reference index |
 | `skills/write-goal-prompt/kb/` | KB scaffold — LOG.md, signals/, docs/ |
 | `scripts/triage.ts` | Bun CLI: list/review/dismiss/log/signal for the triage inbox |
@@ -23,10 +24,11 @@ Goal prompt writer + planner/maker/checker harness for Claude Code loop engineer
 
 ## Core principle
 
-The model that wrote the code grades its own homework generously. Four-agent loop: Planner → Maker → Prover → Checker.
+The model that wrote the code grades its own homework generously. Five-agent loop: Planner → Maker → Prover → Checker → Shipper.
 
 - **Prover** (`tools: Read, Bash`) drives the running app, returns binary PROOF verdict. Running-app goals only — skip for static artifacts.
 - **Checker** (`tools: Read, Glob, Write`) scores artifacts against rubric. Cannot run Bash, cannot spawn agents. Receives PROOF verdict via invocation context.
+- **Shipper** (`tools: Read, Bash`) runs `/no-mistakes` exactly once after a Checker PASS, drives it to a terminal outcome, returns the PR URL. Never runs on ITERATE or PLATEAU.
 
 ## Key commands
 

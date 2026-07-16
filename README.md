@@ -43,11 +43,14 @@ Goal agent (depth 0)
   └── harness-prover  (depth 3)  → PROOF verdict (running-app goals only)
   └── harness-checker (depth 4)  → CYCLE_LOG.md (scores + verdict)
        ↑ repeat until PASS or plateau (max 3 cycles)
+  PASS → /no-mistakes → review/test/lint/push/PR/CI → PR ready for human merge
 ```
 
 Depth budget: goal=0, planner=1, maker=2, prover=3, checker=4, sub-skills max=5. Never need depth 6.
 
 **Prover role:** For goals that produce a running application (browser UI, API, CLI), Prover drives the live feature and returns a binary works/broken verdict before Checker scores. For static artifact goals (docs, code, analysis), skip Prover and go directly to Checker.
+
+**Shipping stage:** After Checker returns PASS, the goal agent spawns a fresh `harness-shipper`, which invokes `/no-mistakes` exactly once and drives it to a terminal outcome. A `checks-passed` outcome means the PR is prepared with green CI for human review and merge. ITERATE and PLATEAU do not ship.
 
 ## How goals use this
 
@@ -100,6 +103,20 @@ Checker cites `file:line` evidence for every dimension score. Scores without cit
 
 ## Installation
 
+**Prerequisites:** see [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) for every external tool the
+loop uses, its tier (Required / Optional / Bundled), a verify command, and what breaks without it.
+Check them by hand — `scripts/setup-harness.ts` seeds config and installs agent files but verifies
+**no** external binary, so a green setup run tells you nothing about whether `gnhf`, `treehouse`,
+`tasks-axi`, or `no-mistakes` exist.
+
 Agent files live at `C:\Users\mitch\Everything_CC\.claude\agents\` (workspace-level discovery).
-Skill lives at `C:\Users\mitch\Everything_CC\.claude\skills\write-goal-prompt\`.
-This repo is the canonical source — workspace copies stay in sync.
+Skill lives at `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\skills\write-goal-prompt\` —
+this repo is the canonical source.
+
+`C:\Users\mitch\.claude\skills\write-goal-prompt` is a **junction** to the repo copy, so the two
+cannot drift: edit the repo copy, never the `~/.claude` path. The junction replaced a real directory
+that had silently drifted from this repo; the stale copy is archived at
+`C:\Users\mitch\Everything_CC\archive\2026-07-16-write-goal-prompt-stale-copy\`.
+
+Copies under `C:\Users\mitch\Everything_CC\.claude\` are **not** junctioned and do drift from this
+repo — do not assume they are current.
