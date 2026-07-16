@@ -567,7 +567,7 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 | File                                 | Contents                                                                                                 |
 | ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | `references/eval-loop-design.md`     | Phase 0 four questions, human-judgment flag, task-type lookup                                            |
-| `references/clarity-gate.md`         | Phase 0.5 branch bodies: grill agent prompt + `/grilling`; wayfinder routing test for large tasks        |
+| `references/clarity-gate.md`         | Phase 0.5 branch bodies: `/grilling` vs `batch-grill-me` selection test; wayfinder routing test for large tasks |
 | `references/parallel-execution.md`   | Worktree isolation: treehouse pool, auto-lease on collision, lease lifecycle, manual parallel-stream commands |
 | `references/subagent-harness.md`     | Planner/maker/checker templates, budget allocation, checker independence rules                           |
 | `references/skill-routing.md`        | Task type → skill mappings, chaining patterns, quality bars per skill                                    |

@@ -1,6 +1,6 @@
 # write-goal-prompt Harness Architecture
 
-Three agents. Strict roles. No overlap.
+Five agents. Strict roles. No overlap.
 
 ---
 
@@ -10,7 +10,9 @@ Three agents. Strict roles. No overlap.
 | ------- | ----------------------------------- | ------------------------------ | ------------------------------------ | ---------- |
 | Planner | `.claude/agents/harness-planner.md` | Decompose goal → PLAN.md       | Read, Glob, Write                    | sonnet-4-6 |
 | Maker   | `.claude/agents/harness-maker.md`   | Execute phases, commit each    | Read, Glob, Write, Edit, Bash, Agent | haiku-4-5  |
+| Prover  | `.claude/agents/harness-prover.md`  | Drive running app → PROOF verdict | Read, Bash                        | sonnet-4-6 |
 | Checker | `.claude/agents/harness-checker.md` | Score artifacts → CYCLE_LOG.md | Read, Glob, Write                    | sonnet-4-6 |
+| Shipper | `.claude/agents/harness-shipper.md` | `/no-mistakes` once after PASS → PR | Read, Bash                      | sonnet-4-6 |
 
 Checker's tool restriction (`Read, Glob, Write` only) is **mechanical isolation** — it cannot
 run Bash, spawn subagents, or see anything Maker produced via tool calls. Independence by design.
@@ -45,7 +47,7 @@ Claude Code enforces a 5-level agent depth limit. Design to stay within it.
 
 | Depth | Agent                          | Notes                            |
 | ----- | ------------------------------ | -------------------------------- |
-| 0     | Goal loop agent                | Spawns Planner + Maker + Checker |
+| 0     | Goal loop agent                | Spawns Planner + Maker + Prover + Checker + Shipper |
 | 1     | harness-planner                | Write-only phase; spawns nothing |
 | 2     | harness-maker                  | Can spawn skill agents (depth 3) |
 | 3     | harness-checker / skill agents | Checker runs here                |
@@ -66,12 +68,18 @@ Goal loop
   → spawn Maker    → executes phases, commits, writes PROGRESS.md
   → spawn Checker  → scores final artifacts, writes CYCLE_LOG.md
        ↓
-  PASS  → done
+  PASS  → /no-mistakes → review/test/lint/push/PR/CI → PR ready for human merge
   ITERATE → spawn Maker again (reads CYCLE_LOG.md fix target)
   PLATEAU → commit best, write HANDOFF.md, stop
 ```
 
 Max cycles: 3 (default). Plateau = last 3 reward signals within ±0.1.
+
+`/no-mistakes` is a terminal shipping gate, not an eval cycle. After PASS, the goal agent spawns
+a fresh `harness-shipper`; it never drives the pipeline inline. The shipper runs it exactly once
+with committed task changes on a feature branch and the original objective as its intent, then
+drives decision gates until a terminal outcome. `checks-passed` prepares the merge but does not
+perform it; ITERATE and PLATEAU never enter the shipping gate.
 
 ---
 
@@ -92,3 +100,4 @@ best artifact and records the plateau in HANDOFF.md.
 3. Every Checker score requires `file:line` evidence — "looks good" is invalid
 4. Planner writes PLAN.md and stops — it does not produce task artifacts
 5. Maker commits after each phase — partial work survives session death
+6. No-mistakes runs only after PASS — failed validation cannot be reported as merge-ready

@@ -6,9 +6,10 @@ All reference files for the write-goal-prompt skill.
 
 | File                                                                            | What it covers                                                          |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| [subagent-harness.md](../references/subagent-harness.md)                       | 3-agent loop design, depth budget, checker independence rules           |
+| [subagent-harness.md](../references/subagent-harness.md)                       | 5-agent loop design, depth budget, checker independence rules           |
 | [eval-loop-design.md](../references/eval-loop-design.md)                       | Reward signal design, pass thresholds, cycle budget                     |
-| [clarity-gate.md](../references/clarity-gate.md)                               | Phase 0.5 grill vs `/wayfinder` routing, grill agent prompt             |
+| [clarity-gate.md](../references/clarity-gate.md)                               | Phase 0.5 grill vs `/wayfinder` routing; `/grilling` vs `batch-grill-me` |
+| [benchmark-intake.md](../references/benchmark-intake.md)                       | Benchmark spec intake — the four spec sections, sweep vs climb          |
 | [issue-tracker.md](../references/issue-tracker.md)                             | Durable phase-slice schema (`issues/NN-<slug>.md`), Status vocab        |
 | [skill-routing.md](../references/skill-routing.md)                             | Which skill to invoke per task type                                     |
 | [execution-mode-routing.md](../references/execution-mode-routing.md)           | Task-shape routing: single-run, goal-loop, time-loop, dynamic-workflow  |

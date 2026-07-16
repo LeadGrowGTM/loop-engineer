@@ -62,12 +62,15 @@ ApiClient is at src/lib/api-client.ts — read it before migrating.
 - grep for verification of API calls
 
 [HARNESS]
-Read HARNESS.md before starting. Three-phase execution:
+Read HARNESS.md before starting. Four-stage execution:
 1. Planner (turns 1-5): decompose task → write PLAN.md (phases, skill routing, checker rubric).
    Do not produce task artifacts until PLAN.md is written.
 2. Maker (turns 6-<N>): execute per PLAN.md, invoke skills per phase, commit at each phase boundary.
 3. Checker: spawn fresh subagent per checker brief in HARNESS.md. Pass artifact paths only —
    not your reasoning context. Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
+4. Ship: only after Checker PASS, spawn a fresh `harness-shipper` with the original task as
+   intent. It invokes `/no-mistakes` and drives it to a terminal outcome. Record the PR URL;
+   `checks-passed` means ready for human merge.
 
 Work through the task to completion. If you hit a blocker, do not stop. Use mocks, stubs, or documented assumptions. Record each workaround and continue with everything that does not require my decision.
 
