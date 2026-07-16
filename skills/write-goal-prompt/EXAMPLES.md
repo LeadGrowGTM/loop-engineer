@@ -122,10 +122,12 @@ By morning, leave me the morning report at project root:
 2. HANDOFF.html — single-page visual summary (status badges per phase, files
    created with sizes, decisions made, blockers highlighted)
 3. HANDOFF.excalidraw — diagram of migration scope (blue=done, red=blocked)
-4. Publish it: `lavish-axi share HANDOFF.html --password <fresh-pw>` — record ONLY the
-   URL in a "## 📋 Published Report" block atop HANDOFF.md. Write the password and
-   update_key to HANDOFF.secret.local (+ .gitignore it — update_key is update/delete-
-   capable and must never be committed). Export fallback if ht-ml.app unreachable.
+4. Publish it PUBLIC: `lavish-axi share HANDOFF.html` — no --password, so the link opens
+   in one click and can be dropped straight into the no-mistakes PR. Keep credentials and
+   client PII out of the report body; anyone with the URL can read it. Record the URL in a
+   "## 📋 Published Report" block atop HANDOFF.md. Write the update_key to
+   HANDOFF.secret.local (+ .gitignore it — still update/delete-capable, never commit it).
+   Export fallback if ht-ml.app unreachable.
 
 [TURN LIMIT] Stop after 80 turns.
 ```

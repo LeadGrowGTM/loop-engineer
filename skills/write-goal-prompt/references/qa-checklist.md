@@ -191,7 +191,7 @@ Before emitting, verify the condition:
 - [ ] **Context-based compaction** at 170k tokens (not turn-based)
 - [ ] **Turn limit** included — default 80, never omit
 - [ ] **Morning report deliverables** — HANDOFF.md + HANDOFF.html + HANDOFF.excalidraw
-- [ ] **Report published** — `lavish-axi share HANDOFF.html --password …` step present; URL captured in HANDOFF.md; password + update_key saved to HANDOFF.secret.local (gitignored, never committed)
+- [ ] **Report published PUBLIC** — `lavish-axi share HANDOFF.html` step present with NO `--password` (the link must open in one click and be pasteable into the no-mistakes PR); URL captured in HANDOFF.md; update_key saved to HANDOFF.secret.local (gitignored, never committed — still update/delete-capable); no credentials or client PII in the report body
 - [ ] **Overnight framing** — reads as a handoff, not a command
 - [ ] **Total length** under 4000 characters (Phase 2.5 length gate passed)
 - [ ] **Brevity Pass run** — shortest prompt that passes the dry-run, not the longest that fits; if the gate printed WARN, the subtractive pass above was applied and every remaining block earns its place

@@ -398,12 +398,15 @@ By morning, leave me the morning report in the task's working directory:
 3. HANDOFF.excalidraw — architecture/flow diagram (see references/morning-report-specs.md)
 
 Then PUBLISH the report so I wake up to a link, not a file on disk:
-4. Run `lavish-axi share HANDOFF.html --password <fresh-random-pw>` — publishes to a
-   hosted URL (headless-safe HTTPS POST, no browser needed). --password is mandatory
-   (pages are public by default; this is client/business work). Record ONLY the hosted
-   URL in a "## 📋 Published Report" block at the TOP of HANDOFF.md. Write the password
-   and update_key to HANDOFF.secret.local and add that filename to .gitignore
-   immediately — the update_key is update/delete-capable and MUST NEVER be committed
+4. Run `lavish-axi share HANDOFF.html` — publishes to a hosted URL (headless-safe HTTPS
+   POST, no browser needed). Publish PUBLIC: do NOT pass --password. The link must open
+   in one click from anywhere, including a comment on the no-mistakes PR — a password
+   gate makes the report single-player. The trade: anyone with the URL can read it, so
+   keep credentials, tokens, and client PII OUT of the report body — gate the value, not
+   the page. Record the hosted URL in a "## 📋 Published Report" block at the TOP of
+   HANDOFF.md. The update_key is still a secret: write it to HANDOFF.secret.local, add
+   that filename to .gitignore immediately — it is update/delete-capable and MUST NEVER
+   be committed. A public page does not mean a public key
    to any repo. If ht-ml.app is unreachable, fall back to
    `lavish-axi export HANDOFF.html --out HANDOFF.export.html` and note why in HANDOFF.md.
    See references/morning-report-specs.md.
