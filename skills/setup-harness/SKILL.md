@@ -37,17 +37,17 @@ bun <loop-engineer>/scripts/setup-harness.ts install <repo-root>
 ```
 
 This does atomically:
-1. Copies `harness-planner.md`, `harness-maker.md`, `harness-prover.md`, `harness-checker.md` → `~/.claude/agents/`
-2. Scans `<repo-root>` for SKILL.md files
-3. Seeds `.harness/skill-routing.md` from `routing-template.md` + repo-specific skills, and `.harness/goals/` (working dir for goal runs)
-4. Seeds a per-project `.tasks.toml` (tasks-axi backlog → `.claude/backlog.md`) and `treehouse.toml` (worktree pool), if not already present
-5. Adds `.tmp/treehouse/` and `.gnhf-runs/` to `.gitignore`
-6. Patches `CLAUDE.md` with `## Harness` block (install date + source SHA)
-7. Runs smoke test — prints ✓/✗ per check (6 checks: 4 agent files, skill-routing.md, `## Harness` block)
+1. Scans `<repo-root>` for SKILL.md files
+2. Seeds `.harness/skill-routing.md` from `routing-template.md` + repo-specific skills, and `.harness/goals/` (working dir for goal runs)
+3. Seeds a per-project `.tasks.toml` (tasks-axi backlog → `.claude/backlog.md`) and `treehouse.toml` (worktree pool), if not already present
+4. Adds `.tmp/treehouse/` and `.gnhf-runs/` to `.gitignore`
+5. Patches `CLAUDE.md` with `## Harness` block (install date + source SHA)
+6. Runs smoke test with ✓/✗ per check (8 checks: 6 plugin agent files, skill-routing.md, ## Harness block)
+7. Verifies plugin integrity (6 agent files present in the plugin)
 
 ### 4. Present smoke test results
 
-If all 6 checks pass — done. Tell the user which engineering workflows are now available.
+If all 8 checks pass — done. Tell the user which engineering workflows are now available.
 
 If any check fails — show the failing line, diagnose, fix manually, re-run smoke:
 
@@ -62,7 +62,7 @@ Tell the user:
 - Harness is ready. Planner reads `.harness/skill-routing.md` — edit it to tune routing for this repo.
 - Run `/write-goal-prompt` to create a harness-wired goal prompt.
 - Re-run `/setup-harness` if you add new skills and want them auto-added to the routing table.
-- To update agents: re-run `/setup-harness` — it overwrites `~/.claude/agents/harness-*.md` with the latest from loop-engineer.
+- To update agents: the plugin updates itself via the marketplace; bump the version in .claude-plugin/plugin.json and merge to master to release.
 
 ## Reference
 

@@ -10,7 +10,7 @@
  *   bun scripts/setup-harness.ts install <target-dir>
  */
 
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 
 // ── constants ──────────────────────────────────────────────────────────────
@@ -25,6 +25,15 @@ export const HARNESS_AGENTS = [
   'harness-prover.md',
   'harness-checker.md',
 ] as const;
+
+// The 2 benchmarking-loop checkers also ship in the plugin (experimental until a real run).
+export const BENCHMARK_AGENTS = [
+  'harness-inbounds-checker.md',
+  'harness-novelty-checker.md',
+] as const;
+
+// Everything the plugin ships; smoke verifies plugin integrity against this list.
+export const PLUGIN_AGENTS = [...HARNESS_AGENTS, ...BENCHMARK_AGENTS] as const;
 
 // ── types ──────────────────────────────────────────────────────────────────
 
@@ -122,8 +131,8 @@ export function smokeTest(targetDir: string, agentsDir: string): SmokeResult[] {
     readFileSync(routingPath, 'utf8').split('\n').length >= 10;
 
   return [
-    ...HARNESS_AGENTS.map((f) => ({
-      check: `${f} in agents dir`,
+    ...PLUGIN_AGENTS.map((f) => ({
+      check: `${f} in plugin agents dir`,
       passed: existsSync(join(agentsDir, f)),
     })),
     {
@@ -147,29 +156,21 @@ if (import.meta.main) {
     const results = scanSkills(rest[0]);
     console.log(JSON.stringify(results, null, 2));
   } else if (cmd === 'smoke') {
-    const results = smokeTest(rest[0], rest[1]);
+    const results = smokeTest(rest[0], rest[1] ?? join(import.meta.dir, '../.claude/agents'));
     for (const r of results) {
       console.log(`${r.passed ? '✓' : '✗'} ${r.check}`);
     }
     if (!results.every((r) => r.passed)) process.exit(1);
   } else if (cmd === 'install') {
     const targetDir = rest[0];
-    const agentsDir = join(process.env.HOME ?? process.env.USERPROFILE ?? '', '.claude', 'agents');
     const sourceAgentsDir = join(import.meta.dir, '../.claude/agents');
 
-    // Fail loudly if a source agent is missing rather than installing a silently
-    // incomplete harness (issue #13).
-    const missingAgents = HARNESS_AGENTS.filter((f) => !existsSync(join(sourceAgentsDir, f)));
+    // Plugin integrity: all shipped agents must exist in the plugin source.
+    const missingAgents = PLUGIN_AGENTS.filter((f) => !existsSync(join(sourceAgentsDir, f)));
     if (missingAgents.length) {
-      console.error(`✗ source agents missing from ${sourceAgentsDir}: ${missingAgents.join(', ')}`);
-      console.error('  Aborting — the installed harness would be incomplete.');
+      console.error(`✗ plugin agents missing from ${sourceAgentsDir}: ${missingAgents.join(', ')}`);
+      console.error('  Aborting: this plugin checkout is incomplete.');
       process.exit(1);
-    }
-
-    mkdirSync(agentsDir, { recursive: true });
-    for (const f of HARNESS_AGENTS) {
-      copyFileSync(join(sourceAgentsDir, f), join(agentsDir, f));
-      console.log(`Copied ${f} → ${agentsDir}`);
     }
 
     const templatePath = join(import.meta.dir, '../skills/setup-harness/routing-template.md');
@@ -222,12 +223,13 @@ if (import.meta.main) {
     const claudeMdPath = join(targetDir, 'CLAUDE.md');
     if (existsSync(claudeMdPath)) {
       const sha = (() => { try { return require('child_process').execSync('git -C ' + import.meta.dir + ' rev-parse --short HEAD', { encoding: 'utf8' }).trim(); } catch { return 'unknown'; } })();
-      const block = `## Harness\nInstalled: ${new Date().toISOString().slice(0, 10)}. Source: LeadGrowGTM/loop-engineer@${sha}.\nRouting: \`.harness/skill-routing.md\`. Goals: \`.harness/goals/<slug>/\`. Backlog: \`.tasks.toml\` → \`.claude/backlog.md\` (project-scoped). Worktrees: \`treehouse.toml\` (project-scoped; \`launch-gnhf.ps1\` auto-leases an isolated worktree when a parallel gnhf run is detected). Agents: global (\`~/.claude/agents/\`).`;
+      const pluginVersion = (() => { try { return JSON.parse(readFileSync(join(import.meta.dir, '../.claude-plugin/plugin.json'), 'utf8')).version ?? 'unknown'; } catch { return 'unknown'; } })();
+      const block = `## Harness\nInstalled: ${new Date().toISOString().slice(0, 10)}. Source: loop-engineer plugin v${pluginVersion} (LeadGrowGTM/loop-engineer@${sha}).\nRouting: \`.harness/skill-routing.md\`. Goals: \`.harness/goals/<slug>/\`. Backlog: \`.tasks.toml\` → \`.claude/backlog.md\` (project-scoped). Worktrees: \`treehouse.toml\` (project-scoped; \`launch-gnhf.ps1\` auto-leases an isolated worktree when a parallel gnhf run is detected). Agents: loop-engineer plugin (auto-loaded).`;
       writeFileSync(claudeMdPath, patchClaudeMd(readFileSync(claudeMdPath, 'utf8'), block));
       console.log('Updated CLAUDE.md ## Harness block');
     }
 
-    const smoke = smokeTest(targetDir, agentsDir);
+    const smoke = smokeTest(targetDir, sourceAgentsDir);
     console.log('\nSmoke test:');
     for (const r of smoke) console.log(`  ${r.passed ? '✓' : '✗'} ${r.check}`);
   } else {

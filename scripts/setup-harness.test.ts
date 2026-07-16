@@ -1,7 +1,7 @@
 import { test, expect, describe } from 'bun:test';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
-import { scanSkills, seedRoutingTable, patchClaudeMd, smokeTest, HARNESS_AGENTS } from './setup-harness';
+import { scanSkills, seedRoutingTable, patchClaudeMd, smokeTest, HARNESS_AGENTS, BENCHMARK_AGENTS, PLUGIN_AGENTS } from './setup-harness';
 
 // ── test fixtures ──────────────────────────────────────────────────────────
 
@@ -134,13 +134,19 @@ Routing: \`.harness/skill-routing.md\`. Agents: global (\`~/.claude/agents/\`).`
 
 // ── smokeTest ──────────────────────────────────────────────────────────────
 
-describe('HARNESS_AGENTS', () => {
-  test('is the full 4-agent set including the prover', () => {
+describe('agent constants', () => {
+  test('HARNESS_AGENTS is the 4-agent build loop including the prover', () => {
     expect(HARNESS_AGENTS).toContain('harness-planner.md');
     expect(HARNESS_AGENTS).toContain('harness-maker.md');
     expect(HARNESS_AGENTS).toContain('harness-prover.md');
     expect(HARNESS_AGENTS).toContain('harness-checker.md');
     expect(HARNESS_AGENTS).toHaveLength(4);
+  });
+
+  test('PLUGIN_AGENTS adds the 2 benchmarking checkers (6 total ship in the plugin)', () => {
+    expect(BENCHMARK_AGENTS).toContain('harness-inbounds-checker.md');
+    expect(BENCHMARK_AGENTS).toContain('harness-novelty-checker.md');
+    expect(PLUGIN_AGENTS).toHaveLength(6);
   });
 });
 
@@ -150,9 +156,7 @@ describe('smokeTest', () => {
       '.harness/skill-routing.md': Array(11).fill('| row |').join('\n'),
       'CLAUDE.md': '## Harness\nInstalled.',
     });
-    const agentsDir = scaffold(
-      Object.fromEntries(HARNESS_AGENTS.map((f) => [f, `---\nname: ${f.replace('.md', '')}\n---`])),
-    );
+    const agentsDir = scaffold(Object.fromEntries(PLUGIN_AGENTS.map((f) => [f, '---'])));
 
     const results = smokeTest(dir, agentsDir);
     expect(results.every((r) => r.passed)).toBe(true);
@@ -166,7 +170,7 @@ describe('smokeTest', () => {
     // every agent except the prover
     const agentsDir = scaffold(
       Object.fromEntries(
-        HARNESS_AGENTS.filter((f) => f !== 'harness-prover.md').map((f) => [f, '---']),
+        PLUGIN_AGENTS.filter((f) => f !== 'harness-prover.md').map((f) => [f, '---']),
       ),
     );
 
@@ -180,10 +184,9 @@ describe('smokeTest', () => {
       '.harness/skill-routing.md': Array(11).fill('| row |').join('\n'),
       'CLAUDE.md': '## Harness\nInstalled.',
     });
-    const agentsDir = scaffold({
-      'harness-maker.md': '---',
-      'harness-checker.md': '---',
-    });
+    const agentsDir = scaffold(
+      Object.fromEntries(PLUGIN_AGENTS.filter((f) => f !== 'harness-planner.md').map((f) => [f, '---'])),
+    );
 
     const results = smokeTest(dir, agentsDir);
     const plannerCheck = results.find((r) => r.check.includes('harness-planner'));
@@ -195,11 +198,7 @@ describe('smokeTest', () => {
       '.harness/skill-routing.md': '| one row |',
       'CLAUDE.md': '## Harness\nInstalled.',
     });
-    const agentsDir = scaffold({
-      'harness-planner.md': '---',
-      'harness-maker.md': '---',
-      'harness-checker.md': '---',
-    });
+    const agentsDir = scaffold(Object.fromEntries(PLUGIN_AGENTS.map((f) => [f, '---'])));
 
     const results = smokeTest(dir, agentsDir);
     const routingCheck = results.find((r) => r.check.includes('skill-routing'));
