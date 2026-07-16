@@ -118,6 +118,14 @@ Fold every answer (or the wayfinder map's decisions) into Phase 1 as if the user
 
 ---
 
+## Phase 0.75: Taste Gate
+
+**Run after Phase 0.5, before Phase 1.** Applies to BOTH grilled and spec-mode goals. If the goal is taste-relevant (client-facing, UI, content, copy, design), load personal + repo + client brand taste, present a single approval table, and compile approved entries into the goal's "Done means" quality criteria and/or [CONSTRAINTS] must-NOT-touch lines. See `references/taste-gate.md` for the router (goal shape → YES/NO/AMBIGUOUS), the approval table format, and compilation rules.
+
+Skip if the goal is backend/infra/tooling (default NO from the router).
+
+---
+
 ## Phase 1: Gather Inputs
 
 | Field                 | What you need                                                                 | Required?                                             |
@@ -565,6 +573,7 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 | ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | `references/eval-loop-design.md`     | Phase 0 four questions, human-judgment flag, task-type lookup                                            |
 | `references/clarity-gate.md`         | Phase 0.5 branch bodies: grill agent prompt + `/grilling`; wayfinder routing test for large tasks        |
+| `references/taste-gate.md`           | Phase 0.75: router (goal shape → YES/NO), approval table format, compilation rules, precedence          |
 | `references/spec-intake.md`          | Branch S: superpowers spec/plan → goal mapping, checkability gate, no-grill chaining                     |
 | `references/parallel-execution.md`   | Worktree isolation: treehouse pool, auto-lease on collision, lease lifecycle, manual parallel-stream commands |
 | `references/subagent-harness.md`     | Planner/maker/checker templates, budget allocation, checker independence rules                           |

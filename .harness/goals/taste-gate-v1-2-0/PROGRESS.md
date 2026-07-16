@@ -37,4 +37,40 @@ Verification checks from spec:
   7. ✓ Sandbox proof: 4 personal files, repo taste.md, idempotency preserved
   8. (skipped — Phase 3 artifact)
 
-Commit: (pending)
+Commit: 3f6832e — feat(taste-gate): seed personal and repo taste templates with tests
+
+## Phase 2: Taste gate reference + SKILL.md/docs wiring — COMPLETE
+Slice: `.harness/goals/taste-gate-v1-2-0/issues/02-taste-gate-reference-and-wiring.md` — Status: done
+Skill invoked: direct (reference authoring + doc wiring)
+Artifacts:
+  - `/home/del13s_ubuntu/MACH4_2/loop-engineer/skills/write-goal-prompt/references/taste-gate.md` (132 lines)
+  - `/home/del13s_ubuntu/MACH4_2/loop-engineer/skills/write-goal-prompt/SKILL.md` (added Phase 0.75 section + references table row)
+  - `/home/del13s_ubuntu/MACH4_2/loop-engineer/skills/write-goal-prompt/docs/index.md` (added Core References table row)
+
+Mechanical gate: all checks pass
+  - `wc -l < skills/write-goal-prompt/references/taste-gate.md` → 132 (>= 60 required)
+  - `grep -c 'taste-gate.md' skills/write-goal-prompt/SKILL.md` → 2
+  - `grep -c 'taste-gate.md' skills/write-goal-prompt/docs/index.md` → 1
+  - `grep -cE 'TODO|TBD' skills/write-goal-prompt/references/taste-gate.md` → 0
+  - `bun test` → exit 0 (31 pass, 0 fail)
+
+PROOF:
+  wc -l skills/write-goal-prompt/references/taste-gate.md
+  132 skills/write-goal-prompt/references/taste-gate.md
+  
+  grep -c 'taste-gate.md' skills/write-goal-prompt/SKILL.md
+  2
+  
+  grep -c 'taste-gate.md' skills/write-goal-prompt/docs/index.md
+  1
+  
+  grep -cE 'TODO|TBD' skills/write-goal-prompt/references/taste-gate.md
+  0
+  
+  bun test
+  31 pass
+  0 fail
+  59 expect() calls
+  Ran 31 tests across 2 files. [76.00ms]
+
+Commit: <pending>
