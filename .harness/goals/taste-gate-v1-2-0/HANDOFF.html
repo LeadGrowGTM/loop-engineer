@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>taste-gate v1.2.0 — morning report</title>
+<style>
+  :root { --green: #16a34a; --ink: #111827; --muted: #6b7280; --line: #e5e7eb; --bg: #f9fafb; }
+  * { box-sizing: border-box; }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--bg); margin: 0; padding: 2rem 1rem; }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  .sub { color: var(--muted); margin-bottom: 1.5rem; }
+  .verdict { display: inline-block; background: var(--green); color: #fff; font-weight: 700; border-radius: 999px; padding: .35rem 1rem; margin-bottom: 1.5rem; }
+  section { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; }
+  h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  code { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: .1rem .35rem; font-size: .85em; }
+  .ok { color: var(--green); font-weight: 700; }
+  .score { font-variant-numeric: tabular-nums; font-weight: 700; }
+  ul { margin: .25rem 0; padding-left: 1.25rem; }
+  li { margin: .25rem 0; }
+  .overflow { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>taste-gate v1.2.0 — overnight run report</h1>
+  <div class="sub">loop-engineer · branch charles-fork · 2026-07-17 · spec: docs/superpowers/specs/2026-07-17-taste-gate-design.md</div>
+  <div class="verdict">PASS — reward 5.0 / 5.0 (threshold 4.0) — cycle 1 of 3</div>
+
+  <section>
+    <h2>Checker scores (fresh context, file:line evidence in CYCLE_LOG.md)</h2>
+    <div class="overflow"><table>
+      <tr><th>Dimension</th><th>Score</th><th>Evidence anchor</th></tr>
+      <tr><td>Seeding + tests (R1/R2/R4)</td><td class="score">5/5</td><td><code>scripts/setup-harness.ts:84-117</code>, tests <code>:227-246</code>, <code>:293-300</code></td></tr>
+      <tr><td>Gate reference fidelity (R3)</td><td class="score">5/5</td><td><code>references/taste-gate.md</code> — all six R3 elements</td></tr>
+      <tr><td>Docs wiring (R3)</td><td class="score">5/5</td><td><code>SKILL.md:121-126, :576</code>; <code>docs/index.md:12</code></td></tr>
+      <tr><td>Release hygiene (R5)</td><td class="score">5/5</td><td><code>plugin.json:3</code>, <code>marketplace.json:8,15</code>; validate passed</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>The 8 spec verification checks — all green</h2>
+    <div class="overflow"><table>
+      <tr><th>#</th><th>Check</th><th>Result</th></tr>
+      <tr><td>1</td><td><code>bun test</code></td><td class="ok">31 pass, 0 fail (8 new taste tests)</td></tr>
+      <tr><td>2</td><td><code>claude plugin validate .</code></td><td class="ok">Validation passed</td></tr>
+      <tr><td>3</td><td><code>wc -l &lt; references/taste-gate.md</code></td><td class="ok">132 (&ge; 60)</td></tr>
+      <tr><td>4</td><td><code>grep -c 'taste-gate.md' SKILL.md</code></td><td class="ok">2 (&ge; 2)</td></tr>
+      <tr><td>5</td><td><code>grep -c 'taste-gate.md' docs/index.md</code></td><td class="ok">1</td></tr>
+      <tr><td>6</td><td><code>grep -cE 'TODO|TBD'</code> both files</td><td class="ok">0 per file</td></tr>
+      <tr><td>7</td><td>Sandbox seed + sentinel proof (mktemp HOME)</td><td class="ok">4 files; repo taste.md; sentinel preserved</td></tr>
+      <tr><td>8</td><td><code>grep -c '"version": "1.2.0"' plugin.json</code></td><td class="ok">1</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>What shipped</h2>
+    <ul>
+      <li><strong>R1</strong> — <code>seedPersonalTaste(homeDir)</code>: exported, home-dir-parameterized; seeds <code>~/.claude/taste/</code> with ux-taste.md, ui-taste.md, copy-taste.md, opinions.md; never overwrites; idempotent.</li>
+      <li><strong>R2</strong> — <code>seedRepoTaste(targetDir)</code>: seeds <code>.harness/taste.md</code> (Design &amp; UX / Code opinions / Voice sections) when absent.</li>
+      <li><strong>R3</strong> — <code>references/taste-gate.md</code> (132 lines): router-with-default, layer selection, approve/edit/drop table, compilation into Done-means + [CONSTRAINTS] + <code>Taste applied:</code> audit line, precedence, Nexus hook (documented only). Wired as Phase 0.75 in SKILL.md (both grilled + spec-mode) + references table + docs/index.md.</li>
+      <li><strong>R4</strong> — 8 new bun tests, TDD red-first: 4-file seeding, byte-preservation on re-run, repo taste.md seeding.</li>
+      <li><strong>R5</strong> — v1.2.0 in plugin.json + both marketplace.json fields; validate passes; conventional commits.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Commits (charles-fork, pushed)</h2>
+    <ul>
+      <li><code>3f6832e</code> feat(taste-gate): seed personal and repo taste templates with tests</li>
+      <li><code>735fbc9</code> chore(taste-gate): mark phase 1 slice done</li>
+      <li><code>2f7b5b1</code> docs(taste-gate): add taste-gate reference and wire into SKILL.md</li>
+      <li><code>44aac4b</code> chore(taste-gate): bump plugin to v1.2.0 and pass verification sweep</li>
+      <li><code>1c6effa</code> docs(taste-gate): record phase 3 completion and commit SHA</li>
+      <li><code>adfa618</code> docs(taste-gate): fix precedence override wording and ambiguity rule</li>
+      <li>+ final close-out commit (constraints tighten, harness tracker, handoff files)</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Needs your decision</h2>
+    <ul>
+      <li>None. No blockers, nothing stubbed, no scope reduced.</li>
+      <li>Live plugin install deliberately NOT updated (per constraints) — v1.2.0 goes live after your review.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

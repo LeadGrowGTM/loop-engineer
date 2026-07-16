@@ -52,7 +52,7 @@ For each approved entry:
   ```
 
 **(b) If the entry is a must-NOT-touch constraint** (e.g., "never refactor auth without spec review"):
-- Add it to **[CONSTRAINTS]** or **[BLOCKERS]** as a must-NOT-do:
+- Add it to **[CONSTRAINTS]** as a must-NOT-touch line:
   ```
   [CONSTRAINTS]
   Do NOT touch unsupervised:
