@@ -10,14 +10,14 @@ Implement run instrumentation and the spec grill gate per the approved spec: doc
 Stack: Bun + TypeScript (scripts/), markdown skill files, plugin manifests.
 
 Must include (details in spec):
-- R1 [RUN METRICS] block in the Phase 2 goal template (exact 11 fields)
-- R2 matching "## Run Metrics section" in morning-report-specs.md
-- R3 scripts/run-metrics.ts aggregator (exported goals-dir-param parser, "(no metrics)" tolerance, exit 0)
+- R1 [RUN METRICS] template block (exact 11 fields)
+- R2 matching section in morning-report-specs.md
+- R3 scripts/run-metrics.ts aggregator (exported parser, "(no metrics)" tolerance)
 - R4 bun tests for the parser (TDD: failing test first)
-- R5 "## Grill gate (decision point)" in spec-intake.md (>=25 lines, before "The mapping") + SKILL.md Branch S mention
+- R5 grill gate section in spec-intake.md + SKILL.md Branch S mention
 - R6 version 1.3.0 in plugin.json + both marketplace.json fields
 
-Quality bar: production-grade; new markdown matches the repo's reference-file style (models: references/spec-intake.md, references/taste-gate.md); the metrics table output is aligned and scannable.
+Quality bar: production-grade; new markdown matches the repo's reference-file style (model: references/taste-gate.md); metrics table aligned and scannable.
 
 Done means: all 8 spec verification checks pass, run exactly as written, output pasted as proof. ALSO: this run itself writes the new ## Run Metrics section into its own HANDOFF.md (eat the dogfood you just cooked).
 
