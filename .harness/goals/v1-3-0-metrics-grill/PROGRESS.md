@@ -165,3 +165,87 @@ PROOF:
   Section includes: "When available, use installed skills to run the procedure: grill-me ... grill-with-docs ... If neither skill is available, run the procedure inline..."
 
 Commit: 4dbea61 — docs(grill-gate): add grill gate section to spec-intake and wire SKILL.md
+
+## Phase 4: Version bump + full 8-check verification sweep — COMPLETE
+Slice: .harness/goals/v1-3-0-metrics-grill/issues/04-version-bump-and-verification-sweep.md — Status: done
+Skill invoked: direct implementation
+Artifact: /home/del13s_ubuntu/MACH4_2/loop-engineer/.claude-plugin/plugin.json, /home/del13s_ubuntu/MACH4_2/loop-engineer/.claude-plugin/marketplace.json, /home/del13s_ubuntu/MACH4_2/loop-engineer/.harness/goals/v1-3-0-metrics-grill/PROGRESS.md
+Mechanical gate: 8-check verification sweep per spec (all checks must pass — exit 0 or expected grep count)
+PROOF:
+  Check 1 — bun test (exit 0, all pass, >= 3 new run-metrics tests):
+  ```
+  bun test v1.3.13 (bf2e2cec)
+
+  scripts/triage.test.ts:
+  Run #1 logged.
+  Run #1 logged.
+  Run #1 logged.
+  Run #1 logged.
+  Signal #1 attached to run #1.
+  Run #1 marked reviewed.
+
+   34 pass
+   0 fail
+   66 expect() calls
+  Ran 34 tests across 3 files. [76.00ms]
+  ```
+  Status: PASS (34 tests pass, including run-metrics tests from Phase 1)
+
+  Check 2 — claude plugin validate . (must print "Validation passed"):
+  ```
+  Validating marketplace manifest: /home/del13s_ubuntu/MACH4_2/loop-engineer/.claude-plugin/marketplace.json
+
+  ✔ Validation passed
+  ```
+  Status: PASS
+
+  Check 3 — grep -c '\[RUN METRICS\]' skills/write-goal-prompt/SKILL.md -> 1:
+  ```
+  1
+  ```
+  Status: PASS
+
+  Check 4 — grep -c '## Run Metrics section' skills/write-goal-prompt/references/morning-report-specs.md -> 1:
+  ```
+  1
+  ```
+  Status: PASS
+
+  Check 5 — bun scripts/run-metrics.ts from repo root (exit 0 AND output contains taste-gate-v1-2-0 marked (no metrics)):
+  ```
+  Slug                                     Started  Wall Clock (min)  Turns  Cycles  Reward
+  harness-benchmarking-loop  (no metrics)                                                  
+  taste-gate-v1-2-0  (no metrics)                                                          
+  v1-3-0-metrics-grill  (no metrics)
+  ```
+  Status: PASS (exit 0, taste-gate-v1-2-0 present with (no metrics))
+
+  Check 6a — grep -c '## Grill gate (decision point)' skills/write-goal-prompt/references/spec-intake.md -> 1:
+  ```
+  1
+  ```
+  Status: PASS
+
+  Check 6b — grep -c 'Grill gate' skills/write-goal-prompt/SKILL.md -> >= 1:
+  ```
+  1
+  ```
+  Status: PASS
+
+  Check 7 — grep -c '"version": "1.3.0"' .claude-plugin/plugin.json -> 1:
+  ```
+  1
+  ```
+  Status: PASS
+
+  Check 8 — grep -cE 'TODO|TBD' scripts/run-metrics.ts skills/write-goal-prompt/references/spec-intake.md -> 0 per file:
+  ```
+  /home/del13s_ubuntu/MACH4_2/loop-engineer/scripts/run-metrics.ts:0
+  /home/del13s_ubuntu/MACH4_2/loop-engineer/skills/write-goal-prompt/references/spec-intake.md:0
+  ```
+  (Exit code: 1, expected — grep exits 1 when count is 0)
+  Status: PASS
+
+  Summary: All 8 checks PASS
+
+Commit: (pending) — chore(v1.3.0): bump plugin to v1.3.0 and pass verification sweep
