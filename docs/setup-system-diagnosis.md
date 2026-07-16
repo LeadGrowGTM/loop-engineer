@@ -1,30 +1,32 @@
 # Setup System Diagnosis
 
-The setup-harness script has six confirmed defects. This document names each defect with file:line evidence and outlines prioritized fixes.
+The setup-harness script had six confirmed defects. This document names each defect with file:line evidence and outlines prioritized fixes. Defects #1-#3 are now **RESOLVED** (see status notes); #4-#6 are still open.
 
 ## Confirmed Defects
 
-### 1. Prover-Not-Installed Defect (ACTIVE, SILENT)
+### 1. Prover-Not-Installed Defect (RESOLVED)
 **Location:** `scripts/setup-harness.ts:156`
 
-**Symptom:** Running `/setup-harness install <dir>` copies only three agents to `~/.claude/agents/`:
+**Symptom (as originally found):** Running `/setup-harness install <dir>` copied only three agents to `~/.claude/agents/`:
 ```
 for (const f of ['harness-planner.md', 'harness-maker.md', 'harness-checker.md']) {
   copyFileSync(join(sourceAgentsDir, f), join(agentsDir, f));
 }
 ```
 
-The array omits `'harness-prover.md'`. Yet:
-- The repo's own `.claude/agents/` has all four files (confirmed via glob).
-- The README.md documents a "4-agent harness" loop (Planner → Maker → Prover → Checker).
+The array omitted `'harness-prover.md'`. Yet:
+- The repo's own `.claude/agents/` has all five files (confirmed via glob).
+- The README.md documents a "5-agent harness" loop (Planner → Maker → Prover → Checker → Shipper).
 - Global `~/.claude/agents/` already contains `harness-prover.md` from a prior manual workaround.
 
-**Impact:** Anyone running `/setup-harness` gets a 3-agent harness even though the architecture promises 4. The missing Prover agent breaks any running-app goal loop that depends on PROOF verification.
+**Impact (as originally found):** Anyone running `/setup-harness` got a 3-agent harness even though the architecture promised 4. The missing Prover agent broke any running-app goal loop that depended on PROOF verification.
 
-### 2. Smoke-Test Gap (MASKS DEFECT #1)
+**Status:** Fixed — the install loop now iterates the shared `AGENT_FILES` constant (`scripts/setup-harness.ts:29-35`), which includes `harness-prover.md` and `harness-shipper.md`.
+
+### 2. Smoke-Test Gap (RESOLVED — was masking defect #1)
 **Location:** `scripts/setup-harness.ts:106-134` (smokeTest function)
 
-The smoke-test hardcodes checks for only three agents (lines 113, 117, 121):
+The smoke-test used to hardcode checks for only three agents (lines 113, 117, 121):
 ```
 {
   check: 'harness-planner.md in agents dir',
@@ -40,20 +42,24 @@ The smoke-test hardcodes checks for only three agents (lines 113, 117, 121):
 },
 ```
 
-No check for `harness-prover.md`. Result: a broken install (defect #1) still reports all-green smoke output, so the defect went undetected.
+No check for `harness-prover.md`. Result: a broken install (defect #1) still reported all-green smoke output, so the defect went undetected.
 
-**Impact:** The mechanical gate (the smoke test) does not cover the 4th agent, so a broken install looks like a successful install.
+**Impact (as originally found):** The mechanical gate (the smoke test) did not cover the 4th agent, so a broken install looked like a successful install.
 
-### 3. Duplicated Agent Enumeration (ROOT CAUSE OF DRIFT)
+**Status:** Fixed — `smokeTest()` now maps over `AGENT_FILES` (`scripts/setup-harness.ts:119-123`) to generate one check per agent file, currently five.
+
+### 3. Duplicated Agent Enumeration (RESOLVED — was root cause of drift)
 **Location:** `scripts/setup-harness.ts:156` (install copy loop) and lines 113, 117, 121 (smoke checks)
 
-The "which agents ship" is written independently in two places:
+The "which agents ship" used to be written independently in two places:
 - Line 156: Array literal in the install copy loop
 - Lines 113, 117, 121: Three separate hardcoded `check:` strings in the smoke test
 
 When `harness-prover.md` was added to the repo's `.claude/agents/` directory, neither list was updated. This is exactly why defects #1 and #2 silently drifted out of sync.
 
-**Root cause:** No shared constant. If there were a single `const AGENT_FILES = ['harness-planner.md', 'harness-maker.md', 'harness-checker.md', 'harness-prover.md']` at the top level, both the install loop and smoke checks would reference it, and adding a new agent would only require one edit.
+**Root cause (as originally found):** No shared constant.
+
+**Status:** Fixed — `scripts/setup-harness.ts:29-35` now defines `export const AGENT_FILES = ['harness-planner.md', 'harness-maker.md', 'harness-prover.md', 'harness-checker.md', 'harness-shipper.md']`, and both the install loop and `smokeTest()` reference it. Adding `harness-shipper.md` required only one edit to this list.
 
 ### 4. Unwired Seed and Patch CLI Commands
 **Location:** `scripts/setup-harness.ts:6-9` (usage) vs lines 141-182 (CLI dispatcher)
@@ -117,21 +123,21 @@ If this script is vendored into another repository (e.g., `LeadGrowGTM/some-othe
 
 ## Prioritized Fixes
 
-1. **Fix defect #1 (Prover install)** — Add `'harness-prover.md'` to the copy loop at line 156. This is the active, silently-broken defect affecting all new setups.
+1. ~~**Fix defect #1 (Prover install)**~~ — **DONE.** The copy loop now iterates `AGENT_FILES`, which includes `harness-prover.md`.
 
-2. **Fix defect #2 (Smoke-test gap)** — Add a check for `harness-prover.md` to the smokeTest() return array (around line 124). This ensures the mechanical gate catches future drift.
+2. ~~**Fix defect #2 (Smoke-test gap)**~~ — **DONE.** `smokeTest()` generates one check per entry in `AGENT_FILES`.
 
-3. **Fix defect #3 (DRY)** — Extract a shared `const AGENT_FILES = [...]` constant at the top level (around line 16-17, after types). Update both the install loop (line 156) and smokeTest() (lines 113, 117, 121) to reference it. This prevents the two lists from drifting again.
+3. ~~**Fix defect #3 (DRY)**~~ — **DONE.** `export const AGENT_FILES = [...]` lives at `scripts/setup-harness.ts:29-35`; both the install loop and `smokeTest()` reference it.
 
-4. **Fix defect #4 (CLI wiring)** — Add `else if (cmd === 'seed')` and `else if (cmd === 'patch')` branches to the CLI dispatcher (around line 150), delegating to the existing functions. Update the usage comment (line 6-9) to match the actual dispatcher, or vice versa.
+4. **Fix defect #4 (CLI wiring)** — Add `else if (cmd === 'seed')` and `else if (cmd === 'patch')` branches to the CLI dispatcher (around line 150), delegating to the existing functions. Update the usage comment (line 6-9) to match the actual dispatcher, or vice versa. Still open.
 
-5. **Fix defect #5 (Uninstall)** — Add an `else if (cmd === 'uninstall')` branch that reverses the three write operations: deletes agent files, removes `.harness/skill-routing.md`, and strips the `## Harness` block from CLAUDE.md. Update the usage comment to include it.
+5. **Fix defect #5 (Uninstall)** — Add an `else if (cmd === 'uninstall')` branch that reverses the three write operations: deletes agent files, removes `.harness/skill-routing.md`, and strips the `## Harness` block from CLAUDE.md. Update the usage comment to include it. Still open.
 
-6. **Fix defect #6 (Generalization)** — Replace the hardcoded `'LeadGrowGTM/loop-engineer'` string with a dynamic lookup: `git remote get-url origin` and extract the repo name. Consistently use `import.meta.dir` instead of `__dirname` to avoid path misattribution if the script is vendored.
+6. **Fix defect #6 (Generalization)** — Replace the hardcoded `'LeadGrowGTM/loop-engineer'` string with a dynamic lookup: `git remote get-url origin` and extract the repo name. Consistently use `import.meta.dir` instead of `__dirname` to avoid path misattribution if the script is vendored. Still open.
 
 ## Notes
 
-- Defects #1 and #2 are tightly coupled: #2 masks #1, which is why #1 went undetected. Both must be fixed together to restore correctness and visibility.
-- Defect #3 is the root cause of #1/#2 drifting — fixing it prevents future agent-list synchronization bugs.
-- Defects #4 and #5 are CLI completeness issues (unwired commands, missing uninstall) — lower priority than #1/#2/#3, but important for usability.
-- Defect #6 is a portability issue — affects scenarios where the script is copied to another repo.
+- Defects #1 and #2 were tightly coupled: #2 masked #1, which is why #1 went undetected. Both were fixed together, via the shared `AGENT_FILES` constant from defect #3's fix.
+- Defect #3's fix (the `AGENT_FILES` constant) is also what made adding the 5th agent (`harness-shipper.md`) a one-line change instead of a repeat of #1/#2.
+- Defects #4 and #5 are CLI completeness issues (unwired commands, missing uninstall) — lower priority than #1/#2/#3, but still open and important for usability.
+- Defect #6 is a portability issue — affects scenarios where the script is copied to another repo. Still open.
