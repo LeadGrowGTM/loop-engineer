@@ -1,7 +1,7 @@
 import { test, expect, describe } from 'bun:test';
-import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'fs';
+import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
-import { scanSkills, seedRoutingTable, patchClaudeMd, smokeTest, HARNESS_AGENTS, BENCHMARK_AGENTS, PLUGIN_AGENTS } from './setup-harness';
+import { scanSkills, seedRoutingTable, patchClaudeMd, smokeTest, seedPersonalTaste, seedRepoTaste, HARNESS_AGENTS, BENCHMARK_AGENTS, PLUGIN_AGENTS } from './setup-harness';
 
 // ── test fixtures ──────────────────────────────────────────────────────────
 
@@ -209,5 +209,93 @@ describe('smokeTest', () => {
     const results = smokeTest(dir, agentsDir);
     const routingCheck = results.find((r) => r.check.includes('skill-routing'));
     expect(routingCheck?.passed).toBe(false);
+  });
+});
+
+// ── taste seeding ──────────────────────────────────────────────────────────
+
+describe('seedPersonalTaste', () => {
+  test('seeds all 4 personal taste files when ~/.claude/taste/ is missing', () => {
+    const homeDir = scaffold({});
+    seedPersonalTaste(homeDir);
+
+    const tasteDir = join(homeDir, '.claude', 'taste');
+    const files = readdirSync(tasteDir).sort();
+    expect(files).toEqual(['copy-taste.md', 'opinions.md', 'ui-taste.md', 'ux-taste.md']);
+  });
+
+  test('preserves a pre-existing modified personal file byte-for-byte on re-run (idempotency)', () => {
+    const homeDir = scaffold({});
+
+    // First seed
+    seedPersonalTaste(homeDir);
+
+    // Modify one file
+    const tasteDir = join(homeDir, '.claude', 'taste');
+    const opFile = join(tasteDir, 'opinions.md');
+    const originalContent = readFileSync(opFile, 'utf8');
+    const modifiedContent = originalContent + '\n# My custom addition';
+    writeFileSync(opFile, modifiedContent);
+
+    // Re-run install
+    seedPersonalTaste(homeDir);
+
+    // Check that the file is unchanged
+    const afterContent = readFileSync(opFile, 'utf8');
+    expect(afterContent).toBe(modifiedContent);
+  });
+
+  test('each personal template has correct structure: header, format rule, 2 example rules', () => {
+    const homeDir = scaffold({});
+    seedPersonalTaste(homeDir);
+
+    const tasteDir = join(homeDir, '.claude', 'taste');
+    const templates = ['ux-taste.md', 'ui-taste.md', 'copy-taste.md', 'opinions.md'];
+
+    for (const template of templates) {
+      const content = readFileSync(join(tasteDir, template), 'utf8');
+      const lines = content.split('\n');
+
+      // Should have a header line
+      expect(lines[0]).toMatch(/^#/);
+
+      // Should contain "one rule per bullet" format rule
+      expect(content).toContain('one rule per bullet');
+
+      // Should have exactly 2 commented example rules (lines starting with "// -")
+      const commentedRules = content.split('\n').filter((l) => l.trim().startsWith('// -')).length;
+      expect(commentedRules).toBe(2);
+    }
+  });
+});
+
+describe('seedRepoTaste', () => {
+  test('seeds <target>/.harness/taste.md when absent', () => {
+    const targetDir = scaffold({});
+    seedRepoTaste(targetDir);
+
+    const repoTastePath = join(targetDir, '.harness', 'taste.md');
+    expect(existsSync(repoTastePath)).toBe(true);
+  });
+
+  test('repo taste.md has the three required sections', () => {
+    const targetDir = scaffold({});
+    seedRepoTaste(targetDir);
+
+    const repoTastePath = join(targetDir, '.harness', 'taste.md');
+    const content = readFileSync(repoTastePath, 'utf8');
+
+    expect(content).toContain('## Design & UX');
+    expect(content).toContain('## Code opinions');
+    expect(content).toContain('## Voice');
+  });
+
+  test('never overwrites existing repo taste.md', () => {
+    const targetDir = scaffold({ '.harness/taste.md': 'Custom existing content' });
+    seedRepoTaste(targetDir);
+
+    const repoTastePath = join(targetDir, '.harness', 'taste.md');
+    const content = readFileSync(repoTastePath, 'utf8');
+    expect(content).toBe('Custom existing content');
   });
 });

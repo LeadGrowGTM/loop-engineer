@@ -35,6 +35,87 @@ export const BENCHMARK_AGENTS = [
 // Everything the plugin ships; smoke verifies plugin integrity against this list.
 export const PLUGIN_AGENTS = [...HARNESS_AGENTS, ...BENCHMARK_AGENTS] as const;
 
+// ── taste templates ────────────────────────────────────────────────────────
+
+const UX_TASTE_TEMPLATE = `# UX Taste
+one rule per bullet, each rule checkable, each with a concrete example — no essays.
+
+// - Buttons must always show loading state on click (e.g., disabled + spinner during API call, never a bare click with silent lag)
+// - Modals must auto-close after 3s on success (e.g., "Email added" modal dismisses automatically, no manual click required)
+`;
+
+const UI_TASTE_TEMPLATE = `# UI Taste
+one rule per bullet, each rule checkable, each with a concrete example — no essays.
+
+// - Use Tailwind size scale exclusively: no custom px values in component code (e.g., p-3 not p-12px)
+// - Contrast ratio >= 4.5:1 for all text on colored backgrounds (e.g., dark gray on light blue must meet WCAG AA)
+`;
+
+const COPY_TASTE_TEMPLATE = `# Copy Taste
+one rule per bullet, each rule checkable, each with a concrete example — no essays.
+
+// - Email subject lines under 50 characters (e.g., "Leads waiting" not "You have new leads waiting in your dashboard")
+// - CTAs always start with an action verb (e.g., "Connect Slack" not "Slack integration")
+`;
+
+const OPINIONS_TEMPLATE = `# Opinions
+one rule per bullet, each rule checkable, each with a concrete example — no essays.
+
+// - Ship with tests, never merge code that reduces test coverage (e.g., a PR adding 5 functions must add at least 5 test cases)
+// - Code comments explain "why" not "what" (e.g., "// backoff prevents cascade on high load" not "// increment i")
+`;
+
+const REPO_TASTE_TEMPLATE = `# Repo Taste
+
+## Design & UX
+
+## Code opinions
+
+## Voice
+`;
+
+// ── seedPersonalTaste ─────────────────────────────────────────────────────
+
+/**
+ * Seed personal taste templates under <homeDir>/.claude/taste/
+ * Creates 4 templates (ux-taste.md, ui-taste.md, copy-taste.md, opinions.md)
+ * if the directory or files are missing. Never overwrites existing files.
+ */
+export function seedPersonalTaste(homeDir: string): void {
+  const tasteDir = join(homeDir, '.claude', 'taste');
+  mkdirSync(tasteDir, { recursive: true });
+
+  const templates = [
+    { name: 'ux-taste.md', content: UX_TASTE_TEMPLATE },
+    { name: 'ui-taste.md', content: UI_TASTE_TEMPLATE },
+    { name: 'copy-taste.md', content: COPY_TASTE_TEMPLATE },
+    { name: 'opinions.md', content: OPINIONS_TEMPLATE },
+  ];
+
+  for (const { name, content } of templates) {
+    const path = join(tasteDir, name);
+    if (!existsSync(path)) {
+      writeFileSync(path, content);
+    }
+  }
+}
+
+// ── seedRepoTaste ─────────────────────────────────────────────────────────
+
+/**
+ * Seed repo taste template under <targetDir>/.harness/taste.md
+ * Creates the template if absent. Never overwrites existing files.
+ */
+export function seedRepoTaste(targetDir: string): void {
+  const harnessDirPath = join(targetDir, '.harness');
+  mkdirSync(harnessDirPath, { recursive: true });
+
+  const repoTastePath = join(harnessDirPath, 'taste.md');
+  if (!existsSync(repoTastePath)) {
+    writeFileSync(repoTastePath, REPO_TASTE_TEMPLATE);
+  }
+}
+
 // ── types ──────────────────────────────────────────────────────────────────
 
 export interface SkillEntry {
@@ -164,6 +245,7 @@ if (import.meta.main) {
   } else if (cmd === 'install') {
     const targetDir = rest[0];
     const sourceAgentsDir = join(import.meta.dir, '../.claude/agents');
+    const homeDir = process.env.HOME || '';
 
     // Plugin integrity: all shipped agents must exist in the plugin source.
     const missingAgents = PLUGIN_AGENTS.filter((f) => !existsSync(join(sourceAgentsDir, f)));
@@ -172,6 +254,16 @@ if (import.meta.main) {
       console.error('  Aborting: this plugin checkout is incomplete.');
       process.exit(1);
     }
+
+    // Seed personal taste templates to ~/.claude/taste/
+    if (homeDir) {
+      seedPersonalTaste(homeDir);
+      console.log(`Seeded personal taste templates to ${join(homeDir, '.claude/taste')}`);
+    }
+
+    // Seed repo taste template to <target>/.harness/taste.md
+    seedRepoTaste(targetDir);
+    console.log(`Seeded .harness/taste.md`);
 
     const templatePath = join(import.meta.dir, '../skills/setup-harness/routing-template.md');
     const template = existsSync(templatePath) ? readFileSync(templatePath, 'utf8') : '';
