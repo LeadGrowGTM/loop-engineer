@@ -2,9 +2,25 @@
   "name": "loop-engineer",
   "version": "1.0.0",
   "description": "Goal-loop harness for Claude Code: planner, maker, prover, checker build loops with tool-enforced checker isolation, plus an experimental benchmarking loop (sweep and climb). Durable phase slices, proof protocol, morning reports.",
-  "author": { "name": "LeadGrowGTM", "url": "https://github.com/LeadGrowGTM" },
+  "author": {
+    "name": "LeadGrowGTM",
+    "url": "https://github.com/LeadGrowGTM"
+  },
   "repository": "https://github.com/LeadGrowGTM/loop-engineer",
-  "keywords": ["harness", "goal-loop", "agents", "eval-loop", "benchmarking"],
-  "agents": "./.claude/agents",
+  "keywords": [
+    "harness",
+    "goal-loop",
+    "agents",
+    "eval-loop",
+    "benchmarking"
+  ],
+  "agents": [
+    "./.claude/agents/harness-checker.md",
+    "./.claude/agents/harness-inbounds-checker.md",
+    "./.claude/agents/harness-maker.md",
+    "./.claude/agents/harness-novelty-checker.md",
+    "./.claude/agents/harness-planner.md",
+    "./.claude/agents/harness-prover.md"
+  ],
   "commands": "./.claude/commands"
 }

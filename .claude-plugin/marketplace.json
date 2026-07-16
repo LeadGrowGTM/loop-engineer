@@ -1,10 +1,11 @@
 {
   "name": "loop-engineer",
-  "owner": { "name": "LeadGrowGTM" },
+  "owner": {
+    "name": "LeadGrowGTM"
+  },
   "metadata": {
     "description": "loop-engineer: goal-loop harness plugin for Claude Code.",
-    "version": "1.0.0",
-    "repository": "https://github.com/LeadGrowGTM/loop-engineer"
+    "version": "1.0.0"
   },
   "plugins": [
     {
