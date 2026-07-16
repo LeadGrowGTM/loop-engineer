@@ -104,4 +104,4 @@ PROOF:
   Ran 34 tests across 3 files. [69.00ms]
   ```
 
-Commit: <SHA pending>
+Commit: a3067cb — docs(run-metrics): add RUN METRICS template block and report-spec section
