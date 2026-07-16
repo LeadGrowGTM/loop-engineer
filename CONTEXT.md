@@ -115,7 +115,7 @@ Template = the recipe you re-point. Snapshot = the in-progress game you resume.
 
 ## Existing terms (already in the harness)
 
-- **Planner / Maker / Prover / Checker** — the four-agent build loop.
+- **Planner / Maker / Prover / Checker / Shipper** — the five-agent build loop.
 - **Reward signal** — numeric score a cycle earns; drives PASS / ITERATE / PLATEAU.
 - **Mechanical gate** — grep/parse checks that must pass before qualitative eval.
 

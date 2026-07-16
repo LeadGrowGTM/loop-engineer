@@ -33,9 +33,9 @@ agent-harness/
 
 The model that wrote the code is too generous grading its own homework. Self-eval = agreement loop, not improvement loop.
 
-Fix: **harness-checker** has `tools: Read, Glob, Write` only. It cannot run Bash, spawn agents, or access anything the Maker produced via tool calls. This isolation is enforced by the tool layer, not by prompt instruction. The goal agent follows written instructions to invoke the planner, then maker, then prover (for running-app goals), then checker — this ordering is defined in HARNESS.md and relies on the goal agent's instruction-following, not tool enforcement.
+Fix: **harness-checker** has `tools: Read, Glob, Write` only. It cannot run Bash, spawn agents, or access anything the Maker produced via tool calls. This isolation is enforced by the tool layer, not by prompt instruction. The goal agent follows written instructions to invoke the planner, then maker, then prover (for running-app goals), then checker, then — only after a Checker PASS — the shipper. This ordering is defined in HARNESS.md and relies on the goal agent's instruction-following, not tool enforcement.
 
-## The 4-agent loop
+## The 5-agent loop
 
 ```
 Goal agent (depth 0)
