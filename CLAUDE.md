@@ -7,6 +7,8 @@ Goal prompt writer + planner/maker/checker harness for Claude Code loop engineer
 | Path | What |
 |---|---|
 | `.claude/agents/` | Harness agent definitions (planner, maker, prover, checker) |
+| `.claude-plugin/` | Plugin + marketplace manifests: this repo installs as the `loop-engineer` Claude Code plugin |
+| `hooks/` | Plugin SessionStart hook that auto-updates the marketplace |
 | `.claude/state/` | SQLite triage schema + README |
 | `skills/write-goal-prompt/` | Goal authoring skill — phases, eval loop, harness discovery |
 | `skills/write-goal-prompt/references/` | 11 reference files (eval-loop-design, subagent-harness, skill-routing, clarity-gate, issue-tracker, parallel-execution, etc.) |

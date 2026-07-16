@@ -100,10 +100,13 @@ Checker cites `file:line` evidence for every dimension score. Scores without cit
 
 ## Installation
 
-Install into a target repo by running, from your `loop-engineer` clone:
+loop-engineer is a Claude Code plugin, and this repo is also its marketplace:
 
-```bash
-bun scripts/setup-harness.ts install <target-repo-root>
+```
+/plugin marketplace add LeadGrowGTM/loop-engineer
+/plugin install loop-engineer@loop-engineer
 ```
 
-Agents install to `~/.claude/agents/` and the skill to `~/.claude/skills/write-goal-prompt/` (workspace-level discovery). This repo is the canonical source — workspace copies stay in sync.
+Agents, skills, and the `/loop-engineer:benchmarking-loop` command load automatically in every session on every machine; a SessionStart hook keeps the plugin current. Per-repo wiring (skill routing, `.harness/`, backlog, worktree pool) is seeded by running `/loop-engineer:setup-harness` inside a target repo.
+
+Dev note: when working inside this repo, the project-level `.claude/agents/` definitions override the installed plugin's (project > user > plugin precedence), so you can edit agents locally and test before releasing. Release = bump `version` in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, then merge to master.
