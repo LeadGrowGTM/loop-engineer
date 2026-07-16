@@ -248,4 +248,4 @@ PROOF:
 
   Summary: All 8 checks PASS
 
-Commit: (pending) — chore(v1.3.0): bump plugin to v1.3.0 and pass verification sweep
+Commit: 2591ac2 — chore(v1.3.0): bump plugin to v1.3.0 and pass verification sweep
