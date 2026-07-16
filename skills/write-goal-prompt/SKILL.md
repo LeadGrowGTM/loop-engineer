@@ -316,14 +316,14 @@ Read HARNESS.md before starting. Four-phase execution:
    per-phase Status). PLAN.md `## Phases` stays canonical; slices are the durable drive-list.
    Do not produce task artifacts until PLAN.md is written.
 2. Maker (turns 6-<N>): execute per PLAN.md, invoke skills per phase, commit at each phase boundary.
-3. Prover (running-app goals only): spawn harness-prover with PROVER_BRIEF from HARNESS.md.
+3. Prover (running-app goals only): spawn loop-engineer:harness-prover with PROVER_BRIEF from HARNESS.md.
    Pass feature intent + exercise instructions. Get PROOF VERDICT before Checker.
    Skip this step entirely for static artifact goals (PROVER_BRIEF: N/A).
 3b. Red-team (adversarial-verify goals — running app, user-facing flow, or security-sensitive
    code): run the red-team Workflow (`.claude/workflows/red-team.js`) with REDTEAM_BRIEF from
    HARNESS.md (target, paths, entryPoint). Feed its worst-first holes back to the Maker as fix
    input BEFORE Checker scores. Skip for static/internal artifacts (REDTEAM_BRIEF: N/A).
-4. Checker: spawn fresh harness-checker subagent with CHECKER_BRIEF from HARNESS.md.
+4. Checker: spawn fresh loop-engineer:harness-checker subagent with CHECKER_BRIEF from HARNESS.md.
    Pass artifact paths + PROOF VERDICT (if running-app goal).
    Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
 

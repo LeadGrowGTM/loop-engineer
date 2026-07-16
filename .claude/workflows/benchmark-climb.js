@@ -307,7 +307,7 @@ export async function run() {
       label: `inbounds:c${cyclesDone + 1}`,
       phase: 'Climb',
       schema: INBOUNDS_SCHEMA,
-      agentType: 'harness-inbounds-checker',
+      agentType: 'loop-engineer:harness-inbounds-checker',
     });
     if (inbounds?.verdict === 'violation') {
       ledger.push(climbLedgerEntry({ cycle: nextId, config, inbounds, novelty: null, killed: true, kept: false, unit }));
@@ -320,7 +320,7 @@ export async function run() {
       label: `novelty:c${cyclesDone + 1}`,
       phase: 'Climb',
       schema: NOVELTY_SCHEMA,
-      agentType: 'harness-novelty-checker',
+      agentType: 'loop-engineer:harness-novelty-checker',
     });
     if (novelty?.verdict === 'duplicate') {
       ledger.push(climbLedgerEntry({ cycle: nextId, config, inbounds, novelty, killed: true, kept: false, unit }));

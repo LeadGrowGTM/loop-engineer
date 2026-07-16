@@ -26,7 +26,7 @@ The 4 harness agents are defined as proper Claude Code agents in `.claude/agents
 Checker's `tools: Read, Glob, Write` is **mechanical isolation** — it literally cannot run
 Bash, spawn subagents, or access anything the Maker produced via tool calls. Fresh by design.
 
-Invoke by name: `Agent({subagent_type: "harness-planner", prompt: "..."})`. HARNESS.md
+Invoke by name: `Agent({subagent_type: "loop-engineer:harness-planner", prompt: "..."})`. HARNESS.md
 supplies task-specific context; the agent files contain structural templates.
 
 ### Canonical install paths (agents are global; project state is not)

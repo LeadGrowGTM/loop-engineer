@@ -1,6 +1,6 @@
 {
   "name": "loop-engineer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Goal-loop harness for Claude Code: planner, maker, prover, checker build loops with tool-enforced checker isolation, plus an experimental benchmarking loop (sweep and climb). Durable phase slices, proof protocol, morning reports.",
   "author": {
     "name": "LeadGrowGTM",
