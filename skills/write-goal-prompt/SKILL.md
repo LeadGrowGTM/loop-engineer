@@ -176,9 +176,11 @@ Return: array of {tool, purpose, invocation} for up to 5 relevant tools/scripts.
 
 ```
 Read .claude/agent-context/snapshot.md for workspace context before starting.
-Confirm harness agents exist in at least one of these locations (Glob both):
-  - .claude/agents/harness-planner.md, harness-maker.md, harness-checker.md
-  - ~/.claude/agents/harness-planner.md, harness-maker.md, harness-checker.md
+Confirm the harness agents ship in the loop-engineer plugin — glob:
+  - ${CLAUDE_PLUGIN_ROOT}/.claude/agents/harness-*.md
+and expect harness-planner.md, harness-maker.md, harness-prover.md, and harness-checker.md
+there (the four build-loop agents; the two benchmarking checkers, harness-inbounds-checker.md
+and harness-novelty-checker.md, also ship alongside them).
 Read .harness/skill-routing.md (installed by /setup-harness). If missing, fall back to
   .claude/skills/write-goal-prompt/references/skill-routing.md.
 

@@ -31,21 +31,23 @@ supplies task-specific context; the agent files contain structural templates.
 
 ### Canonical install paths (agents are global; project state is not)
 
-Harness agents install to TWO locations — keep them in sync:
+Harness agents ship in ONE runtime location — the loop-engineer plugin:
 
 ```
-${CLAUDE_PLUGIN_ROOT}/.claude/agents/harness-*.md   ← source of truth (loop-engineer plugin)
-~/.claude/agents/harness-*.md                     ← installed, global, loaded at runtime for every repo
+${CLAUDE_PLUGIN_ROOT}/.claude/agents/harness-*.md   ← source of truth, loaded at runtime for every repo
 ```
 
-Agents are GLOBAL — there is no per-project agent copy (`~/.claude` is the one runtime location;
-on this machine it is a symlink to `Everything_CC/.claude`, so those are the same files, not a
-separate "project override"). What IS project-scoped lives under each project's `.harness/`:
-`skill-routing.md`, `goals/<slug>/` (this run's artifacts), and the per-project `.tasks.toml`
-backlog. `/setup-harness <repo-root>` installs the global agents and seeds that project's `.harness/`.
+No sync, no copies, ever. Do NOT copy harness agents into the user-level `.claude/agents/`
+directory (`$HOME/.claude/agents/`) or a project's own `.claude/agents/` directory — a user- or
+project-level copy silently SHADOWS the plugin's agent (project > user > plugin precedence) and
+recreates the exact copy-drift this model replaced. There is nothing to keep "in sync" because
+there is only one copy.
 
-Maker agents syncing harness files: use `bun -e "import{copyFileSync}from'fs';..."` or direct
-`cp` (not dotenv-adjacent, so hook won't block). `/setup-harness` script handles this automatically.
+What IS project-scoped lives under each project's `.harness/`: `skill-routing.md`, `goals/<slug>/`
+(this run's artifacts), and the per-project `.tasks.toml` backlog. `/setup-harness <repo-root>`
+seeds that project's `.harness/`, `.tasks.toml`, and `treehouse.toml` — and verifies plugin
+integrity (confirms every agent the plugin claims to ship actually exists in the plugin source).
+It does not install, copy, or sync agents anywhere.
 
 ---
 

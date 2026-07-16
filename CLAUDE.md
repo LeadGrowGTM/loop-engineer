@@ -17,7 +17,7 @@ Goal prompt writer + planner/maker/checker harness for Claude Code loop engineer
 | `scripts/triage.ts` | Bun CLI: list/review/dismiss/log/signal for the triage inbox |
 | `scripts/launch-gnhf.ps1` | Detached gnhf launcher — repo-safety guards, auto-lease treehouse worktree on parallel/collision/monorepo-tracked pipelines |
 | `scripts/validate-pipeline-layout.ps1` | Pre-flight pipeline-layout check called by `launch-gnhf.ps1` |
-| `scripts/setup-harness.ts` | Installs harness agents + seeds `.harness/`, `.tasks.toml`, `treehouse.toml` into a repo |
+| `scripts/setup-harness.ts` | Seeds `.harness/`, `.tasks.toml`, `treehouse.toml` into a repo and verifies plugin integrity |
 | `scripts/rename-to-loop-engineer.ps1` | One-shot: rename this repo's dir `agent-harness` → `loop-engineer` + fix refs (not yet run) |
 | `treehouse.toml` | This repo's own treehouse worktree-pool config (`max_trees`, `root`) |
 | `docs/agents/` | Matt Pocock engineering skill configuration |

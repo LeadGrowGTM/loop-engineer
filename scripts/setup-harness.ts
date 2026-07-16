@@ -6,7 +6,7 @@
  *   bun scripts/setup-harness.ts scan <dir>
  *   bun scripts/setup-harness.ts seed <dir> <template-path>
  *   bun scripts/setup-harness.ts patch <claude-md-path> <block-string>
- *   bun scripts/setup-harness.ts smoke <target-dir> <agents-dir>
+ *   bun scripts/setup-harness.ts smoke <target-dir> [agents-dir]
  *   bun scripts/setup-harness.ts install <target-dir>
  */
 
@@ -233,7 +233,7 @@ if (import.meta.main) {
     console.log('\nSmoke test:');
     for (const r of smoke) console.log(`  ${r.passed ? '✓' : '✗'} ${r.check}`);
   } else {
-    console.error('Commands: scan <dir> | smoke <target-dir> <agents-dir> | install <target-dir>');
+    console.error('Commands: scan <dir> | smoke <target-dir> [agents-dir] | install <target-dir>');
     process.exit(1);
   }
 }

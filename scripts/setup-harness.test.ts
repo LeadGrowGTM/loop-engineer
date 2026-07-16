@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test';
-import { mkdirSync, writeFileSync, rmSync } from 'fs';
+import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { scanSkills, seedRoutingTable, patchClaudeMd, smokeTest, HARNESS_AGENTS, BENCHMARK_AGENTS, PLUGIN_AGENTS } from './setup-harness';
 
@@ -147,6 +147,12 @@ describe('agent constants', () => {
     expect(BENCHMARK_AGENTS).toContain('harness-inbounds-checker.md');
     expect(BENCHMARK_AGENTS).toContain('harness-novelty-checker.md');
     expect(PLUGIN_AGENTS).toHaveLength(6);
+  });
+
+  test('plugin.json agents array matches PLUGIN_AGENTS (no manifest drift)', () => {
+    const manifest = JSON.parse(readFileSync(join(import.meta.dir, '../.claude-plugin/plugin.json'), 'utf8'));
+    const basenames = (manifest.agents as string[]).map((p) => p.split('/').pop()).sort();
+    expect(basenames).toEqual([...PLUGIN_AGENTS].sort());
   });
 });
 
