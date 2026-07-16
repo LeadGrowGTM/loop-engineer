@@ -160,3 +160,45 @@ open at https://excalidraw.com or in the VS Code Excalidraw extension.
 
 **Layout:** Flow left-to-right for pipelines, top-to-bottom for hierarchies. Keep it
 readable — 5-15 elements max. This is a summary diagram, not a full architecture doc.
+
+---
+
+## Run Metrics section
+
+The goal prompt instructs the agent to append a `## Run Metrics` section to HANDOFF.md
+at run end. This is the machine-readable summary of the goal run, used by aggregator
+scripts to benchmark goal-loop performance.
+
+**Fields** (one per line, `key: value` format, exactly in this order):
+
+| Field | Description | Example |
+| --- | --- | --- |
+| `started` | ISO-8601 from `date -Is`, captured at turn 1 | `2026-07-17T10:30:45+05:30` |
+| `finished` | ISO-8601 from `date -Is`, at run end | `2026-07-17T12:45:30+05:30` |
+| `wall_clock_minutes` | elapsed time in minutes | `135` |
+| `turns_used` | count of turns consumed | `42` |
+| `turn_budget` | max turns allowed for this run | `80` |
+| `cycles_used` | count of eval-loop cycles | `2` |
+| `max_cycles` | max cycles allowed | `3` |
+| `reward_final` | final reward signal value | `4.8` |
+| `reward_per_cycle` | comma-separated list of per-cycle scores | `4.2, 4.8` |
+| `commits` | count of git commits in this run | `5` |
+| `tests_delta` | test count change (e.g. "25->31") | `47->52` |
+
+**Full example section in HANDOFF.md:**
+
+```markdown
+## Run Metrics
+
+started: 2026-07-17T10:30:45+05:30
+finished: 2026-07-17T12:45:30+05:30
+wall_clock_minutes: 135
+turns_used: 42
+turn_budget: 80
+cycles_used: 2
+max_cycles: 3
+reward_final: 4.8
+reward_per_cycle: 4.2, 4.8
+commits: 5
+tests_delta: 47->52
+```

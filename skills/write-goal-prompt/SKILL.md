@@ -414,6 +414,24 @@ Then PUBLISH the report so I wake up to a link, not a file on disk:
    `lavish-axi export HANDOFF.html --out HANDOFF.export.html` and note why in HANDOFF.md.
    See references/morning-report-specs.md.
 
+[RUN METRICS]
+At run end, append a `## Run Metrics` section to HANDOFF.md with EXACTLY these 11
+fields, one per line, in `key: value` format:
+- started (ISO-8601 from `date -Is`, captured at turn 1)
+- finished (same, at run end)
+- wall_clock_minutes
+- turns_used
+- turn_budget
+- cycles_used
+- max_cycles
+- reward_final
+- reward_per_cycle (comma-separated)
+- commits (count this run)
+- tests_delta (e.g. "25->31")
+
+This section is the machine-readable summary of the run, used by aggregator scripts
+to benchmark goal-loop performance. See references/morning-report-specs.md.
+
 [TURN LIMIT] Stop after <max_turns> turns. If not done, write all three files anyway,
 then publish per step 4.
 ```

@@ -33,3 +33,75 @@ PROOF:
   ```
 
 Commit: 8d8e2f1 — feat(run-metrics): add goals-dir-parameterized aggregator with tests
+
+## Phase 2: RUN METRICS template block and morning-report-specs section — COMPLETE
+Slice: .harness/goals/v1-3-0-metrics-grill/issues/02-run-metrics-template-and-report-spec.md — Status: done
+Skill invoked: direct implementation
+Artifact: /home/del13s_ubuntu/MACH4_2/loop-engineer/skills/write-goal-prompt/SKILL.md, /home/del13s_ubuntu/MACH4_2/loop-engineer/skills/write-goal-prompt/references/morning-report-specs.md
+Mechanical gate: `grep -c '\[RUN METRICS\]'` and `grep -c '## Run Metrics section'` → both exit 0 with count 1; field-list parity verified; `bun test` → exit 0
+PROOF:
+  Verification 1 — [RUN METRICS] block count:
+  ```
+  $ grep -c '\[RUN METRICS\]' skills/write-goal-prompt/SKILL.md
+  1
+  ```
+
+  Verification 2 — ## Run Metrics section count:
+  ```
+  $ grep -c '## Run Metrics section' skills/write-goal-prompt/references/morning-report-specs.md
+  1
+  ```
+
+  Verification 3 — Field list from SKILL.md [RUN METRICS] block (11 fields in order):
+  ```
+  - started (ISO-8601 from `date -Is`, captured at turn 1)
+  - finished (same, at run end)
+  - wall_clock_minutes
+  - turns_used
+  - turn_budget
+  - cycles_used
+  - max_cycles
+  - reward_final
+  - reward_per_cycle (comma-separated)
+  - commits (count this run)
+  - tests_delta (e.g. "25->31")
+  ```
+
+  Verification 4 — Field list from morning-report-specs.md table (11 fields in order):
+  ```
+  | `started` | ISO-8601 from `date -Is`, captured at turn 1 |
+  | `finished` | ISO-8601 from `date -Is`, at run end |
+  | `wall_clock_minutes` | elapsed time in minutes |
+  | `turns_used` | count of turns consumed |
+  | `turn_budget` | max turns allowed for this run |
+  | `cycles_used` | count of eval-loop cycles |
+  | `max_cycles` | max cycles allowed |
+  | `reward_final` | final reward signal value |
+  | `reward_per_cycle` | comma-separated list of per-cycle scores |
+  | `commits` | count of git commits in this run |
+  | `tests_delta` | test count change (e.g. "25->31") |
+  ```
+  
+  Fields match exactly (identical names, order, and count).
+
+  Verification 5 — [RUN METRICS] block placement:
+  ```
+  $ grep -n '\[MORNING REPORT\]\|\[RUN METRICS\]\|\[TURN LIMIT\]' skills/write-goal-prompt/SKILL.md
+  400:[MORNING REPORT]
+  417:[RUN METRICS]
+  435:[TURN LIMIT] Stop after <max_turns> turns...
+  ```
+  
+  Confirmed: [RUN METRICS] is immediately after [MORNING REPORT] and before [TURN LIMIT].
+
+  Verification 6 — Test suite (all 34 tests pass, no breakage):
+  ```
+  bun test v1.3.13 (bf2e2cec)
+  
+   34 pass
+   0 fail
+   66 expect() calls
+  Ran 34 tests across 3 files. [69.00ms]
+  ```
+
+Commit: <SHA pending>
