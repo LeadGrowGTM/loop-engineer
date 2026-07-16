@@ -15,10 +15,10 @@ import { join, dirname } from 'path';
 
 // ── constants ──────────────────────────────────────────────────────────────
 
-// The harness agent set — single source of truth for both `install` (what to copy)
-// and `smokeTest` (what to verify), so the two can never drift out of sync. The
-// prover was previously missing from both lists, so fresh installs silently shipped
-// a 3-agent harness with no running-app proof step (issue #13).
+// The 4-agent build loop. Combined with BENCHMARK_AGENTS into PLUGIN_AGENTS below,
+// which is what `install` (integrity guard) and `smokeTest` actually check — the
+// plugin ships the agents; nothing is copied anywhere. (History: a copy list here
+// once drifted and silently dropped the prover — issue #13.)
 export const HARNESS_AGENTS = [
   'harness-planner.md',
   'harness-maker.md',

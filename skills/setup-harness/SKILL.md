@@ -1,6 +1,6 @@
 ---
 name: setup-harness
-description: Installs the loop-engineer harness (planner/maker/checker agents + tuned skill-routing.md) into any repo. Run before first use of /write-goal-prompt in a new repo, or to update an existing install. Copies harness agents to ~/.claude/agents/ (global) and seeds .harness/skill-routing.md from a scan of the target repo's available skills.
+description: Installs the loop-engineer harness wiring (tuned skill-routing.md + .harness/ + backlog/worktree seeds) into any repo. Run before first use of /write-goal-prompt in a new repo, or to update an existing install. Agents ship with the loop-engineer plugin (auto-loaded); this skill seeds per-repo files and verifies plugin integrity.
 disable-model-invocation: true
 ---
 
@@ -17,14 +17,14 @@ Understand the current state before touching anything:
 - What repo is this? (`git remote -v`, `git rev-parse --show-toplevel`)
 - Does `.harness/skill-routing.md` already exist? If yes — show the user what's there, ask before overwriting.
 - Does `CLAUDE.md` exist? Where will the `## Harness` block go?
-- Are harness agents already in `~/.claude/agents/`? Which version (check the comment block)?
+- Are the plugin's 6 harness agents present? (`ls "${CLAUDE_PLUGIN_ROOT}/.claude/agents/harness-"*.md`)
 - Run: `bun scripts/setup-harness.ts scan <repo-root>` — show the user how many skills were found.
 
 ### 2. Present findings
 
 Show a one-paragraph summary:
 
-> "Found N skills in this repo. Harness agents are [present/missing] in ~/.claude/agents/. CLAUDE.md [has/does not have] a ## Harness block."
+> "Found N skills in this repo. Plugin agents are [present/missing] (6 expected). CLAUDE.md [has/does not have] a ## Harness block."
 
 Then ask one question: **"Install or update?"** Default: install. If everything is already current, say so and stop.
 
