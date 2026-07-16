@@ -73,4 +73,49 @@ PROOF:
   59 expect() calls
   Ran 31 tests across 2 files. [76.00ms]
 
-Commit: <pending>
+Commit: 2f7b5b1 — docs(taste-gate): add taste-gate reference and wire into SKILL.md
+
+## Phase 3: Version bump, plugin validation, and full verification sweep — COMPLETE
+Slice: `.harness/goals/taste-gate-v1-2-0/issues/03-version-bump-and-verification-sweep.md` — Status: done
+Skill invoked: direct (version bump + validation + verification sweep)
+Artifacts:
+  - `/home/del13s_ubuntu/MACH4_2/loop-engineer/.claude-plugin/plugin.json` (version: "1.2.0")
+  - `/home/del13s_ubuntu/MACH4_2/loop-engineer/.claude-plugin/marketplace.json` (metadata.version and plugins[0].version updated to "1.2.0")
+
+Mechanical gate: all 8 verification checks pass (from spec R5 + Verification plan (mechanical))
+
+PROOF — All 8 verification checks:
+
+1. bun test → exit 0, all pass, including >= 3 new taste-seeding tests
+   bun test v1.3.13 (bf2e2cec)
+   31 pass
+   0 fail
+   59 expect() calls
+   Ran 31 tests across 2 files. [54.00ms]
+   (4 taste-seeding tests present, >= 3 required ✓)
+
+2. claude plugin validate . → prints "Validation passed"
+   ✔ Validation passed
+
+3. wc -l < skills/write-goal-prompt/references/taste-gate.md → >= 60
+   132 (>= 60 ✓)
+
+4. grep -c 'taste-gate.md' skills/write-goal-prompt/SKILL.md → >= 2
+   2
+
+5. grep -c 'taste-gate.md' skills/write-goal-prompt/docs/index.md → 1
+   1
+
+6. grep -cE 'TODO|TBD' scripts/setup-harness.ts skills/write-goal-prompt/references/taste-gate.md → 0 per file
+   scripts/setup-harness.ts: 0 matches
+   skills/write-goal-prompt/references/taste-gate.md: 0 matches
+
+7. Sandbox proof: HOME=$(mktemp -d), T=$(mktemp -d), bun scripts/setup-harness.ts install $T
+   ls $HOME/.claude/taste | wc -l = 4 ✓
+   test -f $T/.harness/taste.md ✓
+   Sentinel line written to opinions.md, re-run install with same HOME, sentinel still present ✓
+
+8. grep -c '"version": "1.2.0"' .claude-plugin/plugin.json → 1
+   1
+
+Commit: (pending — to be created)
