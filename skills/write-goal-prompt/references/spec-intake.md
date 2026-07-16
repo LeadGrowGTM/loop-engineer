@@ -14,6 +14,53 @@ Read the spec (and the plan, if one exists for the same topic) before doing anyt
 In spec mode, **never re-ask a question the spec answers.** Only NEW ambiguities discovered
 during mapping may be asked, batched into at most one `AskUserQuestion` round.
 
+## Grill gate (decision point)
+
+Before mapping the spec into a goal, decide whether the spec needs adversarial review of its
+existing decisions. The grill gate attacks decisions the spec already made (the strongest
+objections, the trade-offs, the alternatives rejected), then proceeds to mapping. This is
+not a re-gathering of requirements — the spec is already brainstormed and locked. The grill
+answers: "Does this decision set survive a challenge round, or should the spec be amended
+before we build it?"
+
+## When to grill
+
+Answer: does this spec warrant an adversarial review of its decisions?
+
+| Spec shape | Grill? | Rule |
+| --- | --- | --- |
+| Introduces a new subsystem, tool, or infrastructure component | **GRILL** | Run the adversarial procedure to harden new system boundaries |
+| External-facing feature, user-visible behavior, or client spec | **GRILL** | User-facing specs must survive scrutiny before build commit |
+| Decomposes to more than 5 slices, or the user explicitly asks for it | **GRILL** | Large/multi-phase specs need decision review; follow user intent |
+| Small internal feature, bug fix, or refactor whose requirements are already all checkable | **SKIP** | No open decisions to attack; proceed straight to mapping |
+| Ambiguous (could be either — e.g., "add a field to an internal schema") | **AMBIGUOUS** | Ask the user ONE clarifying question: "Is this feature user-visible or internal-only?" Then route on the answer. |
+
+**Rule:** Never grill when the default is clear. For a genuinely ambiguous spec, ask the ONE question above, inline, in a single question round — then route on the answer.
+
+## The procedure
+
+Grilling the spec means walking its decisions adversarially:
+
+1. **List the spec's decisions:** Read through the spec's "Decisions / Requirements" section and list each major call: "We chose framework X over Y", "We require exactly 5 slices for this", "We said this is external-facing", "We hardcoded path Z", etc.
+
+2. **Attack each decision:** For each decision, state the strongest objection — the best argument for the opposite choice. What breaks if we flip it? What cost do we pay for this tradeoff?
+
+3. **Recommend keep or change:** For each decision, respond to the objection with a choice: "Keep" (the spec is right, the objection is outweighed by other constraints) or "Change" (amend the spec inline to reflect a new approach).
+
+4. **Amend the spec inline:** If recommending a change, propose new text inline and present it to the user. The user decides: approve, edit, or revert.
+
+5. **Proceed to mapping:** Once all decisions are reviewed and settled, continue to the mapping section.
+
+**Load-bearing constraint:** This procedure attacks *existing* decisions only and NEVER re-gathers requirements. No re-interviewing the user about what the feature should do. If the spec is incomplete, bounce it per "The gate" below (missing done conditions = back to brainstorm). The grill is not a second design phase; it's a decision checkup.
+
+## Tooling
+
+When available, use installed skills to run the procedure:
+- `grill-me` — lightweight, single-decision mode; use for quick decision reviews
+- `grill-with-docs` — full procedural mode with spec-anchored objections; use for high-stakes decisions
+
+If neither skill is available, run the procedure inline: list decisions, state strongest objections, recommend keep/change, amend inline, ask user for ruling, proceed to mapping.
+
 ## The mapping
 
 | Spec section | Goal prompt part | Rule |

@@ -103,7 +103,7 @@ Spec mode: derive all five from the spec's verification/testing section per `ref
 
 **Run after Phase 0, before Phase 1.** Resolve ambiguity BEFORE authoring the goal. Do not skip lightly - an unclear goal wastes an unsupervised run. Route on task size; branch bodies live in `references/clarity-gate.md`.
 
-**Spec mode (Branch S):** if the user provides a superpowers spec/plan path or says "from the spec", skip the grill entirely - the spec already answered it. Read `references/spec-intake.md` and follow its mapping + gate, then continue at Phase 1 with the fields pre-filled.
+**Spec mode (Branch S):** if the user provides a superpowers spec/plan path or says "from the spec", skip the grill entirely - the spec already answered it. Read `references/spec-intake.md` for the Grill gate decision point and the mapping, then follow its gate, and continue at Phase 1 with the fields pre-filled.
 
 **Skip only when** all Phase 1 fields (Task, Tech/Stack, Done criteria, Context) are fully specified in the user's opening message with no open scope questions. When in doubt, do not skip - grill.
 
