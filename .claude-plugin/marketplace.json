@@ -1,0 +1,18 @@
+{
+  "name": "loop-engineer",
+  "owner": { "name": "LeadGrowGTM" },
+  "metadata": {
+    "description": "loop-engineer: goal-loop harness plugin for Claude Code.",
+    "version": "1.0.0",
+    "repository": "https://github.com/LeadGrowGTM/loop-engineer"
+  },
+  "plugins": [
+    {
+      "name": "loop-engineer",
+      "source": "./",
+      "description": "Planner/Maker/Prover/Checker goal loops plus an experimental benchmarking loop",
+      "version": "1.0.0",
+      "category": "productivity"
+    }
+  ]
+}
