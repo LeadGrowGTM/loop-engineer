@@ -1,7 +1,7 @@
 import { test, expect, describe } from 'bun:test';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
-import { scanSkills, seedRoutingTable, patchClaudeMd, smokeTest } from './setup-harness';
+import { AGENT_FILES, scanSkills, seedRoutingTable, patchClaudeMd, smokeTest } from './setup-harness';
 
 // ── test fixtures ──────────────────────────────────────────────────────────
 
@@ -140,11 +140,9 @@ describe('smokeTest', () => {
       '.harness/skill-routing.md': Array(11).fill('| row |').join('\n'),
       'CLAUDE.md': '## Harness\nInstalled.',
     });
-    const agentsDir = scaffold({
-      'harness-planner.md': '---\nname: harness-planner\n---',
-      'harness-maker.md': '---\nname: harness-maker\n---',
-      'harness-checker.md': '---\nname: harness-checker\n---',
-    });
+    const agentsDir = scaffold(Object.fromEntries(
+      AGENT_FILES.map((file) => [file, `---\nname: ${file.replace('.md', '')}\n---`]),
+    ));
 
     const results = smokeTest(dir, agentsDir);
     expect(results.every((r) => r.passed)).toBe(true);
@@ -155,10 +153,9 @@ describe('smokeTest', () => {
       '.harness/skill-routing.md': Array(11).fill('| row |').join('\n'),
       'CLAUDE.md': '## Harness\nInstalled.',
     });
-    const agentsDir = scaffold({
-      'harness-maker.md': '---',
-      'harness-checker.md': '---',
-    });
+    const agentsDir = scaffold(Object.fromEntries(
+      AGENT_FILES.filter((file) => file !== 'harness-planner.md').map((file) => [file, '---']),
+    ));
 
     const results = smokeTest(dir, agentsDir);
     const plannerCheck = results.find((r) => r.check.includes('harness-planner'));
@@ -170,11 +167,7 @@ describe('smokeTest', () => {
       '.harness/skill-routing.md': '| one row |',
       'CLAUDE.md': '## Harness\nInstalled.',
     });
-    const agentsDir = scaffold({
-      'harness-planner.md': '---',
-      'harness-maker.md': '---',
-      'harness-checker.md': '---',
-    });
+    const agentsDir = scaffold(Object.fromEntries(AGENT_FILES.map((file) => [file, '---'])));
 
     const results = smokeTest(dir, agentsDir);
     const routingCheck = results.find((r) => r.check.includes('skill-routing'));

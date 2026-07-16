@@ -40,17 +40,27 @@ agent's session is gone and there is no local server to open the file interactiv
 **Command — headless-safe (no browser required, just an HTTPS POST):**
 
 ```bash
-lavish-axi share HANDOFF.html --password <pw>
+lavish-axi share HANDOFF.html
 ```
 
 - `share` inlines local assets and POSTs the single-file HTML to **ht-ml.app**, then
   prints a **visitable URL** and a one-time secret **`update_key`**. No account or API
   key needed. It does NOT need a browser or a running Lavish server, so it works inside
   a detached overnight gnhf run.
-- **`--password <pw>` is MANDATORY.** ht-ml.app pages are PUBLIC by default and may be
-  indexed/scraped. Morning reports describe client and business work — never publish
-  one without a password. Generate a fresh random password per report (do not reuse a
-  hardcoded one, do not commit it to a public repo).
+- **Do NOT pass `--password`. Publish the report PUBLIC** (operator decision, 2026-07-16).
+  The link must open with one click from anywhere - a phone, a teammate's machine, a
+  comment on the no-mistakes PR - with nothing to type. A password gate makes the report
+  single-player; these reports are meant to be shared.
+- **The trade, stated plainly:** the page is reachable by anyone holding the URL and may be
+  indexed or scraped. The URL is an unguessable slug, and that is the only barrier.
+- **So the report body carries the burden instead.** Keep genuinely sensitive values out of
+  it - credentials, API keys, tokens, `update_key`s, client PII. Gate the *value*, not the
+  page. If a value cannot be public, it does not belong in a published report; put it in
+  `HANDOFF.secret.local` and reference it by name.
+- **`update_key` is still a secret and this does not change that.** `share` returns one per
+  page; it is update/delete-capable and shown once. Write it to `HANDOFF.secret.local`,
+  gitignore that file, and never commit it. Publishing the *page* publicly does not make
+  its *key* public.
 
 **Capture the public URL in `HANDOFF.md`** so the link survives after the agent exits. Add a
 block at the very top of `HANDOFF.md`:

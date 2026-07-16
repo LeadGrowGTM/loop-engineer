@@ -26,6 +26,14 @@ export interface SmokeResult {
   passed: boolean;
 }
 
+export const AGENT_FILES = [
+  'harness-planner.md',
+  'harness-maker.md',
+  'harness-prover.md',
+  'harness-checker.md',
+  'harness-shipper.md',
+] as const;
+
 // ── scanSkills ─────────────────────────────────────────────────────────────
 
 function parseFrontmatter(content: string): Record<string, string> | null {
@@ -109,18 +117,10 @@ export function smokeTest(targetDir: string, agentsDir: string): SmokeResult[] {
     readFileSync(routingPath, 'utf8').split('\n').length >= 10;
 
   return [
-    {
-      check: 'harness-planner.md in agents dir',
-      passed: existsSync(join(agentsDir, 'harness-planner.md')),
-    },
-    {
-      check: 'harness-maker.md in agents dir',
-      passed: existsSync(join(agentsDir, 'harness-maker.md')),
-    },
-    {
-      check: 'harness-checker.md in agents dir',
-      passed: existsSync(join(agentsDir, 'harness-checker.md')),
-    },
+    ...AGENT_FILES.map((file) => ({
+      check: `${file} in agents dir`,
+      passed: existsSync(join(agentsDir, file)),
+    })),
     {
       check: 'skill-routing.md exists and ≥ 10 lines',
       passed: routingOk,
@@ -153,7 +153,7 @@ if (import.meta.main) {
     const sourceAgentsDir = join(import.meta.dir, '../.claude/agents');
 
     mkdirSync(agentsDir, { recursive: true });
-    for (const f of ['harness-planner.md', 'harness-maker.md', 'harness-checker.md']) {
+    for (const f of AGENT_FILES) {
       copyFileSync(join(sourceAgentsDir, f), join(agentsDir, f));
       console.log(`Copied ${f} → ${agentsDir}`);
     }

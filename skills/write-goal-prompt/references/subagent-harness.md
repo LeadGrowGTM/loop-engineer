@@ -14,7 +14,7 @@ not its self-talk. Fresh eyes or it doesn't count.
 
 ## Agent Files (Canonical Definitions)
 
-The 4 harness agents are defined as proper Claude Code agents in `.claude/agents/`:
+The 5 harness agents are defined as proper Claude Code agents in `.claude/agents/`:
 
 | File                                | Role                             | tools                                | model      |
 | ----------------------------------- | -------------------------------- | ------------------------------------ | ---------- |
@@ -22,6 +22,7 @@ The 4 harness agents are defined as proper Claude Code agents in `.claude/agents
 | `.claude/agents/harness-maker.md`   | Execute phases, commit           | Read, Glob, Write, Edit, Bash, Agent | haiku-4-5  |
 | `.claude/agents/harness-prover.md`  | Drive running app → PROOF verdict | Read, Bash                          | sonnet-4-6 |
 | `.claude/agents/harness-checker.md` | Score artifacts, write CYCLE_LOG | Read, Glob, Write                    | sonnet-4-6 |
+| `.claude/agents/harness-shipper.md` | Run `/no-mistakes` once after PASS → PR | Read, Bash                      | sonnet-4-6 |
 
 Checker's `tools: Read, Glob, Write` is **mechanical isolation** — it literally cannot run
 Bash, spawn subagents, or access anything the Maker produced via tool calls. Fresh by design.
@@ -93,9 +94,9 @@ run it at depth 4. Never design a harness that needs depth 5 — it silently los
 
 ---
 
-## The 3-Phase Runtime Harness
+## The 4-Phase Runtime Harness
 
-Every goal prompt runs three logical phases. Simple tasks collapse them; complex tasks
+Every goal prompt runs four logical phases. Simple tasks collapse them; complex tasks
 keep them explicit. The Harness Architect agent (Phase 1.5 of the skill) customizes
 HARNESS.md for the specific task; the agent files contain the structural templates.
 
@@ -212,6 +213,23 @@ Fix target: [one sentence citing the evidence above]
 Scores without `evidence:` citations are invalid. "Looks good" is not evidence.
 
 **Checker stops after writing CYCLE_LOG.md.** Maker reads it on the next cycle.
+
+---
+
+### Phase 4: Ship
+
+Run this phase exactly once after Checker returns PASS. Spawn a fresh `harness-shipper`; never
+run the pipeline in the goal agent. Give the shipper the user's original objective, decisions,
+and constraints as the pipeline intent. The task changes must be committed on a feature branch.
+The shipper drives every pipeline gate until it returns a terminal outcome.
+
+- `checks-passed`: PR and green CI are ready for human review and merge. Record the PR URL and stop.
+- `passed`: record the completed outcome.
+- `failed` or `cancelled`: record the failure and do not claim the work is merge-ready.
+- `ITERATE` or `PLATEAU`: do not invoke `/no-mistakes`.
+
+Keep shipping outside the eval loop: pipeline fixes and CI are release validation, not another
+Checker reward cycle. Follow the installed `no-mistakes` skill for gate responses and escalation.
 
 ---
 

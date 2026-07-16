@@ -61,7 +61,7 @@
   .card p strong{color:var(--text)}
 
   /* pipeline of agents */
-  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:0;align-items:stretch;margin-top:8px}
+  .flow{display:grid;grid-template-columns:repeat(5,1fr);gap:0;align-items:stretch;margin-top:8px}
   .node{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:14px;
     padding:18px;box-shadow:var(--shadow);margin-right:26px}
   .node:last-child{margin-right:0}
@@ -107,11 +107,11 @@
 
   <span class="badge"><span class="dot"></span>Loop Engineer · Harness</span>
   <h1>How the <em>harness</em> works</h1>
-  <p class="sub">A goal-prompt writer plus a four-agent planner / maker / prover / checker loop. It turns a task into an autonomous run that grades its own work honestly - because the model that wrote the code never scores it.</p>
+  <p class="sub">A goal-prompt writer plus a five-agent planner / maker / prover / checker / shipper loop. It turns a task into an autonomous run that grades its own work honestly - because the model that wrote the code never scores it.</p>
 
   <div class="stats">
     <div class="stat"><div class="n">2</div><div class="l">Origin prompts</div></div>
-    <div class="stat"><div class="n">4</div><div class="l">Loop agents</div></div>
+    <div class="stat"><div class="n">5</div><div class="l">Loop agents</div></div>
     <div class="stat"><div class="n">4</div><div class="l">Execution modes</div></div>
     <div class="stat"><div class="n">4000</div><div class="l">char goal gate</div></div>
   </div>
@@ -163,13 +163,14 @@
 
   <!-- THE LOOP -->
   <section id="loop">
-    <h2>The four-agent loop</h2>
+    <h2>The five-agent loop</h2>
     <p class="lead">Each agent has its own context and a deliberately narrow toolset. The Planner never makes; the Checker never runs code.</p>
     <div class="flow">
       <div class="node"><div class="role">Planner</div><div class="tools">Read · Glob · Write</div><div class="desc">Decomposes the goal into phases, picks skill routing, writes BRIEF.md + PLAN.md. No artifacts until the plan exists.</div></div>
       <div class="node"><div class="role">Maker</div><div class="tools">Read · Write · Edit · Bash · Agent</div><div class="desc">Executes phase by phase, commits at each boundary, pastes proof to PROGRESS.md.</div></div>
       <div class="node dim"><div class="role">Prover</div><div class="tools">Read · Bash</div><div class="desc">Drives the running app, returns a binary PROOF verdict. Running-app goals only - skipped for static artifacts.</div></div>
       <div class="node"><div class="role">Checker</div><div class="tools">Read · Glob · Write</div><div class="desc">Fresh context, scores artifacts against the rubric with file:line evidence. Cannot run Bash, cannot spawn agents.</div></div>
+      <div class="node"><div class="role">Shipper</div><div class="tools">Read · Bash</div><div class="desc">Runs after a Checker PASS only. Invokes /no-mistakes once, drives it to a terminal outcome, returns the PR URL.</div></div>
     </div>
   </section>
 
@@ -231,7 +232,7 @@
     <p class="lead">The repo copy is the source of truth. Every changed skill, agent, and workflow syncs repo → global (<span class="mono">~/.claude</span>) so a run behaves identically everywhere - reconciled as a superset, never blind-overwritten.</p>
     <ul class="clean">
       <li><strong>Skill</strong> - write-goal-prompt (SKILL.md + references + scripts)</li>
-      <li><strong>Agents</strong> - harness-planner / maker / prover / checker</li>
+      <li><strong>Agents</strong> - harness-planner / maker / prover / checker / shipper</li>
       <li><strong>Workflow</strong> - red-team.js, imports clean, schema-validated findings</li>
     </ul>
   </section>

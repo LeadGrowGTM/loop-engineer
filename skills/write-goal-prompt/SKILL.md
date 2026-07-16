@@ -99,9 +99,10 @@ Produce: single reward signal (programmatic — flag if human judgment required)
 | --- | --- |
 | Fully specified, zero ambiguity | **Skip** → Phase 1 |
 | Large / multi-session / >~5 open scope questions / investigative unknowns | **`/wayfinder`** — chart the work as an investigation-ticket map, resolve, then resume Phase 1 with decisions folded in (Branch B) |
-| Single-session scope with some ambiguity | **grill** — `/grilling` for deep interactive depth, or the batch-question agent for one `AskUserQuestion` round (Branch A) |
+| Single-session scope, ambiguity is **chained** (each answer decides the next question) | **`/grilling`** — deep interactive depth, one question at a time (Branch A) |
+| Single-session scope, ambiguity is **wide but independent** (many decisions, few dependencies) | **`batch-grill-me`** — multi-round frontier batches: ask every prerequisites-settled decision in one numbered round, recompute the frontier, repeat until empty (Branch A) |
 
-Fold every answer (or the wayfinder map's decisions) into Phase 1 as if the user specified those fields upfront. See `references/clarity-gate.md` for the grill agent prompt and the full wayfinder routing test.
+Fold every answer (or the wayfinder map's decisions) into Phase 1 as if the user specified those fields upfront. See `references/clarity-gate.md` for the "which do I pick" test between the two grill paths and the full wayfinder routing test.
 
 ---
 
@@ -169,15 +170,15 @@ Return: array of {tool, purpose, invocation} for up to 5 relevant tools/scripts.
 ```
 Read .claude/agent-context/snapshot.md for workspace context before starting.
 Confirm harness agents exist in at least one of these locations (Glob both):
-  - .claude/agents/harness-planner.md, harness-maker.md, harness-checker.md
-  - ~/.claude/agents/harness-planner.md, harness-maker.md, harness-checker.md
+  - .claude/agents/harness-planner.md, harness-maker.md, harness-checker.md, harness-shipper.md
+  - ~/.claude/agents/harness-planner.md, harness-maker.md, harness-checker.md, harness-shipper.md
 Read .harness/skill-routing.md (installed by /setup-harness). If missing, fall back to
   .claude/skills/write-goal-prompt/references/skill-routing.md.
 
 Task being goal-prompted: [TASK SUMMARY]
 Skills confirmed available (from Agent 1): [SKILL SCANNER RESULTS]
 
-Write HARNESS.md content with FIVE sections:
+Write HARNESS.md content with SEVEN sections:
 
 PLANNER_BRIEF:
 What context files should Planner read first for this task?
@@ -206,6 +207,13 @@ Which artifact paths should Checker evaluate?
 What rubric dimensions (1-5) apply? What does a 5 look like vs a 1 for each?
 What PASS threshold (default: mean ≥ 3.5/5.0)?
 Note: checker agent file enforces fresh context — no extra isolation instructions needed.
+
+SHIP_BRIEF:
+Set `intent` to the user's original objective plus any decisions or constraints that a reviewer
+cannot infer from the diff. After Checker returns PASS, spawn a fresh `harness-shipper` agent;
+that agent invokes `/no-mistakes` once and drives it until `checks-passed`, `passed`, `failed`,
+or `cancelled`. Never ship inline and never invoke it on ITERATE or PLATEAU. Treat
+`checks-passed` as "PR prepared for human merge," not merged.
 
 LOOP_TRACKER:
 A markdown checklist the running agent fills in as the loop progresses.
@@ -251,6 +259,8 @@ omit Prover rows if PROVER_BRIEF is N/A; omit Red-team rows if REDTEAM_BRIEF is 
 - [ ] Verdict: PASS / PLATEAU (max cycles reached)
 
 ### Final
+- [ ] No-mistakes: terminal outcome: `<checks-passed | passed | failed | cancelled | N/A — no PASS>`
+- [ ] Pull request: `<URL | N/A>`
 - [ ] HANDOFF.md written: `<path>`
 - [ ] HANDOFF.html written: `<path>`
 - [ ] HANDOFF.excalidraw written: `<path>`
@@ -300,7 +310,7 @@ Use this context:
 <populated from Phase 1.5 discovery — omit entirely if nothing relevant found>
 
 [HARNESS]
-Read HARNESS.md before starting. Four-phase execution:
+Read HARNESS.md before starting. Five-stage execution:
 1. Planner (turns 1-5): decompose task → write PLAN.md (phases, skill routing, checker rubric),
    then mirror each phase to a durable slice in `issues/NN-<slug>.md` (survives /compact, tracks
    per-phase Status). PLAN.md `## Phases` stays canonical; slices are the durable drive-list.
@@ -316,6 +326,10 @@ Read HARNESS.md before starting. Four-phase execution:
 4. Checker: spawn fresh harness-checker subagent with CHECKER_BRIEF from HARNESS.md.
    Pass artifact paths + PROOF VERDICT (if running-app goal).
    Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
+5. Ship (only after Checker PASS): spawn a fresh `harness-shipper` agent with SHIP_BRIEF.intent,
+   project root, branch, and the PASS verdict. The shipper invokes `/no-mistakes`; the goal agent
+   must never drive it inline. `checks-passed` means the PR is ready for human review/merge; do
+   not wait for merge. Do not run this stage for ITERATE or PLATEAU.
 
 Work through the task to completion. If you hit a blocker, do not stop. Use mocks, stubs, or documented assumptions. Record each workaround and continue with everything that does not require my decision.
 
@@ -343,6 +357,9 @@ Then execute the task using this loop — repeat up to <max_cycles> times:
 
 Log each cycle to HANDOFF.md: cycle number, mechanical gate result, reward signal score, what changed.
 After each cycle, update the LOOP_TRACKER section in HARNESS.md — check off completed steps, fill in paths, SHAs, and reward signals.
+After the first PASS, exit the eval loop and run the Ship stage exactly once. Record the
+no-mistakes outcome, fixes, and PR URL in HANDOFF.md and LOOP_TRACKER. If it returns `failed` or
+`cancelled`, report that terminal outcome; do not describe the change as merge-ready.
 
 [CONTEXT MANAGEMENT]
 Run /compact when context approaches 170k tokens. After compacting, state your current checkpoint before continuing. Do NOT compact on turn 1.
@@ -381,12 +398,15 @@ By morning, leave me the morning report in the task's working directory:
 3. HANDOFF.excalidraw — architecture/flow diagram (see references/morning-report-specs.md)
 
 Then PUBLISH the report so I wake up to a link, not a file on disk:
-4. Run `lavish-axi share HANDOFF.html --password <fresh-random-pw>` — publishes to a
-   hosted URL (headless-safe HTTPS POST, no browser needed). --password is mandatory
-   (pages are public by default; this is client/business work). Record ONLY the hosted
-   URL in a "## 📋 Published Report" block at the TOP of HANDOFF.md. Write the password
-   and update_key to HANDOFF.secret.local and add that filename to .gitignore
-   immediately — the update_key is update/delete-capable and MUST NEVER be committed
+4. Run `lavish-axi share HANDOFF.html` — publishes to a hosted URL (headless-safe HTTPS
+   POST, no browser needed). Publish PUBLIC: do NOT pass --password. The link must open
+   in one click from anywhere, including a comment on the no-mistakes PR — a password
+   gate makes the report single-player. The trade: anyone with the URL can read it, so
+   keep credentials, tokens, and client PII OUT of the report body — gate the value, not
+   the page. Record the hosted URL in a "## 📋 Published Report" block at the TOP of
+   HANDOFF.md. The update_key is still a secret: write it to HANDOFF.secret.local, add
+   that filename to .gitignore immediately — it is update/delete-capable and MUST NEVER
+   be committed. A public page does not mean a public key
    to any repo. If ht-ml.app is unreachable, fall back to
    `lavish-axi export HANDOFF.html --out HANDOFF.export.html` and note why in HANDOFF.md.
    See references/morning-report-specs.md.
@@ -404,7 +424,8 @@ then publish per step 4.
 ### Step 0 — Write HARNESS.md (before measuring)
 
 Write `HARNESS.md` to the task working directory using Agent 4 output from Phase 1.5.
-The file must contain three sections: `PLANNER_BRIEF`, `MAKER_ROUTING`, `CHECKER_BRIEF`.
+The file must contain six sections: `PLANNER_BRIEF`, `MAKER_ROUTING`, `PROVER_BRIEF`,
+`REDTEAM_BRIEF`, `CHECKER_BRIEF`, `SHIP_BRIEF`, followed by `LOOP_TRACKER`.
 
 Then update the `[HARNESS]` block in the goal candidate so the first line reads:
 `Read <absolute-path>/HARNESS.md before starting.`
@@ -549,7 +570,7 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 | File                                 | Contents                                                                                                 |
 | ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | `references/eval-loop-design.md`     | Phase 0 four questions, human-judgment flag, task-type lookup                                            |
-| `references/clarity-gate.md`         | Phase 0.5 branch bodies: grill agent prompt + `/grilling`; wayfinder routing test for large tasks        |
+| `references/clarity-gate.md`         | Phase 0.5 branch bodies: `/grilling` vs `batch-grill-me` selection test; wayfinder routing test for large tasks |
 | `references/parallel-execution.md`   | Worktree isolation: treehouse pool, auto-lease on collision, lease lifecycle, manual parallel-stream commands |
 | `references/subagent-harness.md`     | Planner/maker/checker templates, budget allocation, checker independence rules                           |
 | `references/skill-routing.md`        | Task type → skill mappings, chaining patterns, quality bars per skill                                    |
