@@ -6,7 +6,7 @@ All reference files for the write-goal-prompt skill.
 
 | File                                                                            | What it covers                                                          |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| [subagent-harness.md](../references/subagent-harness.md)                       | 3-agent loop design, depth budget, checker independence rules           |
+| [subagent-harness.md](../references/subagent-harness.md)                       | 4-agent loop design, depth budget, checker independence rules           |
 | [eval-loop-design.md](../references/eval-loop-design.md)                       | Reward signal design, pass thresholds, cycle budget                     |
 | [clarity-gate.md](../references/clarity-gate.md)                               | Phase 0.5 grill vs `/wayfinder` routing, grill agent prompt             |
 | [issue-tracker.md](../references/issue-tracker.md)                             | Durable phase-slice schema (`issues/NN-<slug>.md`), Status vocab        |

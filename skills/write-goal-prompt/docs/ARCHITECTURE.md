@@ -1,16 +1,17 @@
 # write-goal-prompt Harness Architecture
 
-Three agents. Strict roles. No overlap.
+Four agents. Strict roles. No overlap.
 
 ---
 
 ## Agents
 
-| Agent   | File                                | Role                           | Tools                                | Model      |
-| ------- | ----------------------------------- | ------------------------------ | ------------------------------------ | ---------- |
-| Planner | `.claude/agents/harness-planner.md` | Decompose goal → PLAN.md       | Read, Glob, Write                    | sonnet-4-6 |
-| Maker   | `.claude/agents/harness-maker.md`   | Execute phases, commit each    | Read, Glob, Write, Edit, Bash, Agent | haiku-4-5  |
-| Checker | `.claude/agents/harness-checker.md` | Score artifacts → CYCLE_LOG.md | Read, Glob, Write                    | sonnet-4-6 |
+| Agent   | File                                | Role                                                    | Tools                                | Model            |
+| ------- | ----------------------------------- | ------------------------------------------------------- | ------------------------------------ | ---------------- |
+| Planner | `.claude/agents/harness-planner.md` | Decompose goal → PLAN.md                                | Read, Glob, Write                    | claude-sonnet-5  |
+| Maker   | `.claude/agents/harness-maker.md`   | Execute phases, commit each                             | Read, Glob, Write, Edit, Bash, Agent | claude-haiku-4-5 |
+| Prover  | `.claude/agents/harness-prover.md`  | Drive the running app, return PROOF verdict (running-app goals only) | Read, Bash              | claude-sonnet-5  |
+| Checker | `.claude/agents/harness-checker.md` | Score artifacts → CYCLE_LOG.md                          | Read, Glob, Write                    | claude-sonnet-5  |
 
 Checker's tool restriction (`Read, Glob, Write` only) is **mechanical isolation** — it cannot
 run Bash, spawn subagents, or see anything Maker produced via tool calls. Independence by design.
@@ -45,7 +46,7 @@ Claude Code enforces a 5-level agent depth limit. Design to stay within it.
 
 | Depth | Agent                          | Notes                            |
 | ----- | ------------------------------ | -------------------------------- |
-| 0     | Goal loop agent                | Spawns Planner + Maker + Checker |
+| 0     | Goal loop agent                | Spawns Planner + Maker + Prover + Checker |
 | 1     | harness-planner                | Write-only phase; spawns nothing |
 | 2     | harness-maker                  | Can spawn skill agents (depth 3) |
 | 3     | harness-checker / skill agents | Checker runs here                |
@@ -64,6 +65,7 @@ That verifier cannot spawn further.
 Goal loop
   → spawn Planner  → writes PLAN.md
   → spawn Maker    → executes phases, commits, writes PROGRESS.md
+  → spawn Prover   → drives the running app, returns PROOF verdict (running-app goals only)
   → spawn Checker  → scores final artifacts, writes CYCLE_LOG.md
        ↓
   PASS  → done
