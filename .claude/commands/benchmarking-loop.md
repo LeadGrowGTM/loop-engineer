@@ -1,5 +1,5 @@
 ---
-description: Run a benchmark spec through the benchmarking loop (sweep or climb) and write a ranked variant ledger
+description: "EXPERIMENTAL: run a benchmark spec through the benchmarking loop (sweep or climb) and write a ranked variant ledger"
 argument-hint: "[goal text | <template-name> | --resume <run-id>]"
 ---
 

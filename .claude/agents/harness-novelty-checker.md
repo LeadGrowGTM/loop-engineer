@@ -1,6 +1,6 @@
 ---
 name: harness-novelty-checker
-description: Fresh-context duplicate detector for the benchmarking climb loop. Diffs a proposed variant against the variant ledger and rejects near-duplicates of already-measured variants BEFORE a measurement is spent. Did NOT invent the variant. Returns a binary NOVEL | DUPLICATE verdict citing the closest ledger match. Use as the second pre-measurement check in every climb cycle, after in-bounds.
+description: EXPERIMENTAL (benchmarking loop, no real-run trail yet). Fresh-context duplicate detector for the benchmarking climb loop. Diffs a proposed variant against the variant ledger and rejects near-duplicates of already-measured variants BEFORE a measurement is spent. Did NOT invent the variant. Returns a binary NOVEL | DUPLICATE verdict citing the closest ledger match. Use as the second pre-measurement check in every climb cycle, after in-bounds.
 tools: Read, Glob
 model: claude-sonnet-5
 ---

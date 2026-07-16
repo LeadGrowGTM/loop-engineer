@@ -1,6 +1,6 @@
 ---
 name: harness-inbounds-checker
-description: Fresh-context invariant enforcer for the benchmarking climb loop. Diffs a proposed variant against the declared invariant list BEFORE any measurement is spent. Did NOT invent the variant and has no view of the inventor's reasoning. Returns a binary IN-BOUNDS | VIOLATION verdict with the cited invariant. Use as the first pre-measurement check in every climb cycle.
+description: EXPERIMENTAL (benchmarking loop, no real-run trail yet). Fresh-context invariant enforcer for the benchmarking climb loop. Diffs a proposed variant against the declared invariant list BEFORE any measurement is spent. Did NOT invent the variant and has no view of the inventor's reasoning. Returns a binary IN-BOUNDS | VIOLATION verdict with the cited invariant. Use as the first pre-measurement check in every climb cycle.
 tools: Read, Glob
 model: claude-sonnet-5
 ---
