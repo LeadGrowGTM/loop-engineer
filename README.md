@@ -10,7 +10,8 @@ agent-harness/
 │   ├── harness-planner.md   — decomposes goal → PLAN.md (sonnet, Read/Glob/Write only)
 │   ├── harness-maker.md     — executes phases, commits (haiku, full tools)
 │   ├── harness-prover.md    — runs live feature (sonnet, Read/Bash only) for running-app goals
-│   └── harness-checker.md   — scores artifacts fresh (sonnet, Read/Glob only)
+│   ├── harness-checker.md   — scores artifacts fresh (sonnet, Read/Glob only)
+│   └── harness-shipper.md   — runs /no-mistakes once after PASS → PR (sonnet, Read/Bash only)
 └── skills/write-goal-prompt/ ← authoring skill (lives at .claude/skills/ for discovery)
     ├── SKILL.md
     ├── EXAMPLES.md
@@ -42,6 +43,7 @@ Goal agent (depth 0)
   └── harness-maker   (depth 2)  → artifacts + PROGRESS.md (with proof)
   └── harness-prover  (depth 3)  → PROOF verdict (running-app goals only)
   └── harness-checker (depth 4)  → CYCLE_LOG.md (scores + verdict)
+  └── harness-shipper (depth 1)  → /no-mistakes once, on PASS only → PR URL
        ↑ repeat until PASS or plateau (max 3 cycles)
   PASS → /no-mistakes → review/test/lint/push/PR/CI → PR ready for human merge
 ```

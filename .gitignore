@@ -18,3 +18,8 @@
 temp/
 .cursor/
 backlog.md
+
+# Morning-report publish secrets (password + update_key). update_key is update/delete-capable
+# and must NEVER be committed to any repo. Matches at any depth, not just repo root.
+HANDOFF.secret.local
+**/HANDOFF.secret.local
