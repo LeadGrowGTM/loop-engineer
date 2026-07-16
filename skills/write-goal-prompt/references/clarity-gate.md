@@ -4,38 +4,36 @@ Phase 0.5 routes on task size. This file holds the two branch bodies. The routin
 
 ## Branch A - grill (single-session tasks with some ambiguity)
 
-Default clarity path. Prefer the real `/grilling` skill for depth; fall back to the batch-question agent below when you want all questions in one `AskUserQuestion` round instead of an interactive one-at-a-time interview.
+Default clarity path. Two paths, both real skills. Pick with the test below, then run that skill to completion - do not blend them.
 
-**Interactive depth:** invoke `/grilling` (or `grill-me`) - a relentless one-question-at-a-time interview that walks each branch of the design tree and recommends an answer per question. Use when the ambiguity is deep or decisions depend on each other.
+### Which do I pick?
 
-**Batch mode:** spawn 1 Sonnet agent (not Haiku - question quality needs judgment) with this prompt, then present its questions in ONE `AskUserQuestion` call (multiSelect: false per question):
+Ask one question: **are the open decisions tangled, or merely many?**
 
-```
-Read .claude/agent-context/snapshot.md for workspace context before starting.
-You are a goal-grilling agent. Your job is to surface hidden scope gaps, vague done criteria,
-and overnight risks BEFORE a goal prompt is written.
+| If... | Pick | Because |
+| --- | --- | --- |
+| Answers change what the *next* question even is - the decisions are chained, and asking round 2 before hearing round 1 would mean guessing | **`/grilling`** | One question at a time is the only way to walk a chain; each answer picks the next branch |
+| The open decisions are largely independent - you could sensibly ask all of them right now without guessing at any answer | **`batch-grill-me`** | A whole frontier per round collapses many independent decisions into far fewer turns |
 
-Task description so far: [TASK DESCRIPTION FROM USER]
+Tie-breaker: if you cannot tell, start with `batch-grill-me`. Its first round surfaces which decisions are actually chained; if the frontier turns out to be one question wide round after round, you are in `/grilling` territory - switch.
 
-Generate 3-5 targeted questions. Focus on:
-- Scope edges: what is explicitly NOT included?
-- Done criteria sharpness: is the end state verifiable without judgment?
-- Overnight risk: what could block autonomous execution?
-- Hidden constraints: live data, shared systems, cost ceilings, auth?
+### `/grilling` - deep interactive depth
 
-Rules:
-- Never ask about fields already answered
-- Questions must be specific to THIS task - not a generic checklist
-- Max 5 questions, min 3
-- Return ONLY: an array of {question: string, header: string} - header is <=12 chars
+Invoke `/grilling` - a relentless one-question-at-a-time interview that walks each branch of the design tree and recommends an answer per question. Use when the ambiguity is deep or decisions depend on each other.
 
-Example for "build a triage dashboard":
-[
-  {question: "Should unreviewed runs appear or be hidden by default?", header: "Default view"},
-  {question: "Read-only or can it write verdict/dismiss from the UI?", header: "Write access"},
-  {question: "Mobile-responsive or desktop only?", header: "Responsive"}
-]
-```
+Note: `/grilling` currently resolves ambiguously - a local `~/.claude/skills/grilling` skill and a `mattpocock-skills:grilling` plugin skill, with different descriptions. Either satisfies this branch. See `docs/DEPENDENCIES.md`.
+
+### `batch-grill-me` - multi-round frontier batches
+
+Invoke `batch-grill-me`. It models the work as a **design tree** and works it in **rounds**:
+
+- The **frontier** is every decision whose prerequisites are already settled - the questions answerable *now* without guessing at answers not yet heard.
+- Ask the **whole frontier in one round**, numbered, each with your recommended answer. Then wait for the user's answers.
+- Answers **reshape the tree**: settled decisions push the frontier outward and unblock what depended on them. **Recompute the frontier** and ask the next round. A question depending on another still open in this round belongs to a *later* round.
+- **Sub-agents find facts; the user makes decisions.** When a frontier question needs a fact from the environment, dispatch a sub-agent rather than asking the user something you could look up. Don't block on it - only questions downstream of that exploration wait; ask the rest of the frontier now.
+- **Done when the frontier is empty** - every branch visited, nothing silently assumed.
+
+The round structure is the point. Do not flatten it into "ask several questions at once" - a single unstructured batch asks questions whose prerequisites are still open, which is exactly what the frontier rule prevents.
 
 Fold every answer into Phase 1 - treat each as if the user specified that field upfront.
 
@@ -46,7 +44,7 @@ When the task is too big for one agent session, or clarity needs more than a han
 Route to wayfinder when **any** hold:
 
 - The task spans more than one agent session of work.
-- More than ~5 distinct open scope questions - a single `AskUserQuestion` round can't resolve them.
+- More than ~5 distinct open scope questions *and* answering them needs investigation first - grilling (either path) resolves preferences, not unknowns that must be researched before they can even be asked.
 - The unknowns are investigative ("figure out how X works before we can scope Y"), not just preferences.
 - Multiple independent workstreams need mapping before execution.
 
