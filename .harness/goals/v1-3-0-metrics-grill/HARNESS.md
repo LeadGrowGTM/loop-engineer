@@ -30,7 +30,7 @@ Reward = mean of the 4. Pass threshold: 4.0. Write scores + verdict (PASS / ITER
 
 ## LOOP_TRACKER
 
-- [ ] Cycle 1: mechanical gate ___ | reward ___ | changed: ___
+- [x] Cycle 1: mechanical gate PASS (bun test 34/34, validate passed, all 8 spec checks green) | reward 5.0 | changed: initial build, all 4 phases (R1-R6)
 - [ ] Cycle 2: mechanical gate ___ | reward ___ | changed: ___
 - [ ] Cycle 3: mechanical gate ___ | reward ___ | changed: ___
-- Final: verdict ___ | commit ___ | pushed: ___
+- Final: verdict PASS (cycle 1, reward 5.0/5.0) | commit 2591ac2 (release) + run-close commit | pushed: yes

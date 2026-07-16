@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>v1.3.0 run metrics + grill gate — morning report</title>
+<style>
+  :root { --green: #16a34a; --ink: #111827; --muted: #6b7280; --line: #e5e7eb; --bg: #f9fafb; }
+  * { box-sizing: border-box; }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: var(--bg); margin: 0; padding: 2rem 1rem; }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  .sub { color: var(--muted); margin-bottom: 1.5rem; }
+  .verdict { display: inline-block; background: var(--green); color: #fff; font-weight: 700; border-radius: 999px; padding: .35rem 1rem; margin-bottom: 1.5rem; }
+  section { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; }
+  h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  code { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: .1rem .35rem; font-size: .85em; }
+  .ok { color: var(--green); font-weight: 700; }
+  .score { font-variant-numeric: tabular-nums; font-weight: 700; }
+  ul { margin: .25rem 0; padding-left: 1.25rem; }
+  li { margin: .25rem 0; }
+  .overflow { overflow-x: auto; }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: .75rem 1rem; font-size: .82rem; overflow-x: auto; margin: .5rem 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>v1.3.0 run metrics + grill gate — overnight run report</h1>
+  <div class="sub">loop-engineer · branch charles-fork · 2026-07-17 · spec: docs/superpowers/specs/2026-07-17-run-metrics-grill-gate.md</div>
+  <div class="verdict">PASS — reward 5.0 / 5.0 (threshold 4.0) — cycle 1 of 3</div>
+
+  <section>
+    <h2>Checker scores (fresh context, file:line evidence in CYCLE_LOG.md)</h2>
+    <div class="overflow"><table>
+      <tr><th>Dimension</th><th>Score</th><th>Evidence anchor</th></tr>
+      <tr><td>Metrics script + tests (R3/R4)</td><td class="score">5/5</td><td><code>scripts/run-metrics.ts:44</code> exported goals-dir parser; <code>:30-42</code> exact 11 fields; tests <code>run-metrics.test.ts:11/:52/:75</code></td></tr>
+      <tr><td>Template + report-spec wiring (R1/R2)</td><td class="score">5/5</td><td><code>SKILL.md:417</code> [RUN METRICS] after [MORNING REPORT] <code>:400</code>; fields match <code>morning-report-specs.md:176-186</code></td></tr>
+      <tr><td>Grill gate fidelity (R5)</td><td class="score">5/5</td><td><code>spec-intake.md:17-63</code> 46 lines before "The mapping" <code>:64</code>; router <code>:30-36</code>; rule line <code>:38</code>; <code>SKILL.md:106</code> Branch S</td></tr>
+      <tr><td>Release hygiene (R6)</td><td class="score">5/5</td><td><code>plugin.json:3</code>, <code>marketplace.json:8, :15</code> all 1.3.0; validate passed; commits conventional</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>What shipped</h2>
+    <ul>
+      <li><strong>R1</strong> — <code>[RUN METRICS]</code> block in the Phase 2 goal template (11 exact fields, after <code>[MORNING REPORT]</code>)</li>
+      <li><strong>R2</strong> — matching <code>## Run Metrics section</code> in <code>morning-report-specs.md</code> (verbatim field list, checker-diffable)</li>
+      <li><strong>R3</strong> — <code>scripts/run-metrics.ts</code>: exported <code>parseRunMetrics(goalsDir)</code>, aligned table CLI, <code>(no metrics)</code> tolerance, always exit 0</li>
+      <li><strong>R4</strong> — 3 new bun tests (fixture parse / missing section / exact field-list parity), TDD failing-first; suite 31 → 34</li>
+      <li><strong>R5</strong> — <code>## Grill gate (decision point)</code> in <code>spec-intake.md</code> (46 lines, router-with-default table, adversarial procedure, no re-gather, grill-me/grill-with-docs tooling note) + Branch S wiring in SKILL.md</li>
+      <li><strong>R6</strong> — version 1.3.0 across plugin.json + both marketplace.json fields; <code>claude plugin validate .</code> passes</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Verification sweep — 8/8 green (run exactly as written, full output in PROGRESS.md)</h2>
+    <div class="overflow"><table>
+      <tr><th>#</th><th>Check</th><th>Expected</th><th>Actual</th></tr>
+      <tr><td>1</td><td><code>bun test</code></td><td>exit 0, ≥ 3 new run-metrics tests</td><td class="ok">34 pass, 0 fail</td></tr>
+      <tr><td>2</td><td><code>claude plugin validate .</code></td><td>Validation passed</td><td class="ok">✔ Validation passed</td></tr>
+      <tr><td>3</td><td><code>grep -c '\[RUN METRICS\]' SKILL.md</code></td><td>1</td><td class="ok">1</td></tr>
+      <tr><td>4</td><td><code>grep -c '## Run Metrics section' morning-report-specs.md</code></td><td>1</td><td class="ok">1</td></tr>
+      <tr><td>5</td><td><code>bun scripts/run-metrics.ts</code></td><td>exit 0, taste-gate-v1-2-0 (no metrics)</td><td class="ok">exit 0, listed (no metrics)</td></tr>
+      <tr><td>6</td><td><code>grep -c '## Grill gate (decision point)'</code> / <code>grep -c 'Grill gate' SKILL.md</code></td><td>1 / ≥ 1</td><td class="ok">1 / 1</td></tr>
+      <tr><td>7</td><td><code>grep -c '"version": "1.3.0"' plugin.json</code></td><td>1</td><td class="ok">1</td></tr>
+      <tr><td>8</td><td><code>grep -cE 'TODO|TBD'</code> on run-metrics.ts + spec-intake.md</td><td>0 per file</td><td class="ok">0 / 0</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Run Metrics (dogfood — this run is the first datapoint)</h2>
+    <div class="overflow"><table>
+      <tr><th>started</th><td>2026-07-17T03:09:27+08:00</td><th>finished</th><td>2026-07-17T03:27:55+08:00</td></tr>
+      <tr><th>wall_clock_minutes</th><td class="score">18</td><th>turns_used / turn_budget</th><td class="score">24 / 60</td></tr>
+      <tr><th>cycles_used / max_cycles</th><td class="score">1 / 3</td><th>reward_final</th><td class="score">5.0 (per cycle: 5.0)</td></tr>
+      <tr><th>commits</th><td class="score">9</td><th>tests_delta</th><td class="score">31-&gt;34</td></tr>
+    </table></div>
+    <pre>$ bun scripts/run-metrics.ts
+v1-3-0-metrics-grill row now carries live metrics; taste-gate-v1-2-0 and
+harness-benchmarking-loop correctly listed as (no metrics) — pre-instrumentation runs.</pre>
+  </section>
+
+  <section>
+    <h2>Commits (charles-fork)</h2>
+    <ul>
+      <li><code>3491a75</code> feat(run-metrics): add goals-dir-parameterized aggregator with tests</li>
+      <li><code>a3067cb</code> docs(run-metrics): add RUN METRICS template block and report-spec section</li>
+      <li><code>4dbea61</code> docs(grill-gate): add grill gate section to spec-intake and wire SKILL.md</li>
+      <li><code>2591ac2</code> chore(v1.3.0): bump plugin to v1.3.0 and pass verification sweep</li>
+      <li>+ per-phase PROGRESS/slice bookkeeping commits and the run-close commit (9 total this run)</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Notes / next steps</h2>
+    <ul>
+      <li>No blockers, no stubs, no scope reductions — quality: production.</li>
+      <li>Release after human review: <code>claude plugin update</code> deliberately NOT run (spec out-of-scope rule).</li>
+      <li>v1.4 candidate remains learning write-back (blocked on override data, per spec).</li>
+      <li>Checker noted optional hardening (not a defect): the Run Metrics regex could tolerate a blank-line variant between fields.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

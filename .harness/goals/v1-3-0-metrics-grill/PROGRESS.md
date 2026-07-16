@@ -249,3 +249,14 @@ PROOF:
   Summary: All 8 checks PASS
 
 Commit: 2591ac2 — chore(v1.3.0): bump plugin to v1.3.0 and pass verification sweep
+
+## Run close — COMPLETE
+Artifact: .harness/goals/v1-3-0-metrics-grill/HANDOFF.md (+ HANDOFF.html, CYCLE_LOG.md, HARNESS.md tracker)
+Proof (dogfood, `bun scripts/run-metrics.ts`):
+```
+Slug                                     Started                    Wall Clock (min)  Turns  Cycles  Reward
+harness-benchmarking-loop  (no metrics)
+taste-gate-v1-2-0  (no metrics)
+v1-3-0-metrics-grill                     2026-07-17T03:09:27+08:00  18                24     1       5.0
+```
+Checker: PASS, reward 5.0/5.0 (cycle 1 of 3). This run is the aggregator's first live datapoint.
