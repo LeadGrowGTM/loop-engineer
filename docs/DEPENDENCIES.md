@@ -47,8 +47,8 @@ session and runs degraded. Every `.claude/agents/*.md` `model:` field must be on
 
 | `model:` frontmatter | Resolves under claudex to |
 | --- | --- |
-| `claude-opus-4-8` | `gpt-5.6-sol` (flagship, reasoning effort high) |
-| `claude-sonnet-5` | `gpt-5.6-sol` (no distinct GPT mid-tier; maps to flagship) |
+| `claude-opus-4-8` | `gpt-5.6-sol` (flagship, max reasoning effort) |
+| `claude-sonnet-5` | `gpt-5.6-terra` (max reasoning effort) |
 | `claude-haiku-4-5` | `gpt-5.3-codex-spark` (fast tier) |
 
 Rules for adding or editing an agent:
