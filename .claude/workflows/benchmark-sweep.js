@@ -133,7 +133,11 @@ export function runSweep(spec, opts = {}) {
       // A candidate that fails to measure is recorded with a null reward (not kept), so the
       // ledger stays a complete record of what was tried. The sweep continues.
       reward = null;
-      log?.(`sweep: candidate "${cand.label}" measurement failed: ${err.message}`);
+      // `log` is a Workflow-executor global; on the standalone CLI path it is undeclared, so a
+      // bare `log?.()` would throw ReferenceError (optional chaining does not guard an undeclared
+      // binding). Guard with typeof so the candidate-failure path works in both entry shapes.
+      if (typeof log !== 'undefined') log(`sweep: candidate "${cand.label}" measurement failed: ${err.message}`);
+      else console.error(`sweep: candidate "${cand.label}" measurement failed: ${err.message}`);
     }
     const entry = ledgerEntry({ i, cand, command, reward: reward ?? null, unit, direction });
     ledger.push(entry);
