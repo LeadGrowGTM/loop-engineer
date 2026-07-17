@@ -16,7 +16,11 @@ Your working directory is `$PROJECT_ROOT/.harness/goals/<slug>/` (the absolute p
 1. Read HARNESS.md at the path in the [HARNESS] block and obey its task-specific `PRE_PLANNER_APPROVAL` and `PLANNER_BRIEF` contracts.
 2. Read the full [TASK] block from your invocation context.
 3. When `PRE_PLANNER_APPROVAL` applies, plan approved IDs only. Rejected, deferred, missing, or otherwise unapproved scope must not become a phase. Newly discovered scope requires a new proposal ID and explicit approval before planning.
-4. Read `.harness/skill-routing.md` in the task working directory (installed by setup-harness).
+4. Resolve skill routing in this fixed order:
+   - First read `<PROJECT_ROOT>/.harness/skill-routing.md`.
+   - If it is absent, read the canonical project reference at `skills/write-goal-prompt/references/skill-routing.md` when present.
+   - If both are absent, use confirmed HARNESS routing. When HARNESS names no available skill, use `direct` with a documented direct implementation quality bar instead of aborting.
+   - Record the selected source and any fallback in PLAN.md. Never invent or assume an unavailable skill.
 5. **Decompose from first principles** - read `references/first-principles-generation.md` and apply its principle: design each phase around observable outcomes (what the user sees or measures when done), not artifact inventory. Phases are decomposed checkpoints, not file lists.
 5. Write BRIEF.md to the task working directory
 6. Write PLAN.md to the task working directory (phases, routing, rubric, budget)

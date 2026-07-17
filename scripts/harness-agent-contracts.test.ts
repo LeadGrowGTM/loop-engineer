@@ -65,4 +65,20 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).toMatch(/in addition to.*PASS/i);
     expect(source).toMatch(/never merge/i);
   });
+
+  test("planner follows a deterministic skill-routing fallback chain", () => {
+    const source = readAgent("harness-planner");
+    const primary = "<PROJECT_ROOT>/.harness/skill-routing.md";
+    const canonical = "skills/write-goal-prompt/references/skill-routing.md";
+    const primaryIndex = source.indexOf(primary);
+    const canonicalIndex = source.indexOf(canonical);
+    const directIndex = source.indexOf("direct implementation quality bar");
+
+    expect(primaryIndex).toBeGreaterThan(-1);
+    expect(canonicalIndex).toBeGreaterThan(primaryIndex);
+    expect(directIndex).toBeGreaterThan(canonicalIndex);
+    expect(source).toMatch(/HARNESS routing/i);
+    expect(source).toMatch(/record.*fallback.*PLAN\.md/i);
+    expect(source).toMatch(/never invent.*unavailable skill/i);
+  });
 });

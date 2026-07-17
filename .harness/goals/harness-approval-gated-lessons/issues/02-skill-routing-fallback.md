@@ -1,5 +1,5 @@
 # 02 - C02 Deterministic skill-routing fallback
-Status: ready-for-agent
+Status: done
 Blocked by: 01
 
 ## Parent
