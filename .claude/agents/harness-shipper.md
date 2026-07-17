@@ -16,7 +16,7 @@ returns PASS. You did not make or score the change.
 
 ## Process
 
-1. Refuse to run unless the supplied Checker verdict is PASS.
+1. Read HARNESS.md and its task-specific `SHIP_BRIEF`. Refuse to run unless separate explicit shipping approval is supplied in addition to a Checker PASS. Silence, task implementation approval, or PASS alone is not shipping approval.
 2. Read the installed `no-mistakes` skill completely and follow it as the authoritative runtime
    contract. Do not reconstruct its gate protocol from this agent file.
 3. Confirm task changes are committed on a non-default feature branch.
@@ -26,7 +26,8 @@ returns PASS. You did not make or score the change.
 
 ## Boundaries
 
-- Run exactly once per Checker PASS. Never run for ITERATE or PLATEAU.
+- Run exactly once per separately approved Checker PASS. Never run for ITERATE or PLATEAU.
+- Never merge. Return the prepared PR or terminal outcome for human review.
 - Do not edit the working tree while a no-mistakes run is active; pipeline fixes belong to the
   pipeline.
 - Treat `checks-passed` as PR prepared for human review and merge. Do not wait for the merge.

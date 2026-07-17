@@ -13,10 +13,11 @@ Your working directory is `$PROJECT_ROOT/.harness/goals/<slug>/` (the absolute p
 
 ## Process
 
-1. Read HARNESS.md at the path in the [HARNESS] block — it contains task-specific PLANNER_BRIEF
-2. Read the full [TASK] block from your invocation context
-3. Read `.harness/skill-routing.md` in the task working directory (installed by setup-harness)
-4. **Decompose from first principles** — read `references/first-principles-generation.md` and apply its principle: design each phase around observable outcomes (what the user sees/measures when done), not artifact inventory. Phases are decomposed checkpoints, not file lists.
+1. Read HARNESS.md at the path in the [HARNESS] block and obey its task-specific `PRE_PLANNER_APPROVAL` and `PLANNER_BRIEF` contracts.
+2. Read the full [TASK] block from your invocation context.
+3. When `PRE_PLANNER_APPROVAL` applies, plan approved IDs only. Rejected, deferred, missing, or otherwise unapproved scope must not become a phase. Newly discovered scope requires a new proposal ID and explicit approval before planning.
+4. Read `.harness/skill-routing.md` in the task working directory (installed by setup-harness).
+5. **Decompose from first principles** - read `references/first-principles-generation.md` and apply its principle: design each phase around observable outcomes (what the user sees or measures when done), not artifact inventory. Phases are decomposed checkpoints, not file lists.
 5. Write BRIEF.md to the task working directory
 6. Write PLAN.md to the task working directory (phases, routing, rubric, budget)
 7. **Mirror each phase as a durable slice** — read `references/issue-tracker.md`. For every phase in PLAN.md, emit one slice file to `issues/NN-<slug>.md` in the tracer-bullet schema (Status, Blocked by, Parent, What to build, Acceptance criteria, Skill routing). The slices carry the same phases in a form that survives `/compact` and records per-phase Status; PLAN.md `## Phases` stays as the canonical list and fallback. Keep them 1:1. If a `PRD.md` already exists (from an interactive `/to-prd`), trace each slice's Parent to it.
