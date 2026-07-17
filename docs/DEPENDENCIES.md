@@ -37,6 +37,31 @@ than public packages — they are provisioned by the workspace onboarding flow, 
 one is missing, run the workspace `/onboard` flow rather than hand-installing it; that is what keeps
 the version and the `~/.gnhf/config.yml` Opus override consistent across machines.
 
+## Running under claudex (GPT via proxy)
+
+`claudex` runs the whole harness on a GPT upstream that presents under real Anthropic
+model IDs (so Claude Code sends full prompts, tool schemas, and skill descriptions —
+these are trimmed for any model ID the harness does not recognize). The proxy maps a
+**fixed set** of IDs; a subagent pinned to any other ID gets an unrecognized-model
+session and runs degraded. Every `.claude/agents/*.md` `model:` field must be one of:
+
+| `model:` frontmatter | Resolves under claudex to |
+| --- | --- |
+| `claude-opus-4-8` | `gpt-5.6-sol` (flagship, reasoning effort high) |
+| `claude-sonnet-5` | `gpt-5.6-sol` (no distinct GPT mid-tier; maps to flagship) |
+| `claude-haiku-4-5` | `gpt-5.3-codex-spark` (fast tier) |
+
+Rules for adding or editing an agent:
+
+- Use only the three IDs above — **undated**. A dated pin (`claude-haiku-4-5-20251001`)
+  will not match the proxy alias and breaks under claudex.
+- The mapping lives in `~/.cliproxyapi/cliproxyapi.conf` and the claudex repo's
+  `config/cliproxyapi.conf.template`. Adding a new tier means adding an alias there too.
+- Caveat, not a break: under claudex every tier is the same GPT upstream, so the
+  Checker's "fresh eyes vs the Maker" independence is weaker than on native Claude
+  (where Checker=sonnet, Maker=haiku are genuinely different models). The role/tool
+  isolation still holds; the model-diversity part does not.
+
 ## The one thing to check first
 
 If a goal loop fails in a way that makes no sense, verify the binary before debugging the loop —
