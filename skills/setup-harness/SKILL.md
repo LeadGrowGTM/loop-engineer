@@ -1,7 +1,7 @@
 ---
 name: setup-harness
 description: Installs the loop-engineer harness wiring (tuned skill-routing.md + .harness/ + backlog/worktree seeds) into any repo. Run before first use of /write-goal-prompt in a new repo, or to update an existing install. Agents ship with the loop-engineer plugin (auto-loaded); this skill seeds per-repo files and verifies plugin integrity.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Setup Harness

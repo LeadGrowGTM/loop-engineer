@@ -1,0 +1,26 @@
+{
+  "name": "loop-engineer",
+  "version": "1.3.1",
+  "description": "Goal-loop harness skills: setup-harness and write-goal-prompt. NOTE: the Planner/Maker/Prover/Checker loop itself requires subagents and does not run under Codex.",
+  "author": {
+    "name": "LeadGrowGTM",
+    "url": "https://github.com/LeadGrowGTM"
+  },
+  "repository": "https://github.com/LeadGrowGTM/loop-engineer",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Loop Engineer",
+    "shortDescription": "Goal-loop harness skills",
+    "longDescription": "Harness setup and goal-prompt authoring skills. The full agent loop is Claude-only.",
+    "developerName": "LeadGrowGTM",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Install the loop-engineer harness into this repo.",
+      "Write a goal prompt for this feature."
+    ]
+  }
+}
