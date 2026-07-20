@@ -1,5 +1,5 @@
 # 03 - C03 Protected dirty-work policy
-Status: ready-for-agent
+Status: done
 Blocked by: 02
 
 ## Parent

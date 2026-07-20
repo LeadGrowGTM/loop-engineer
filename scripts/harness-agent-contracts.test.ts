@@ -81,4 +81,46 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).toMatch(/record.*fallback.*PLAN\.md/i);
     expect(source).toMatch(/never invent.*unavailable skill/i);
   });
+
+  test("maker captures branch, HEAD, status, and protected diff hashes before source edits", () => {
+    const source = readAgent("harness-maker");
+    expect(source).toMatch(/capture.*branch/i);
+    expect(source).toMatch(/HEAD/i);
+    expect(source).toMatch(/git status --short/i);
+    expect(source).toMatch(/snapshot\.md/i);
+    expect(source).toMatch(/diff hashes/i);
+    expect(source).toMatch(/launch-gnhf\.ps1/i);
+  });
+
+  test("maker forbids broad staging and destructive worktree operations", () => {
+    const source = readAgent("harness-maker");
+    expect(source).toMatch(/git add -A/i);
+    expect(source).toMatch(/git add \./i);
+    expect(source).toMatch(/git stash/i);
+    expect(source).toMatch(/git reset/i);
+    expect(source).toMatch(/git checkout/i);
+    expect(source).toMatch(/overwrite/i);
+    expect(source).toMatch(/broad staging|destructive/i);
+  });
+
+  test("maker requires staged-path set validation before every commit", () => {
+    const source = readAgent("harness-maker");
+    expect(source).toMatch(/diff --cached --name-only/i);
+    expect(source).toMatch(/subset|subset of/i);
+    expect(source).toMatch(/snapshot\.md.*must.*print nothing|must print nothing.*snapshot\.md/i);
+  });
+
+  test("maker handles dirty approved files with task-only patch staging", () => {
+    const source = readAgent("harness-maker");
+    expect(source).toMatch(/task-only patch/i);
+    expect(source).toMatch(/already dirty|dirty approved/i);
+    expect(source).toMatch(/non-approved.*dirty path|non-approved dirty/i);
+  });
+
+  test("maker blocks unisolatable overlap and requests new proposal", () => {
+    const source = readAgent("harness-maker");
+    expect(source).toMatch(/BLOCKED/i);
+    expect(source).toMatch(/new proposal/i);
+    expect(source).toMatch(/overlap|not.*isolate|cannot be isolated/i);
+  });
 });
