@@ -14,7 +14,7 @@ powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
 The command emits one JSON object. Inspect these fields:
 
 - `status`: `READY` or `NOT_READY`
-- `repoPath`, `branch`, and `defaultBranch`
+- `repoPath`, source `branch`, derived `runBranch`, and `defaultBranch`
 - `dirtyPaths` and `layoutValid`
 - `isolationRequired`, `isolationPrepared`, and `treehouseAvailable`
 - `runPath` and `errors`
@@ -31,7 +31,7 @@ powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
   -LeaseHolder harness-my-task
 ```
 
-Preparation runs the same safety checks again before calling treehouse. A successful result sets `isolationPrepared: true` and returns the isolated `runPath`. Use that path for task work.
+Preparation runs the same safety checks again before calling treehouse. Treehouse may supply a detached worktree; readiness creates a unique derived branch at the checked source HEAD before returning READY. A successful result sets `isolationPrepared: true`, keeps `branch` as the source branch, and returns the isolated `runPath` plus attached `runBranch`. Use that path and branch for task work and commits.
 
 Canonical monorepo-tracked pipelines, declared by `!pipelines/<name>/` entries in the workspace `.gitignore`, always require isolation because they do not have their own git root. Their prepared path is `<leased-worktree>\pipelines\<name>`.
 
@@ -55,7 +55,7 @@ treehouse status
 treehouse return '<worktree-path>'
 ```
 
-Return only the lease used by the completed stream. If the pool is full, inspect `treehouse status`, identify a stale lease, and return it deliberately. Never prune or return an active stream automatically.
+Return only the lease used by the completed stream. Before return, verify the reported `runBranch` contains every intended commit; returning the worktree resets its checkout, while the derived branch preserves referenced commits. If the pool is full, inspect `treehouse status`, identify a stale lease, and return it deliberately. Never prune or return an active stream automatically.
 
 ## Manual parallel streams
 
@@ -64,7 +64,7 @@ The readiness script is preferred because it checks repository, branch, dirt, la
 1. Run `-CheckOnly -Parallel`.
 2. Resolve every reported error.
 3. Run `-PrepareIsolation -Parallel`.
-4. Work only inside returned `runPath`.
-5. Review results, then return that lease.
+4. Work and commit only inside returned `runPath` on reported `runBranch`.
+5. Verify `runBranch` contains the intended commits, then return that lease.
 
 Register each stream in tasks-axi from its project root so ownership and completion remain visible.

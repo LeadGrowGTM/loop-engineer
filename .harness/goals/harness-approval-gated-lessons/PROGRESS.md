@@ -286,4 +286,32 @@ PROOF:
   66 expect() calls
   Ran 14 tests across 1 file. [47.00ms]
   SHIP_BRIEF, parent stage 5, final tracker, and post-PASS loop now skip Shipper and record `N/A - shipping not approved` unless separate approval exists.
-Commit: SELF - C08 shipping consent propagation (resolved SHA recorded in final proof)
+Commit: `04ae21a` - C08 shipping consent propagation
+
+## Phase 9: C09 Isolated run branch - COMPLETE
+
+Slice: `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\issues\09-isolated-run-branch.md` - Status: done
+Skill invoked: `tdd`, live public-CLI proof, independent adversarial re-review
+Artifacts:
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\prepare-harness-run.ps1`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\prepare-harness-run.test.ts`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\README.md`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\CLAUDE.md`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\skills\write-goal-prompt\references\parallel-execution.md`
+Mechanical gate: `bun test scripts/prepare-harness-run.test.ts`
+PROOF:
+  RED tracer: exit 1; detached lease started at `main` while source feature HEAD diverged; readiness returned exit 1 instead of creating a run branch.
+  GREEN tracer: 1 pass, 0 fail, 11 expect() calls.
+  Branch-create failure cleanup: 1 pass, 0 fail, 6 expect() calls; acquired lease returned.
+  Final C09 gate: exit 0
+  23 pass
+  0 fail
+  100 expect() calls
+  Ran 23 tests across 1 file. [50.13s]
+  PowerShell parser errors: 0
+  End-to-end combined proof: 2 pass, 0 fail, 17 expect() calls. [6.23s]
+  - Divergent source remained on its source feature branch and HEAD.
+  - Detached default-based lease became the reported derived `runBranch` at source HEAD.
+  - Namespace collision failed NOT_READY and called `treehouse return`.
+  Independent prior-HIGH re-review: NONE.
+Commit: SELF - C09 isolated run branch (resolved SHA recorded in final proof)

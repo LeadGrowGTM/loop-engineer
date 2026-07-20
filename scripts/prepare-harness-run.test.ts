@@ -98,6 +98,7 @@ function fakeTreehouse(
   repo: string,
   statusBody: string[] = ['exit 0'],
   getBody: string[] = ['[Console]::Out.WriteLine($env:TREEHOUSE_LEASE)', 'exit 0'],
+  startRef = 'HEAD',
 ): {
   env: Record<string, string | undefined>;
   calls: string;
@@ -110,7 +111,7 @@ function fakeTreehouse(
   const calls = join(root, 'treehouse-calls.txt');
   const cwdLog = join(root, 'treehouse-cwd.txt');
   mkdirSync(bin, { recursive: true });
-  run(['git', 'worktree', 'add', '--detach', lease, 'HEAD'], repo);
+  run(['git', 'worktree', 'add', '--detach', lease, startRef], repo);
   writeFileSync(
     join(bin, 'treehouse.ps1'),
     [
@@ -187,6 +188,7 @@ describe('prepare-harness-run CLI', () => {
       status: 'READY',
       repoPath: repo,
       branch: 'feature/readiness',
+      runBranch: 'feature/readiness',
       defaultBranch: 'main',
       dirtyPaths: [],
       layoutValid: true,
@@ -466,9 +468,15 @@ describe('prepare-harness-run CLI', () => {
     expect(existsSync(treehouse.calls)).toBe(false);
   });
 
-  test('explicit isolation preparation validates and returns lease identity', () => {
+  test('explicit isolation preparation creates and reports a derived branch at source HEAD', () => {
     const { workspace, repo } = createFeatureRepo();
-    const treehouse = fakeTreehouse(repo);
+    writeFileSync(join(repo, 'feature.txt'), 'feature commit\n');
+    run(['git', 'add', 'feature.txt'], repo);
+    run(['git', 'commit', '-m', 'feature fixture'], repo);
+    const sourceBranch = run(['git', 'branch', '--show-current'], repo);
+    const sourceHead = run(['git', 'rev-parse', 'HEAD'], repo);
+    const treehouse = fakeTreehouse(repo, ['exit 0'], undefined, 'main');
+    expect(run(['git', 'rev-parse', 'HEAD'], treehouse.lease)).not.toBe(sourceHead);
 
     const result = invokePrepareCommand(repo, workspace, ['-PrepareIsolation', '-Parallel'], treehouse.env);
 
@@ -477,6 +485,8 @@ describe('prepare-harness-run CLI', () => {
     expect(readiness).toMatchObject({
       status: 'READY',
       readyForRun: true,
+      branch: sourceBranch,
+      checkedHead: sourceHead,
       isolationRequired: true,
       isolationPrepared: true,
       treehouseAvailable: true,
@@ -484,9 +494,30 @@ describe('prepare-harness-run CLI', () => {
       leaseHolder: 'harness-readiness',
       runPath: treehouse.lease,
     });
+    expect(readiness.runBranch).toMatch(/^harness\/harness-readiness\/feature-readiness-[0-9a-f]{12}-[0-9a-f]{8}$/);
+    expect(run(['git', 'branch', '--show-current'], treehouse.lease)).toBe(readiness.runBranch);
+    expect(run(['git', 'rev-parse', 'HEAD'], treehouse.lease)).toBe(sourceHead);
+    expect(run(['git', 'branch', '--show-current'], repo)).toBe(sourceBranch);
+    expect(run(['git', 'rev-parse', 'HEAD'], repo)).toBe(sourceHead);
     expect(readiness.returnCommand).toContain(treehouse.lease);
     expect(readFileSync(treehouse.calls, 'utf8')).toContain('get');
     expect(readFileSync(treehouse.cwdLog, 'utf8').trim()).toBe(repo);
+  });
+
+  test('derived branch creation failure returns the acquired lease', () => {
+    const { workspace, repo } = createFeatureRepo();
+    run(['git', 'branch', 'harness'], repo);
+    const treehouse = fakeTreehouse(repo);
+
+    const result = invokePrepareCommand(repo, workspace, ['-PrepareIsolation', '-Parallel'], treehouse.env);
+
+    expect(result.exitCode).not.toBe(0);
+    const readiness = JSON.parse(result.stdout.toString());
+    expect(readiness.errorCodes).toContain('invalid_lease');
+    expect(readiness.runBranch).toBeNull();
+    expect(readiness.errors.join(' ')).toContain('Unable to create derived run branch');
+    expect(readiness.errors.join(' ')).toContain('Lease was returned');
+    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['get', 'return']);
   });
 
   test('canonical monorepo pipeline requires isolation and maps prepared run path', () => {
@@ -517,6 +548,8 @@ describe('prepare-harness-run CLI', () => {
       leasePath: treehouse.lease,
       runPath: leasedPipeline,
     });
+    expect(prepared.runBranch).toMatch(/^harness\/harness-readiness\/feature-readiness-[0-9a-f]{12}-[0-9a-f]{8}$/);
+    expect(run(['git', 'branch', '--show-current'], treehouse.lease)).toBe(prepared.runBranch);
     expect(readFileSync(treehouse.calls, 'utf8')).toContain('get');
     expect(readFileSync(treehouse.cwdLog, 'utf8').trim().split(/\r?\n/)).toEqual([workspace, workspace]);
   }, 10_000);

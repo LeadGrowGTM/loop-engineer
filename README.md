@@ -79,7 +79,7 @@ powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
   -LeaseHolder harness-my-task
 ```
 
-Treehouse is optional for a standalone serial repository. Add `-Parallel` when preparing a parallel stream; parallel streams and canonical monorepo pipelines require isolation. If treehouse is missing when isolation is required, readiness fails with remediation instead of falling back. A successful preparation returns `runPath` for the same interactive session and `returnCommand` for deliberate lease return after review.
+Treehouse is optional for a standalone serial repository. Add `-Parallel` when preparing a parallel stream; parallel streams and canonical monorepo pipelines require isolation. If treehouse is missing when isolation is required, readiness fails with remediation instead of falling back. A successful preparation keeps `branch` as the source branch, creates and reports a unique derived `runBranch` at the checked source HEAD, and returns `runPath` plus `returnCommand`. Work and commit only on `runBranch`; verify that branch contains the intended commits before deliberately returning the lease.
 
 ## Second goal path: the benchmarking loop
 

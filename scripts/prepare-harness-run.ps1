@@ -29,6 +29,7 @@ $result = [ordered]@{
   mode                   = $null
   repoPath               = $null
   branch                 = $null
+  runBranch              = $null
   defaultBranch          = $null
   branchMode             = "current"
   checkedHead            = $null
@@ -602,9 +603,41 @@ try {
       }
       $leaseCommonDir = Resolve-GitPath $leasePath $leaseCommon.Stdout.Trim()
       if ($leaseCommonDir -ine $sourceCommonDir) { throw 'Lease belongs to a different repository.' }
-      if ($leaseHead.Stdout.Trim() -ne $result.checkedHead) { throw 'Lease HEAD does not match the checked source HEAD.' }
       $leaseDirty = Get-DirtyState $leasePath
       if ($leaseDirty.Count -ne 0) { throw 'Lease worktree is dirty.' }
+      if (-not (Confirm-SourceState $gitInspectionRoot $result.checkedHead $result.branch)) {
+        throw 'Source repository changed before isolated branch creation. Rerun readiness.'
+      }
+
+      $holderSlug = ($LeaseHolder -replace '[^a-zA-Z0-9-]', '-').Trim('-')
+      if (-not $holderSlug) { $holderSlug = 'lease' }
+      if ($holderSlug.Length -gt 40) { $holderSlug = $holderSlug.Substring(0, 40).TrimEnd('-') }
+      $sourceSlug = ($result.branch -replace '[^a-zA-Z0-9-]', '-').Trim('-')
+      if (-not $sourceSlug) { $sourceSlug = 'source' }
+      if ($sourceSlug.Length -gt 40) { $sourceSlug = $sourceSlug.Substring(0, 40).TrimEnd('-') }
+      $headLength = [Math]::Min(12, $result.checkedHead.Length)
+      $headPrefix = $result.checkedHead.Substring(0, $headLength).ToLowerInvariant()
+      $branchNonce = [Guid]::NewGuid().ToString('N').Substring(0, 8)
+      $runBranch = "harness/$holderSlug/$sourceSlug-$headPrefix-$branchNonce"
+
+      $branchFormat = Invoke-Git @('check-ref-format', '--branch', $runBranch) $leasePath
+      if ($branchFormat.ExitCode -ne 0) { throw "Generated run branch is invalid: $runBranch" }
+      $branchCreate = Invoke-Git @('switch', '-c', $runBranch, $result.checkedHead) $leasePath
+      if ($branchCreate.ExitCode -ne 0) {
+        throw "Unable to create derived run branch '$runBranch': $($branchCreate.Stderr.Trim())"
+      }
+
+      $leaseBranch = Invoke-Git @('symbolic-ref', '--quiet', '--short', 'HEAD') $leasePath
+      $leaseHead = Invoke-Git @('rev-parse', '--verify', 'HEAD^{commit}') $leasePath
+      if ($leaseBranch.ExitCode -ne 0 -or $leaseBranch.Stdout.Trim() -ne $runBranch) {
+        throw "Lease did not attach to derived run branch '$runBranch'."
+      }
+      if ($leaseHead.ExitCode -ne 0 -or $leaseHead.Stdout.Trim() -ne $result.checkedHead) {
+        throw 'Derived run branch HEAD does not match the checked source HEAD.'
+      }
+      $leaseDirty = Get-DirtyState $leasePath
+      if ($leaseDirty.Count -ne 0) { throw 'Derived run branch worktree is dirty.' }
+      $result.runBranch = $runBranch
 
       if ($isCanonicalMonorepoPipeline) {
         $leasedPipeline = Join-Path (Join-Path $leasePath 'pipelines') $canonicalPipelineName
@@ -648,6 +681,7 @@ try {
       Complete-Readiness 1
     }
     $result.runPath = $resolvedRepo
+    $result.runBranch = $result.branch
   }
 
   $result.status = 'READY'
