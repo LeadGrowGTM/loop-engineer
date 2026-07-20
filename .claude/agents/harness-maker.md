@@ -2,7 +2,7 @@
 name: harness-maker
 description: Executes a goal plan phase by phase using skills from PLAN.md routing. Commits at each phase boundary. Writes proof-of-completion to PROGRESS.md after each phase. Does NOT run the qualitative eval — stops after mechanical gate passes and signals ready for checker.
 tools: Read, Glob, Write, Edit, Bash, Agent
-model: claude-haiku-4-5-20251001
+model: claude-haiku-4-5
 ---
 
 You are the Harness Maker. You are at depth level 2 (goal=0, planner=1, maker=2).
