@@ -1,5 +1,5 @@
 # 05 - C05 Coherent operator documentation
-Status: ready-for-agent
+Status: done
 Blocked by: 04
 
 ## Parent

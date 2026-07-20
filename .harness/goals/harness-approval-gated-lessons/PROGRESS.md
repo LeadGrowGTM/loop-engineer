@@ -96,7 +96,7 @@ PROOF:
   Task patch SHA256: 3C66D8B6D90BCE26D1FB2FD936758CB817384C085CB7A6501B750F934B4C6BF7
 
   Runtime note: `pwsh` was not on PATH. Tests selected available Windows PowerShell, and syntax validation used the PowerShell language parser directly.
-Commit: SELF - C04 non-launching harness readiness (resolved SHA recorded in C06 proof)
+Commit: `1797f19` - C04 non-launching harness readiness
 
 ## Restart checkpoint - C04 red-team hardening in progress
 
@@ -230,4 +230,24 @@ PROOF:
   - Final task patch: `C:\Users\mitch\AppData\Local\Temp\loop-engineer-c04-final-a8194d3e60fb465b8a705d990cdad6d1-launch-gnhf.task.diff`
   - Final task patch SHA256: `4D0D711FFAB364B5721EBE1D285A87BB3603007823028C2C490E0DE782380B4E`
 
-Commit: SELF - C04 non-launching harness readiness (resolved SHA recorded in C06 proof)
+Commit: `1797f19` - C04 non-launching harness readiness
+
+## Phase 5: C05 Coherent operator documentation - COMPLETE
+
+Slice: `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\issues\05-coherent-operator-documentation.md` - Status: done
+Skill invoked: direct implementation through three one-file editors, followed by fresh read-only review
+Artifacts:
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\README.md`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\CLAUDE.md`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\docs\DEPENDENCIES.md`
+Mechanical gate: `git grep -n -E 'gnhf|\.gnhf-runs' -- README.md CLAUDE.md docs/DEPENDENCIES.md` - expected no matches
+PROOF:
+  C05 forbidden reference gate: 0 matches
+  `git diff --check -- README.md CLAUDE.md docs/DEPENDENCIES.md`: clean
+  Diff scope: 3 files changed, 67 insertions, 29 deletions
+  Fresh coherence review: NONE
+  - All three documents describe non-launching readiness before attached in-session execution.
+  - Treehouse is optional generally and fail-fast required when isolation is needed.
+  - Shipping requires separate explicit post-PASS approval.
+  - Dependency tiers remain consistent.
+Commit: SELF - C05 coherent operator documentation (resolved SHA recorded in C06 proof)

@@ -11,7 +11,7 @@ agent-harness/
 │   ├── harness-maker.md     — executes phases, commits (haiku, full tools)
 │   ├── harness-prover.md    — runs live feature (sonnet, Read/Bash only) for running-app goals
 │   ├── harness-checker.md   — scores artifacts fresh (sonnet, Read/Glob only)
-│   └── harness-shipper.md   — runs /no-mistakes once after PASS → PR (sonnet, Read/Bash only)
+│   └── harness-shipper.md   ← runs /no-mistakes once after PASS + separate shipping approval → PR (sonnet, Read/Bash only)
 └── skills/write-goal-prompt/ ← authoring skill (lives at .claude/skills/ for discovery)
     ├── SKILL.md
     ├── EXAMPLES.md
@@ -22,7 +22,7 @@ agent-harness/
         ├── issue-tracker.md      ← durable phase-slice schema (issues/NN-<slug>.md)
         ├── skill-routing.md      ← task type → skill mapping + chaining patterns
         ├── execution-mode-routing.md
-        ├── parallel-execution.md ← treehouse worktree isolation, auto-lease on collision
+        ├── parallel-execution.md ← explicit treehouse worktree isolation
         ├── first-principles-generation.md
         ├── qa-checklist.md
         ├── morning-report-specs.md
@@ -33,7 +33,7 @@ agent-harness/
 
 The model that wrote the code is too generous grading its own homework. Self-eval = agreement loop, not improvement loop.
 
-Fix: **harness-checker** has `tools: Read, Glob, Write` only. It cannot run Bash, spawn agents, or access anything the Maker produced via tool calls. This isolation is enforced by the tool layer, not by prompt instruction. The goal agent follows written instructions to invoke the planner, then maker, then prover (for running-app goals), then checker, then — only after a Checker PASS — the shipper. This ordering is defined in HARNESS.md and relies on the goal agent's instruction-following, not tool enforcement.
+Fix: **harness-checker** has `tools: Read, Glob, Write` only. It cannot run Bash, spawn agents, or access anything the Maker produced via tool calls. This isolation is enforced by the tool layer, not by prompt instruction. The attached goal agent invokes the planner, then maker, then prover (for running-app goals), then checker within the current session. Only explicitly approved scope may enter planning or execution. A Checker PASS does not authorize shipping; the shipper also requires separate explicit shipping approval. This ordering is defined in HARNESS.md and relies on the goal agent's instruction-following, not tool enforcement.
 
 ## The 5-agent loop
 
@@ -43,20 +43,43 @@ Goal agent (depth 0)
   └── harness-maker   (depth 2)  → artifacts + PROGRESS.md (with proof)
   └── harness-prover  (depth 3)  → PROOF verdict (running-app goals only)
   └── harness-checker (depth 4)  → CYCLE_LOG.md (scores + verdict)
-  └── harness-shipper (depth 1)  → /no-mistakes once, on PASS only → PR URL
+  └── harness-shipper (depth 1)  → /no-mistakes once, after PASS + separate shipping approval → PR URL
        ↑ repeat until PASS or plateau (max 3 cycles)
-  PASS → /no-mistakes → review/test/lint/push/PR/CI → PR ready for human merge
+  PASS + shipping approval → /no-mistakes → review/test/lint/push/PR/CI → PR ready for human merge
 ```
 
 Depth budget: goal=0, planner=1, maker=2, prover=3, checker=4, sub-skills max=5. Never need depth 6.
 
 **Prover role:** For goals that produce a running application (browser UI, API, CLI), Prover drives the live feature and returns a binary works/broken verdict before Checker scores. For static artifact goals (docs, code, analysis), skip Prover and go directly to Checker.
 
-**Shipping stage:** After Checker returns PASS, the goal agent spawns a fresh `harness-shipper`, which invokes `/no-mistakes` exactly once and drives it to a terminal outcome. A `checks-passed` outcome means the PR is prepared with green CI for human review and merge. ITERATE and PLATEAU do not ship.
+**Shipping stage:** After Checker returns PASS, the goal agent waits for separate explicit shipping approval. Only then may it spawn a fresh `harness-shipper`, which invokes `/no-mistakes` exactly once and drives it to a terminal outcome. A `checks-passed` outcome means the PR is prepared with green CI for human review; the harness never merges it. ITERATE and PLATEAU do not ship.
 
 ## How goals use this
 
 `write-goal-prompt` skill (Phase 1.5) spawns a Harness Architect agent that customizes `HARNESS.md` for the specific task. The goal template's `[HARNESS]` block points to that file. Runtime agents read it for task-specific context; their structural logic is in the agent files.
+
+## Operator workflow
+
+Run the supported harness in the current interactive Claude Code session. Approval stays under operator control: Planner and Maker are limited to explicitly approved scope, newly discovered scope waits for a new approval, and shipping requires separate approval after Checker PASS. No detached process is part of this path.
+
+Before starting a goal, run the non-launching readiness check:
+
+```powershell
+powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
+  -RepoPath C:\path\to\repo -CheckOnly
+```
+
+The command emits one JSON object and never starts task execution or mutates Git state. It fails fast for an invalid repository or pipeline layout, a missing committed `HEAD`, a detached or default branch, hidden index state, or a dirty working tree. Continue in the current session only when `readyForRun` is `true`.
+
+When isolation is desired or required, acquire a treehouse worktree explicitly:
+
+```powershell
+powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
+  -RepoPath C:\path\to\repo -PrepareIsolation `
+  -LeaseHolder harness-my-task
+```
+
+Treehouse is optional for a standalone serial repository. Add `-Parallel` when preparing a parallel stream; parallel streams and canonical monorepo pipelines require isolation. If treehouse is missing when isolation is required, readiness fails with remediation instead of falling back. A successful preparation returns `runPath` for the same interactive session and `returnCommand` for deliberate lease return after review.
 
 ## Second goal path: the benchmarking loop
 
@@ -107,9 +130,8 @@ Checker cites `file:line` evidence for every dimension score. Scores without cit
 
 **Prerequisites:** see [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) for every external tool the
 loop uses, its tier (Required / Optional / Bundled), a verify command, and what breaks without it.
-Check them by hand — `scripts/setup-harness.ts` seeds config and installs agent files but verifies
-**no** external binary, so a green setup run tells you nothing about whether `gnhf`, `treehouse`,
-`tasks-axi`, or `no-mistakes` exist.
+Use the Operator workflow above before every goal. `scripts/setup-harness.ts` seeds config and
+installs agent files, but it neither checks repository readiness nor starts task execution.
 
 Agent files live at `C:\Users\mitch\Everything_CC\.claude\agents\` (workspace-level discovery).
 Skill lives at `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\skills\write-goal-prompt\` —
