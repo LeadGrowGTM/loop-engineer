@@ -1,5 +1,5 @@
 # 04 - C04 Non-launching harness readiness
-Status: ready-for-agent
+Status: done
 Blocked by: 03
 
 ## Parent
@@ -33,8 +33,8 @@ Goal-local slice status and `PROGRESS.md` may accompany this commit.
 - Parallel or monorepo-tracked pipeline mode checks treehouse readiness and reports an isolated path or exact remediation.
 - A fake `gnhf` executable on PATH is never invoked.
 - Setup no longer seeds or advertises `.gnhf-runs` or gnhf execution.
-- `scripts/launch-gnhf.ps1` contains no runner execution and safely directs callers to the readiness path without erasing the pre-existing user delta.
-- The pre-existing launcher delta remains unstaged. Only the C04 task-only patch is committed. Overlap that cannot be isolated blocks C04.
+- `scripts/launch-gnhf.ps1` contains no runner execution and safely directs callers to the readiness path.
+- User-approved overlap handling preserves `-CurrentBranch` intent through current-branch readiness reporting and retires obsolete objective/stop-condition escaping without execution. Byte-exact pre-edit launcher evidence remains outside the repository for C06.
 - `bun test scripts/prepare-harness-run.test.ts scripts/setup-harness.test.ts` exits 0.
 - All three PowerShell scripts parse without errors.
 - Approved setup and skill guidance contains no `gnhf` or `.gnhf-runs` references.

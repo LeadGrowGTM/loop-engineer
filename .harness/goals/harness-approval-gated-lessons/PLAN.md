@@ -111,7 +111,7 @@ Mechanical gates:
 3. `git grep -n -E 'gnhf|\.gnhf-runs' -- skills/write-goal-prompt/SKILL.md skills/write-goal-prompt/references/parallel-execution.md skills/setup-harness/SKILL.md scripts/setup-harness.ts` prints nothing
 4. `git grep -n -E 'Start-Process|\.gnhf\\config|git add -A|pre-run snapshot' -- scripts/launch-gnhf.ps1 scripts/prepare-harness-run.ps1` prints nothing
 
-Protected launcher rule: capture the pre-C01 launcher worktree file and diff outside the repo. Stage only the C04 task patch, preserve the pre-existing user delta unstaged, and save the task-only patch outside the repo for C06 replay. If task and user hunks overlap, mark C04 blocked and request a new proposal rather than replacing the user's content.
+Protected launcher rule: preserve byte-exact pre-edit launcher content and diff outside the repo. The user approved retiring the overlapping current-branch forwarding and objective/stop-condition escaping code because execution is removed; preserve their intent through compatibility parameters, current-branch reporting, and safe path handling. Save C04 lineage evidence outside the repo for C06. Any other overlap remains blocked.
 
 Commit contract: one commit whose subject starts `C04` and contains only the approved C04 source paths plus C04 goal-local bookkeeping.
 

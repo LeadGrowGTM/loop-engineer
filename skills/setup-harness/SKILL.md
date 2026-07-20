@@ -41,8 +41,8 @@ This does atomically:
 2. Scans `<repo-root>` for SKILL.md files
 3. Seeds `.harness/skill-routing.md` from `routing-template.md` + repo-specific skills, and `.harness/goals/` (working dir for goal runs)
 4. Seeds a per-project `.tasks.toml` (tasks-axi backlog → `.claude/backlog.md`) and `treehouse.toml` (worktree pool), if not already present
-5. Adds `.tmp/treehouse/` and `.gnhf-runs/` to `.gitignore`
-6. Patches `CLAUDE.md` with `## Harness` block (install date + source SHA)
+5. Adds `.tmp/treehouse/` to `.gitignore`
+6. Patches `CLAUDE.md` with `## Harness` block (install date, source SHA, readiness command, and explicit worktree preparation guidance)
 7. Runs smoke test — prints ✓/✗ per check (7 checks: 5 agent files, skill-routing.md, `## Harness` block)
 
 ### 4. Present smoke test results

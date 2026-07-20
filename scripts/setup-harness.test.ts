@@ -1,5 +1,6 @@
 import { test, expect, describe } from 'bun:test';
-import { mkdirSync, writeFileSync, rmSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
 import { AGENT_FILES, scanSkills, seedRoutingTable, patchClaudeMd, smokeTest } from './setup-harness';
 
@@ -172,5 +173,33 @@ describe('smokeTest', () => {
     const results = smokeTest(dir, agentsDir);
     const routingCheck = results.find((r) => r.check.includes('skill-routing'));
     expect(routingCheck?.passed).toBe(false);
+  });
+});
+
+describe('install CLI', () => {
+  test('seeds treehouse readiness without runner state or execution guidance', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-install-'));
+    const target = join(root, 'target repo');
+    const home = join(root, 'home');
+    mkdirSync(target, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+
+    const result = Bun.spawnSync(
+      [process.execPath, join(import.meta.dir, 'setup-harness.ts'), 'install', target],
+      {
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const gitignore = readFileSync(join(target, '.gitignore'), 'utf8');
+    expect(gitignore).toContain('.tmp/treehouse/');
+    expect(gitignore).not.toContain('.gnhf-runs/');
+    const claudeMd = readFileSync(join(target, 'CLAUDE.md'), 'utf8');
+    expect(claudeMd).toContain('non-launching readiness');
+    expect(claudeMd.toLowerCase()).not.toContain('gnhf');
   });
 });

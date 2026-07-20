@@ -19,9 +19,9 @@ triggers:
   - hand off this task
   - /goal prompt
   - goal prompt
-  - run with gnhf
+  - run inline
   - autonomous loop
-  - gnhf this
+  - approval-gated loop
   - run overnight
   - parallel agents
 feedback:
@@ -33,7 +33,7 @@ feedback:
 
 # Skill: Write Goal Prompt
 
-Converts a free-form task into a `/goal` command ready to paste into Claude Code, OR a `gnhf` autonomous run command for overnight unattended work. Designed for overnight handoffs — agent runs autonomously, self-evaluates against a fixed signal, leaves a structured morning report. Output: structured goal condition (≤4000 chars) with eval loop, tiered fallbacks, HTML + Excalidraw morning report.
+Converts a free-form task into a `/goal` command ready to paste into Claude Code. Designed for approval-gated in-session work - agent runs against a fixed signal and leaves a structured report. Output: structured goal condition (≤4000 chars) with eval loop, tiered fallbacks, HTML summary, and Excalidraw diagram.
 
 ## Execution Router (Run Before Phase 0)
 
@@ -48,19 +48,21 @@ Everything this run writes lives under `$PROJECT_ROOT`:
 - **Working dir:** `$PROJECT_ROOT/.harness/goals/<slug>/` — BRIEF.md, PLAN.md, issues/, PROGRESS.md, CYCLE_LOG.md, HANDOFF.*
 - **Backlog:** run tasks-axi from `$PROJECT_ROOT` so it resolves the project-local `.tasks.toml` (seeded by `/setup-harness`), not the monorepo one.
 - **Commits:** the Maker commits to the `$PROJECT_ROOT` repo.
-- **treehouse / gnhf:** launch from `$PROJECT_ROOT` so worktrees and runs anchor to this repo.
+- **readiness / treehouse:** run checks from `$PROJECT_ROOT` so repository and worktree state anchor to this repo.
 
 Pass the resolved working-dir absolute path to every harness agent — they write bare filenames relative to it. If `$PROJECT_ROOT` is not a git repo, fall back to cwd (old behavior).
 
 Then determine execution mode. Ask if not obvious from context. This is the **infrastructure** axis (where/how the harness runs); it is distinct from the *task-shape* axis in the "Execution Mode Routing" section below (`references/execution-mode-routing.md`).
 
-| Task shape                                   | Mode                                              |
-| -------------------------------------------- | ------------------------------------------------- |
-| < 1 hr, needs back-and-forth decisions       | **in-session harness** - proceed to Phase 0       |
-| > 1 hr, fully specifiable, can run overnight | **gnhf autonomous** - see gnhf Path section below |
-| Multiple independent streams simultaneously  | **parallel gnhf + treehouse** - see gnhf Path     |
+| Task shape                                  | Mode                                                                    |
+| ------------------------------------------- | ----------------------------------------------------------------------- |
+| < 1 hr, needs back-and-forth decisions      | **in-session harness** - proceed to Phase 0                             |
+| > 1 hr, fully specifiable                   | **in-session approval-gated harness** - budget phases, remain attached  |
+| Multiple independent streams simultaneously | **treehouse-isolated sessions** - run readiness before explicit leasing |
 
-**Always register in tasks-axi first (both modes) — run from `$PROJECT_ROOT` so it hits the project-local backlog:**
+No route starts a detached process. Run the non-launching readiness check before work, and use `references/parallel-execution.md` when isolation is required.
+
+**Always register in tasks-axi first - run from `$PROJECT_ROOT` so it hits the project-local backlog:**
 
 ```bash
 cd "$PROJECT_ROOT"
@@ -489,79 +491,40 @@ Fix any failure before emitting: (1) context verification — subagents confirm 
 
 **In-session harness mode:** Emit as a code fence. Add: **"Paste this into a Sonnet session. `/goal clear` to abort early."** See `EXAMPLES.md` for a complete worked example.
 
-**gnhf mode:** Skip this phase. Output is the gnhf command block (see gnhf Path below).
+All goal execution remains attached to the current Claude Code session. Do not emit or start a detached runner.
 
 ---
 
-## gnhf Path (Overnight Autonomous Mode)
+## Readiness and Worktree Path
 
-Use when execution mode = gnhf (task > 1hr, fully specifiable, can run unattended). The goal condition from Phase 2 becomes the gnhf objective directly — same content, no `/goal` wrapper, no 4000-char limit.
+Run the supported preflight before task execution. It reports repository, branch, dirty-tree, pipeline-layout, and isolation state as one JSON object.
 
-**No hard cap is not license to sprawl.** The brevity discipline still applies: the objective should be the shortest brief that a fresh unattended agent can start from without asking questions. Long spec detail (phase plans, rubrics, briefs) belongs in files the agent reads at runtime (`.harness/goals/<slug>/`), referenced by path — not inlined into the objective. Keep the objective itself tight and push the bulk behind path references.
-
-Skip Phase 2.5 QA. Skip Phase 3.
-
-**Present, do not launch.** Never run `launch-gnhf.ps1`, `gnhf`, or any autonomous command yourself. Emit the command block below, then STOP and wait for the operator's explicit "go". This holds for both modes: a `/goal` prompt is pasted by the operator; a gnhf run is launched by the operator. The skill's deliverable is the reviewed command, not a running process.
-
-**Inline detached launch (no terminal drop, survives this session) — hand this to the operator to run:**
+**Check only - no mutation:**
 
 ```powershell
-pwsh C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\launch-gnhf.ps1 `
-  -RepoPath "$PROJECT_ROOT" `
-  -Objective "<full objective from Phase 2>" `
-  -StopWhen "<done condition from Phase 0 eval loop>" -MaxIterations 30
-```
-(Add `-Parallel` to force an isolated treehouse worktree; the launcher auto-leases one anyway if it detects a live gnhf run in the repo, or if `-RepoPath` is a canonical monorepo-tracked pipeline like `content`/`outbound` — see `references/parallel-execution.md`.)
-(`-RepoPath "$PROJECT_ROOT"` anchors the run to the resolved project, not the workspace root. The launcher's own default is `Get-Location`.)
-
-It pre-flights, starts gnhf detached + hidden, logs to `.gnhf-runs/gnhf-<stamp>.log` (or `%TEMP%\gnhf-runs\<slug>\` for monorepo-tracked pipelines), and writes a handle JSON (PID + log + args). Register the task in tasks-axi first and mark it done after morning review.
-
-**Manual command block (equivalent, if you prefer to run it yourself):**
-
-```bash
-# 1. Register task
-tasks-axi add <slug> "<title>"
-tasks-axi start <slug>
-
-# 2. Worktree (optional — use for parallel streams or dep-heavy runs)
-# path=$(treehouse get --lease --lease-holder "gnhf-<slug>")
-# cd $path  # then run gnhf from there
-
-# 3. Launch — clean working tree required (git stash if dirty)
-gnhf "<full objective from Phase 2>" \
-  --max-iterations 30 \
-  --stop-when "<done condition from Phase 0 eval loop>"
-
-# 4. Morning review — open the published report first (URL is atop HANDOFF.md)
-head -n 8 HANDOFF.md          # published URL
-cat HANDOFF.secret.local      # password + update_key (never committed)
-git log --oneline gnhf/<slug>
-cat .gnhf/runs/*/notes.md
-
-# 5. Mark done
-tasks-axi done <slug>
+powershell -NoProfile -File C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\prepare-harness-run.ps1 `
+  -RepoPath "$PROJECT_ROOT" -CheckOnly
 ```
 
-**Model: always Opus/frontier (non-negotiable):**
-gnhf main agent = Opus. Cheaper models miss multi-step reasoning and produce cascading iteration failures.
-Enforced via `~/.gnhf/config.yml`:
+A successful result has `status: "READY"`. A nonzero result includes exact errors and dirty paths. Resolve those errors manually; the preflight never commits, stashes, resets, switches branches, or starts task execution.
 
-```yaml
-agentArgsOverride:
-  claude:
-    - "--model"
-    - "opus"
+**Prepare explicit isolation when required:**
+
+```powershell
+powershell -NoProfile -File C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\prepare-harness-run.ps1 `
+  -RepoPath "$PROJECT_ROOT" -PrepareIsolation -Parallel `
+  -LeaseHolder harness-<slug>
 ```
 
-Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--max-iterations` instead.
+Use returned `runPath` for isolated work. Canonical monorepo-tracked pipelines always require this path. Return the lease deliberately after review. Full lifecycle and remediation: `references/parallel-execution.md`.
 
-**Pre-flight checks (the launcher does these; verify manually if using the command block):**
+Rules:
 
-- `git config --global commit.gpgSign` — must be empty or `false` (gnhf commits unsigned)
-- Working tree clean — `git status` shows nothing (gnhf rejects dirty state)
-- `~/.gnhf/config.yml` — agent = `claude`, `agentArgsOverride.claude` = Opus model
-
-**Parallel streams / worktree isolation:** the launcher auto-leases an isolated treehouse worktree when it detects a live gnhf run, on `-Parallel`, or when `-RepoPath` is a canonical monorepo-tracked pipeline (no own `.git`); leases are held until returned by hand after review. Full model, lease lifecycle, and manual commands: `references/parallel-execution.md`.
+- Run readiness from resolved project root, never workspace root or `pipelines/` parent.
+- Work only on a non-default feature branch.
+- Stop on any dirty path; never mutate work to make preflight pass.
+- Keep `scripts/validate-pipeline-layout.ps1` enforcement active.
+- No command in this skill starts detached work.
 
 ---
 
@@ -581,7 +544,7 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 | `references/execution-mode-routing.md` | Decide task shape before authoring: single-run, goal-loop, time-loop, dynamic-workflow. Decision order, interval guidance, mode-nesting patterns. |
 | `references/first-principles-generation.md` | Planner: decompose from observable outcomes. Maker: state reasoning (1-3 sentences) before code. |
 | `EXAMPLES.md`                        | Full worked example with Phase 0 design and output                                                       |
-| gnhf docs                            | `gnhf --help` - autonomous loop CLI; `~/.gnhf/config.yml` for defaults; `scripts/launch-gnhf.ps1` for inline detached launch |
+| readiness CLI                        | `scripts/prepare-harness-run.ps1` - non-launching repository and isolation preflight                                    |
 | treehouse docs                       | `treehouse --help` - worktree pool; `treehouse.toml` in repo root for pool config                        |
 | tasks-axi docs                       | `tasks-axi --help` - persistent backlog; `.tasks.toml` for per-repo config                               |
 
@@ -589,7 +552,7 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 
 ## Execution Mode Routing
 
-Before writing a goal prompt, route the task to the right execution shape using `references/execution-mode-routing.md`. This is about _task shape_ (single-run vs goal-loop vs time-loop vs dynamic-workflow), not about harness infrastructure (in-session vs gnhf — that is separate; see the "Execution Router" section above for infrastructure choice).
+Before writing a goal prompt, route the task to the right execution shape using `references/execution-mode-routing.md`. This is about _task shape_ (single-run vs goal-loop vs time-loop vs dynamic-workflow), not about harness infrastructure (attached session vs explicit treehouse isolation - see the "Execution Router" section above).
 
 **Benchmark detection runs first (ADR-0004).** Before task shape, apply the benchmark-detection key from `references/execution-mode-routing.md` ("Prior axis"): does the goal name a measurable benchmark — a metric plus a direction? If yes, this is a benchmarking goal, not a build goal — **offer to switch** to `/benchmarking-loop` and load `references/benchmark-intake.md` (the lazy branch; a plain build goal never loads it, so this stays lean). `/write-goal-prompt` and `/benchmarking-loop` are two front doors over one shared grill, so detection catches a mis-invoked door from either side. Only if the goal is a plain build goal (artifact + quality bar, no exogenous metric+direction) do you continue with the phases below.
 
@@ -599,4 +562,4 @@ The router decision tree is first-match-wins: walk the four questions top-down a
 
 Planner reads `references/execution-mode-routing.md` as the first step after intake, and emits the chosen shape in PLAN.md's "Execution shape" section.
 
-**Note:** This section (task shape) is orthogonal to the "Execution Router" section near the top of this file (infrastructure choice: in-session harness vs gnhf overnight vs treehouse parallel-gnhf). Both axes inform a full execution plan, but they answer different questions — mode routing (this file) is shape, while the Router is infrastructure.
+**Note:** This section (task shape) is orthogonal to the "Execution Router" section near the top of this file (infrastructure choice: attached session or explicit treehouse isolation). Both axes inform a full execution plan, but they answer different questions - mode routing is shape, while the Router is infrastructure.

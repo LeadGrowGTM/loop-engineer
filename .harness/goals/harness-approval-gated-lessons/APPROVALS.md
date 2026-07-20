@@ -81,6 +81,12 @@ Status: APPROVED
 
 Recommendation: remove gnhf process/config dependency from the supported harness path, replace it with a non-launching readiness preflight, preserve explicit branch and dirty-tree reporting, preserve treehouse/worktree preparation, keep invalid pipeline-tree validation, and never auto-commit user work.
 
+Approval amendment recorded during C04 execution:
+- The protected `-CurrentBranch` forwarding hunk may be replaced by equivalent non-launching current-branch acceptance and reporting.
+- The later protected multiline/quote escaping hunk for `Objective` and `StopWhen` may be retired because readiness never executes those legacy values. The compatibility entry continues accepting them without execution.
+- Byte-exact pre-edit launcher content and its binary diff were saved outside the repository before C04 edits. Other protected work remains out of staging.
+- After the initial C04 commit's red-team review, the user explicitly authorized fixing the blocking C04 findings and amending unpushed commit `f31160b` so C04 remains one commit. No reset, checkout, force, push, or other history rewrite was authorized.
+
 Exact source files:
 - `scripts/launch-gnhf.ps1`
 - `scripts/prepare-harness-run.ps1`
