@@ -37,20 +37,34 @@ Converts a free-form task into a `/goal` command ready to paste into Claude Code
 
 ## Execution Router (Run Before Phase 0)
 
-**Step 0 — Resolve project scope (do this before anything else).** The loop anchors every artifact to the project it runs in, not the workspace root. Resolve the project root once:
+**Step 0 - Resolve project target and workspace root (do this before anything else).** The loop anchors artifacts to the project target while Git safety checks anchor to the containing workspace repository. Resolve both once:
 
 ```bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+INVOCATION_ROOT=$(pwd -P)
+WORKSPACE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$INVOCATION_ROOT")
+PROJECT_ROOT="$WORKSPACE_ROOT"
+
+case "$INVOCATION_ROOT" in
+  "$WORKSPACE_ROOT"/pipelines/*)
+    PIPELINE_RELATIVE=${INVOCATION_ROOT#"$WORKSPACE_ROOT"/pipelines/}
+    case "$PIPELINE_RELATIVE" in
+      ""|*/*) ;;
+      *) PROJECT_ROOT="$INVOCATION_ROOT" ;;
+    esac
+    ;;
+esac
 ```
+
+A direct `pipelines/<name>` invocation remains the project target; readiness decides whether that target is canonical and allowed. Standalone repositories keep their Git toplevel as the project target. If no Git root exists, both values fall back to the physical current directory.
 
 Everything this run writes lives under `$PROJECT_ROOT`:
 
-- **Working dir:** `$PROJECT_ROOT/.harness/goals/<slug>/` — BRIEF.md, PLAN.md, issues/, PROGRESS.md, CYCLE_LOG.md, HANDOFF.*
+- **Working dir:** `$PROJECT_ROOT/.harness/goals/<slug>/` - BRIEF.md, PLAN.md, issues/, PROGRESS.md, CYCLE_LOG.md, HANDOFF.*
 - **Backlog:** run tasks-axi from `$PROJECT_ROOT` so it resolves the project-local `.tasks.toml` (seeded by `/setup-harness`), not the monorepo one.
-- **Commits:** the Maker commits to the `$PROJECT_ROOT` repo.
-- **readiness / treehouse:** run checks from `$PROJECT_ROOT` so repository and worktree state anchor to this repo.
+- **Commits:** the Maker works from `$PROJECT_ROOT`; Git resolves `$WORKSPACE_ROOT` for a tracked pipeline.
+- **readiness / treehouse:** pass `$PROJECT_ROOT` as the target and `$WORKSPACE_ROOT` as its trust boundary.
 
-Pass the resolved working-dir absolute path to every harness agent — they write bare filenames relative to it. If `$PROJECT_ROOT` is not a git repo, fall back to cwd (old behavior).
+Pass both resolved absolute paths to every harness agent. Agents write bare artifact names relative to `$PROJECT_ROOT`.
 
 Then determine execution mode. Ask if not obvious from context. This is the **infrastructure** axis (where/how the harness runs); it is distinct from the *task-shape* axis in the "Execution Mode Routing" section below (`references/execution-mode-routing.md`).
 
@@ -503,7 +517,7 @@ Run the supported preflight before task execution. It reports repository, branch
 
 ```powershell
 powershell -NoProfile -File C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\prepare-harness-run.ps1 `
-  -RepoPath "$PROJECT_ROOT" -CheckOnly
+  -RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -CheckOnly
 ```
 
 A successful result has `status: "READY"`. A nonzero result includes exact errors and dirty paths. Resolve those errors manually; the preflight never commits, stashes, resets, switches branches, or starts task execution.
@@ -512,7 +526,7 @@ A successful result has `status: "READY"`. A nonzero result includes exact error
 
 ```powershell
 powershell -NoProfile -File C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\prepare-harness-run.ps1 `
-  -RepoPath "$PROJECT_ROOT" -PrepareIsolation -Parallel `
+  -RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -PrepareIsolation -Parallel `
   -LeaseHolder harness-<slug>
 ```
 
@@ -520,7 +534,7 @@ Use returned `runPath` for isolated work. Canonical monorepo-tracked pipelines a
 
 Rules:
 
-- Run readiness from resolved project root, never workspace root or `pipelines/` parent.
+- Run readiness for `$PROJECT_ROOT` with `$WORKSPACE_ROOT` passed separately; never target the workspace root or `pipelines/` parent.
 - Work only on a non-default feature branch.
 - Stop on any dirty path; never mutate work to make preflight pass.
 - Keep `scripts/validate-pipeline-layout.ps1` enforcement active.

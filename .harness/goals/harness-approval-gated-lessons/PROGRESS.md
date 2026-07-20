@@ -250,4 +250,22 @@ PROOF:
   - Treehouse is optional generally and fail-fast required when isolation is needed.
   - Shipping requires separate explicit post-PASS approval.
   - Dependency tiers remain consistent.
-Commit: SELF - C05 coherent operator documentation (resolved SHA recorded in C06 proof)
+Commit: `05cff83` - C05 coherent operator documentation
+
+## Phase 7: C07 Canonical pipeline target routing - COMPLETE
+
+Slice: `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\issues\07-canonical-pipeline-target-routing.md` - Status: done
+Skill invoked: `tdd`
+Artifacts:
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\skills\write-goal-prompt\SKILL.md`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\harness-agent-contracts.test.ts`
+Mechanical gate: `bun test scripts/harness-agent-contracts.test.ts`
+PROOF:
+  RED: exit 1; new contract failed at missing `INVOCATION_ROOT=$(pwd -P)` while the skill still assigned `PROJECT_ROOT=$(git rev-parse --show-toplevel ...)`.
+  GREEN: exit 0
+  13 pass
+  0 fail
+  60 expect() calls
+  Ran 13 tests across 1 file. [50.00ms]
+  Contract now separates `PROJECT_ROOT` target from `WORKSPACE_ROOT` trust boundary and passes both to CheckOnly and PrepareIsolation.
+Commit: SELF - C07 canonical pipeline target routing (resolved SHA recorded in final proof)

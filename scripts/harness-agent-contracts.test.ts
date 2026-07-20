@@ -5,6 +5,8 @@ import { join } from "node:path";
 const repoRoot = join(import.meta.dir, "..");
 const agentPath = (name: string) => join(repoRoot, ".claude", "agents", `${name}.md`);
 const readAgent = (name: string) => readFileSync(agentPath(name), "utf8");
+const goalSkillPath = join(repoRoot, "skills", "write-goal-prompt", "SKILL.md");
+const readGoalSkill = () => readFileSync(goalSkillPath, "utf8");
 
 const roles = [
   "harness-planner",
@@ -122,5 +124,17 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).toMatch(/BLOCKED/i);
     expect(source).toMatch(/new proposal/i);
     expect(source).toMatch(/overlap|not.*isolate|cannot be isolated/i);
+  });
+
+  test("write-goal skill keeps canonical pipeline target separate from workspace root", () => {
+    const source = readGoalSkill();
+
+    expect(source).toContain("INVOCATION_ROOT=$(pwd -P)");
+    expect(source).toContain("WORKSPACE_ROOT=$(git rev-parse --show-toplevel");
+    expect(source).toContain('PROJECT_ROOT="$INVOCATION_ROOT"');
+    expect(source).toMatch(/WORKSPACE_ROOT.*pipelines.*PROJECT_ROOT/s);
+    expect(source).toContain('-RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -CheckOnly');
+    expect(source).toContain('-RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -PrepareIsolation -Parallel');
+    expect(source).not.toContain("PROJECT_ROOT=$(git rev-parse --show-toplevel");
   });
 });
