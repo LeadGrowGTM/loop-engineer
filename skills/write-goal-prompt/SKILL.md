@@ -226,10 +226,13 @@ Note: checker agent file enforces fresh context — no extra isolation instructi
 
 SHIP_BRIEF:
 Set `intent` to the user's original objective plus any decisions or constraints that a reviewer
-cannot infer from the diff. After Checker returns PASS, spawn a fresh `harness-shipper` agent;
-that agent invokes `/no-mistakes` once and drives it until `checks-passed`, `passed`, `failed`,
-or `cancelled`. Never ship inline and never invoke it on ITERATE or PLATEAU. Treat
-`checks-passed` as "PR prepared for human merge," not merged.
+cannot infer from the diff. State that Checker PASS is necessary but not sufficient: a separate
+explicit shipping approval for the current invocation is also required. Do not spawn Shipper unless
+both are present. Without shipping approval, terminate with `N/A - shipping not approved`. With
+approval, spawn a fresh `harness-shipper` agent; that agent invokes `/no-mistakes` once and drives
+it until `checks-passed`, `passed`, `failed`, or `cancelled`. Never infer approval from PASS, never
+ship inline, and never invoke Shipper on ITERATE or PLATEAU. Treat `checks-passed` as "PR prepared
+for human merge," not merged.
 
 LOOP_TRACKER:
 A markdown checklist the running agent fills in as the loop progresses.
@@ -275,7 +278,7 @@ omit Prover rows if PROVER_BRIEF is N/A; omit Red-team rows if REDTEAM_BRIEF is 
 - [ ] Verdict: PASS / PLATEAU (max cycles reached)
 
 ### Final
-- [ ] No-mistakes: terminal outcome: `<checks-passed | passed | failed | cancelled | N/A — no PASS>`
+- [ ] Shipping: terminal outcome: `<checks-passed | passed | failed | cancelled | N/A - no PASS | N/A - shipping not approved>`
 - [ ] Pull request: `<URL | N/A>`
 - [ ] HANDOFF.md written: `<path>`
 - [ ] HANDOFF.html written: `<path>`
@@ -342,10 +345,12 @@ Read HARNESS.md before starting. Five-stage execution:
 4. Checker: spawn fresh harness-checker subagent with CHECKER_BRIEF from HARNESS.md.
    Pass artifact paths + PROOF VERDICT (if running-app goal).
    Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
-5. Ship (only after Checker PASS): spawn a fresh `harness-shipper` agent with SHIP_BRIEF.intent,
-   project root, branch, and the PASS verdict. The shipper invokes `/no-mistakes`; the goal agent
-   must never drive it inline. `checks-passed` means the PR is ready for human review/merge; do
-   not wait for merge. Do not run this stage for ITERATE or PLATEAU.
+5. Ship (only after Checker PASS plus separate explicit shipping approval for this invocation):
+   if approval is absent, do not spawn the Shipper and record `N/A - shipping not approved` as the
+   terminal shipping outcome. If approval is present, spawn a fresh `harness-shipper` agent with
+   SHIP_BRIEF.intent, project root, branch, and both approval signals. The shipper invokes
+   `/no-mistakes`; the goal agent must never drive it inline. `checks-passed` means the PR is ready
+   for human review/merge; do not wait for merge. Do not run this stage for ITERATE or PLATEAU.
 
 Work through the task to completion. If you hit a blocker, do not stop. Use mocks, stubs, or documented assumptions. Record each workaround and continue with everything that does not require my decision.
 
@@ -373,9 +378,11 @@ Then execute the task using this loop — repeat up to <max_cycles> times:
 
 Log each cycle to HANDOFF.md: cycle number, mechanical gate result, reward signal score, what changed.
 After each cycle, update the LOOP_TRACKER section in HARNESS.md — check off completed steps, fill in paths, SHAs, and reward signals.
-After the first PASS, exit the eval loop and run the Ship stage exactly once. Record the
-no-mistakes outcome, fixes, and PR URL in HANDOFF.md and LOOP_TRACKER. If it returns `failed` or
-`cancelled`, report that terminal outcome; do not describe the change as merge-ready.
+After the first PASS, exit the eval loop. Run the Ship stage exactly once only when the current
+invocation also contains separate explicit shipping approval. Otherwise do not spawn Shipper,
+record `N/A - shipping not approved` in HANDOFF.md and LOOP_TRACKER, and terminate successfully.
+If an approved Ship stage returns `failed` or `cancelled`, report that terminal outcome; do not
+describe the change as merge-ready.
 
 [CONTEXT MANAGEMENT]
 Run /compact when context approaches 170k tokens. After compacting, state your current checkpoint before continuing. Do NOT compact on turn 1.

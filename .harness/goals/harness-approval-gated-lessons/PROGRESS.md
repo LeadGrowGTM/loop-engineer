@@ -268,4 +268,22 @@ PROOF:
   60 expect() calls
   Ran 13 tests across 1 file. [50.00ms]
   Contract now separates `PROJECT_ROOT` target from `WORKSPACE_ROOT` trust boundary and passes both to CheckOnly and PrepareIsolation.
-Commit: SELF - C07 canonical pipeline target routing (resolved SHA recorded in final proof)
+Commit: `22e11d6` - C07 canonical pipeline target routing
+
+## Phase 8: C08 Shipping consent propagation - COMPLETE
+
+Slice: `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\issues\08-shipping-consent-propagation.md` - Status: done
+Skill invoked: `tdd`
+Artifacts:
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\skills\write-goal-prompt\SKILL.md`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\harness-agent-contracts.test.ts`
+Mechanical gate: `bun test scripts/harness-agent-contracts.test.ts`
+PROOF:
+  RED: exit 1; generated skill contained no `separate explicit shipping approval` contract and still auto-spawned after PASS.
+  GREEN: exit 0
+  14 pass
+  0 fail
+  66 expect() calls
+  Ran 14 tests across 1 file. [47.00ms]
+  SHIP_BRIEF, parent stage 5, final tracker, and post-PASS loop now skip Shipper and record `N/A - shipping not approved` unless separate approval exists.
+Commit: SELF - C08 shipping consent propagation (resolved SHA recorded in final proof)

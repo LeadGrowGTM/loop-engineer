@@ -1,5 +1,5 @@
 # 08 - C08 Shipping consent propagation
-Status: ready-for-agent
+Status: done
 Blocked by: 07
 
 ## Parent

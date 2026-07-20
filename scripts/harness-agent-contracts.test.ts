@@ -137,4 +137,15 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).toContain('-RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -PrepareIsolation -Parallel');
     expect(source).not.toContain("PROJECT_ROOT=$(git rev-parse --show-toplevel");
   });
+
+  test("write-goal skill propagates separate shipping approval to generated goals", () => {
+    const source = readGoalSkill();
+
+    expect(source).toMatch(/separate explicit shipping approval/i);
+    expect(source).toContain("N/A - shipping not approved");
+    expect(source).toMatch(/do not spawn (the )?Shipper unless/i);
+    expect(source).toMatch(/Checker PASS.*shipping approval/is);
+    expect(source).not.toContain("After Checker returns PASS, spawn a fresh `harness-shipper` agent");
+    expect(source).not.toContain("After the first PASS, exit the eval loop and run the Ship stage exactly once");
+  });
 });
