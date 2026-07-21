@@ -40,22 +40,41 @@ Converts a free-form task into a `/goal` command ready to paste into Claude Code
 **Step 0 - Resolve project target and workspace root (do this before anything else).** The loop anchors artifacts to the project target while Git safety checks anchor to the containing workspace repository. Resolve both once:
 
 ```bash
-INVOCATION_ROOT=$(pwd -P)
-WORKSPACE_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$INVOCATION_ROOT")
-PROJECT_ROOT="$WORKSPACE_ROOT"
+normalize_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$1"
+  else
+    (cd "$1" 2>/dev/null && pwd -P) || printf '%s\n' "$1"
+  fi
+}
 
-case "$INVOCATION_ROOT" in
-  "$WORKSPACE_ROOT"/pipelines/*)
-    PIPELINE_RELATIVE=${INVOCATION_ROOT#"$WORKSPACE_ROOT"/pipelines/}
-    case "$PIPELINE_RELATIVE" in
-      ""|*/*) ;;
-      *) PROJECT_ROOT="$INVOCATION_ROOT" ;;
-    esac
-    ;;
-esac
+INVOCATION_ROOT=$(normalize_path "$(pwd -P)")
+GIT_ROOT_RAW=$(git rev-parse --show-toplevel 2>/dev/null || true)
+
+if [ -n "$GIT_ROOT_RAW" ]; then
+  GIT_ROOT=$(normalize_path "$GIT_ROOT_RAW")
+  PROJECT_ROOT="$GIT_ROOT"
+  WORKSPACE_ROOT=$(dirname "$GIT_ROOT")
+
+  case "$INVOCATION_ROOT" in
+    "$GIT_ROOT"/pipelines/*)
+      PIPELINE_RELATIVE=${INVOCATION_ROOT#"$GIT_ROOT"/pipelines/}
+      case "$PIPELINE_RELATIVE" in
+        ""|*/*) ;;
+        *)
+          PROJECT_ROOT="$INVOCATION_ROOT"
+          WORKSPACE_ROOT="$GIT_ROOT"
+          ;;
+      esac
+      ;;
+  esac
+else
+  PROJECT_ROOT="$INVOCATION_ROOT"
+  WORKSPACE_ROOT=$(dirname "$INVOCATION_ROOT")
+fi
 ```
 
-A direct `pipelines/<name>` invocation remains the project target; readiness decides whether that target is canonical and allowed. Standalone repositories keep their Git toplevel as the project target. If no Git root exists, both values fall back to the physical current directory.
+A direct `pipelines/<name>` invocation remains the project target and uses the containing Git root as its workspace boundary; readiness decides whether that target is canonical and allowed. Standalone repositories use their Git toplevel as the project target and its parent as the strict workspace boundary. If no Git root exists, the physical current directory is the target and its parent is the boundary.
 
 Everything this run writes lives under `$PROJECT_ROOT`:
 

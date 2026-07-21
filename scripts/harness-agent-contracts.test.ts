@@ -1,12 +1,41 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
 const repoRoot = join(import.meta.dir, "..");
 const agentPath = (name: string) => join(repoRoot, ".claude", "agents", `${name}.md`);
 const readAgent = (name: string) => readFileSync(agentPath(name), "utf8");
 const goalSkillPath = join(repoRoot, "skills", "write-goal-prompt", "SKILL.md");
 const readGoalSkill = () => readFileSync(goalSkillPath, "utf8");
+const gitExecutable = Bun.which("git");
+if (!gitExecutable) throw new Error("Git executable not found");
+const gitBash = resolve(dirname(gitExecutable), "..", "bin", "bash.exe");
+const BASH = existsSync(gitBash) ? gitBash : Bun.which("bash");
+if (!BASH) throw new Error("Bash executable not found");
+
+function run(command: string[], cwd: string): string {
+  const result = Bun.spawnSync(command, { cwd, stdout: "pipe", stderr: "pipe" });
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Command failed (${result.exitCode}): ${command.join(" ")}\nstdout: ${result.stdout.toString()}\nstderr: ${result.stderr.toString()}`,
+    );
+  }
+  return result.stdout.toString().trim();
+}
+
+function normalizePath(value: string): string {
+  return resolve(value).replaceAll("\\", "/");
+}
+
+function resolveSkillRoots(cwd: string): { projectRoot: string; workspaceRoot: string } {
+  const match = readGoalSkill().match(/## Execution Router[\s\S]*?```bash\r?\n([\s\S]*?)\r?\n```/);
+  if (!match) throw new Error("Execution Router Step 0 shell snippet not found");
+  const snippet = match[1].replaceAll("\r\n", "\n");
+  const output = run([BASH, "-c", `${snippet}\nprintf '%s\\n' "$PROJECT_ROOT" "$WORKSPACE_ROOT"`], cwd).split(/\r?\n/);
+  if (output.length !== 2) throw new Error(`Expected two routing paths, received ${output.length}`);
+  return { projectRoot: output[0], workspaceRoot: output[1] };
+}
 
 const roles = [
   "harness-planner",
@@ -129,9 +158,10 @@ describe("approval-aware harness agent contracts", () => {
   test("write-goal skill keeps canonical pipeline target separate from workspace root", () => {
     const source = readGoalSkill();
 
-    expect(source).toContain("INVOCATION_ROOT=$(pwd -P)");
-    expect(source).toContain("WORKSPACE_ROOT=$(git rev-parse --show-toplevel");
+    expect(source).toContain('INVOCATION_ROOT=$(normalize_path "$(pwd -P)")');
+    expect(source).toContain("GIT_ROOT_RAW=$(git rev-parse --show-toplevel");
     expect(source).toContain('PROJECT_ROOT="$INVOCATION_ROOT"');
+    expect(source).toContain('WORKSPACE_ROOT=$(dirname "$GIT_ROOT")');
     expect(source).toMatch(/WORKSPACE_ROOT.*pipelines.*PROJECT_ROOT/s);
     expect(source).toContain('-RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -CheckOnly');
     expect(source).toContain('-RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -PrepareIsolation -Parallel');
@@ -147,5 +177,25 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).toMatch(/Checker PASS.*shipping approval/is);
     expect(source).not.toContain("After Checker returns PASS, spawn a fresh `harness-shipper` agent");
     expect(source).not.toContain("After the first PASS, exit the eval loop and run the Ship stage exactly once");
+  });
+
+  test("write-goal Step 0 executes for canonical and standalone targets", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "goal-routing-workspace-"));
+    const pipeline = join(workspace, "pipelines", "content");
+    mkdirSync(pipeline, { recursive: true });
+    run(["git", "init", "-b", "main"], workspace);
+
+    const canonical = resolveSkillRoots(pipeline);
+    expect(canonical.projectRoot).toBe(normalizePath(pipeline));
+    expect(canonical.workspaceRoot).toBe(normalizePath(workspace));
+
+    const parent = mkdtempSync(join(tmpdir(), "goal-routing-standalone-"));
+    const repo = join(parent, "repo with spaces");
+    mkdirSync(repo, { recursive: true });
+    run(["git", "init", "-b", "main"], repo);
+
+    const standalone = resolveSkillRoots(repo);
+    expect(standalone.projectRoot).toBe(normalizePath(repo));
+    expect(standalone.workspaceRoot).toBe(normalizePath(dirname(repo)));
   });
 });
