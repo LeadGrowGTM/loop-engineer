@@ -4,7 +4,9 @@
 
 .DESCRIPTION
   Performs repository, branch, dirty-tree, pipeline-layout, and isolation checks.
-  Emits one JSON object to stdout. It never starts task execution or mutates git state.
+  Emits one JSON object to stdout. Neither mode starts task execution.
+  -CheckOnly does not mutate Git state.
+  -PrepareIsolation acquires a Treehouse lease and creates a unique derived Git branch at the checked source HEAD before returning READY.
 
 .EXAMPLE
   powershell -NoProfile -File scripts/prepare-harness-run.ps1 `

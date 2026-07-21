@@ -4,8 +4,9 @@
 
 .DESCRIPTION
   Accepts the legacy launcher parameter surface, then delegates synchronously to
-  prepare-harness-run.ps1. It never starts task execution, creates run logs, or
-  changes git state. -Parallel explicitly prepares treehouse isolation.
+  prepare-harness-run.ps1. It never starts task execution or creates run logs.
+  Without -Parallel or -PrepareIsolation, it delegates to -CheckOnly, which does not mutate Git state.
+  With -Parallel or -PrepareIsolation, it acquires a Treehouse lease and creates a unique derived Git branch at the checked source HEAD before returning READY.
 
 .EXAMPLE
   powershell -NoProfile -File scripts/launch-gnhf.ps1 `

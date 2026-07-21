@@ -69,7 +69,7 @@ powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
   -RepoPath C:\path\to\repo -CheckOnly
 ```
 
-The command emits one JSON object and never starts task execution or mutates Git state. It fails fast for an invalid repository or pipeline layout, a missing committed `HEAD`, a detached or default branch, hidden index state, or a dirty working tree. Continue in the current session only when `readyForRun` is `true`.
+The `-CheckOnly` mode does not start task execution and does not mutate Git state. It emits one JSON object and fails fast for an invalid repository or pipeline layout, a missing committed `HEAD`, a detached or default branch, hidden index state, or a dirty working tree. Continue in the current session only when `readyForRun` is `true`.
 
 When isolation is desired or required, acquire a treehouse worktree explicitly:
 
@@ -79,7 +79,7 @@ powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
   -LeaseHolder harness-my-task
 ```
 
-Treehouse is optional for a standalone serial repository. Add `-Parallel` when preparing a parallel stream; parallel streams and canonical monorepo pipelines require isolation. If treehouse is missing when isolation is required, readiness fails with remediation instead of falling back. A successful preparation keeps `branch` as the source branch, creates and reports a unique derived `runBranch` at the checked source HEAD, and returns `runPath` plus `returnCommand`. Work and commit only on `runBranch`; verify that branch contains the intended commits before deliberately returning the lease.
+Treehouse is optional for a standalone serial repository. Add `-Parallel` when preparing a parallel stream; parallel streams and canonical monorepo pipelines require isolation. If Treehouse is missing when isolation is required, readiness fails with remediation instead of falling back. The `-PrepareIsolation` mode acquires a Treehouse lease and creates a unique derived `runBranch` at the checked source `HEAD` before returning READY. It keeps `branch` as the source branch and returns `runPath` plus `returnCommand`. Work and commit only on `runBranch`; verify that branch contains the intended commits before deliberately returning the lease.
 
 ## Second goal path: the benchmarking loop
 

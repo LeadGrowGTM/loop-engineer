@@ -5,8 +5,40 @@ import { delimiter, dirname, join, resolve } from 'path';
 
 const SCRIPT = join(import.meta.dir, 'prepare-harness-run.ps1');
 const LAUNCHER = join(import.meta.dir, 'launch-gnhf.ps1');
+const README = join(import.meta.dir, '..', 'README.md');
+const REPO_INSTRUCTIONS = join(import.meta.dir, '..', 'CLAUDE.md');
+const CHECK_ONLY_OPERATOR_CONTRACT =
+  'The `-CheckOnly` mode does not start task execution and does not mutate Git state.';
+const PREPARE_ISOLATION_OPERATOR_CONTRACT =
+  'The `-PrepareIsolation` mode acquires a Treehouse lease and creates a unique derived `runBranch` at the checked source `HEAD` before returning READY.';
 const POWERSHELL = Bun.which('pwsh') ?? Bun.which('powershell.exe') ?? Bun.which('powershell');
 if (!POWERSHELL) throw new Error('PowerShell executable not found');
+
+const GIT_NON_MUTATION_CLAIM =
+  /[^.!?]{0,240}\b(?:never|without|does not)\b[^.!?]{0,160}\b(?:mutat(?:e|es|ing)|chang(?:e|es|ing))\s+git state\b/gi;
+
+function renderHelp(script: string): string {
+  const result = Bun.spawnSync(
+    [POWERSHELL, '-NoProfile', '-Command', 'Get-Help -Full $env:HARNESS_HELP_SCRIPT | Out-String -Width 4096'],
+    {
+      env: { ...process.env, HARNESS_HELP_SCRIPT: script },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Get-Help failed (${result.exitCode}) for ${script}\nstdout: ${result.stdout.toString()}\nstderr: ${result.stderr.toString()}`,
+    );
+  }
+  return result.stdout.toString().replace(/\s+/g, ' ').trim();
+}
+
+function expectNoBlanketGitNonMutation(contract: string): void {
+  const claims = contract.match(GIT_NON_MUTATION_CLAIM) ?? [];
+  expect(claims.length).toBeGreaterThan(0);
+  for (const claim of claims) expect(claim).toMatch(/\bCheckOnly\b/i);
+}
 
 function run(command: string[], cwd?: string): string {
   const result = Bun.spawnSync(command, {
@@ -175,6 +207,38 @@ function withoutTreehouseEnv(): Record<string, string | undefined> {
 }
 
 describe('prepare-harness-run CLI', () => {
+  test('readiness help gives each mode its own Git-state contract', () => {
+    const help = renderHelp(SCRIPT);
+
+    expect(help).toContain('-CheckOnly does not mutate Git state.');
+    expect(help).toContain(
+      '-PrepareIsolation acquires a Treehouse lease and creates a unique derived Git branch at the checked source HEAD before returning READY.',
+    );
+    expectNoBlanketGitNonMutation(help);
+  });
+
+  test('compatibility help scopes non-mutation to check-only mode', () => {
+    const help = renderHelp(LAUNCHER);
+
+    expect(help).toContain(
+      'Without -Parallel or -PrepareIsolation, it delegates to -CheckOnly, which does not mutate Git state.',
+    );
+    expect(help).toContain(
+      'With -Parallel or -PrepareIsolation, it acquires a Treehouse lease and creates a unique derived Git branch at the checked source HEAD before returning READY.',
+    );
+    expectNoBlanketGitNonMutation(help);
+  });
+
+  test('operator guidance repeats the mode-specific contract', () => {
+    for (const guidancePath of [README, REPO_INSTRUCTIONS]) {
+      const guidance = readFileSync(guidancePath, 'utf8').replace(/\s+/g, ' ');
+
+      expect(guidance).toContain(CHECK_ONLY_OPERATOR_CONTRACT);
+      expect(guidance).toContain(PREPARE_ISOLATION_OPERATOR_CONTRACT);
+      expectNoBlanketGitNonMutation(guidance);
+    }
+  });
+
   test('clean feature branch returns one machine-readable READY result', () => {
     const { workspace, repo } = createFeatureRepo();
 

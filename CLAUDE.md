@@ -32,9 +32,9 @@ The model that wrote the code grades its own homework generously. Five-agent loo
 
 ## Supported execution
 
-Runs stay in the active Claude Code session so approval gates remain visible. Before work starts, run `scripts/prepare-harness-run.ps1 -CheckOnly`. It reports readiness without launching task execution or mutating Git state, and fails fast on an unsafe repository, default or detached branch, dirty tree, invalid pipeline layout, or unprepared required isolation.
+Runs stay in the active Claude Code session so approval gates remain visible. Before work starts, run `scripts/prepare-harness-run.ps1 -CheckOnly`. The `-CheckOnly` mode does not start task execution and does not mutate Git state. It fails fast on an unsafe repository, default or detached branch, dirty tree, invalid pipeline layout, or unprepared required isolation.
 
-Use the current clean feature branch by default. If parallel, collision-prone, or canonical pipeline work needs isolation, explicitly rerun readiness with `-PrepareIsolation -Parallel`, then run the in-session harness from the returned treehouse worktree path on its reported derived `runBranch`. Commit only on `runBranch` and verify that branch before returning the lease. Missing treehouse fails readiness only when isolation is required.
+Use the current clean feature branch by default. If parallel, collision-prone, or canonical pipeline work needs isolation, explicitly rerun readiness with `-PrepareIsolation -Parallel`. The `-PrepareIsolation` mode acquires a Treehouse lease and creates a unique derived `runBranch` at the checked source `HEAD` before returning READY. Run the in-session harness from the returned worktree path, commit only on `runBranch`, and verify that branch before returning the lease. Missing Treehouse fails readiness only when isolation is required.
 
 ## Key commands
 
