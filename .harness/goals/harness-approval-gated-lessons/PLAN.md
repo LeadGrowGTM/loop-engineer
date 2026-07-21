@@ -11,7 +11,7 @@
 
 ## PLANNER_BRIEF
 
-Plan only C01-C06. Each phase is an observable checkpoint, not a file inventory. One ID maps to one phase, one durable slice, one mechanical gate, and one future Maker commit. The Maker must use path-specific staging, include goal-local bookkeeping in the matching commit, and stop for a new approval if any source path or behavior falls outside `APPROVALS.md`.
+The initial plan covered C01-C06; the approved review follow-up section adds C07-C09. Each phase is an observable checkpoint, not a file inventory. One ID maps to one phase, one durable slice, one mechanical gate, and one Maker commit. The Maker must use path-specific staging, include goal-local bookkeeping in the matching commit, and stop for a new approval if any source path or behavior falls outside `APPROVALS.md`.
 
 The six phases are sequential because C02 and C03 refine role files introduced by C01, C04 may touch the protected launcher only after C03 is active, C05 documents C04's final behavior, and C06 proves the complete commit and working-tree state.
 
@@ -135,7 +135,7 @@ Commit contract: one commit whose subject starts `C05` and contains only the app
 
 Routing: direct deterministic checks followed by `code-review`, because `engineering-discipline` was not confirmed available.
 
-Observable outcome: a reviewer can verify from command output that the six approved commits are present, no merge occurred, no unapproved tracked path changed, the index is clean, snapshot.md is unchanged from its pre-C01 diff and remains unstaged, and the pre-existing launcher work is present after replaying only the approved C04 patch.
+Observable outcome: a reviewer can verify from command output that exactly one commit for every approved ID C01-C10 is present, no merge occurred, preserved non-ID external commits are disclosed, the index is clean, snapshot.md remains unstaged and absent from every ID commit despite the unavailable pre-C01 hash, and the pre-existing launcher work has recoverable lineage through the saved C04 evidence.
 
 Exact deliverable:
 - `.harness/goals/harness-approval-gated-lessons/UNTOUCHED_WORK_PROOF.md`
@@ -144,10 +144,10 @@ Required proof commands and records:
 1. `git status --short`
 2. `git diff --cached --quiet`
 3. `git diff --cached --name-only -- .claude/agent-context/snapshot.md`
-4. `git diff --binary -- .claude/agent-context/snapshot.md | git hash-object --stdin`, compared with the pre-C01 hash
-5. Replay the saved C04 task-only patch over the saved pre-C01 launcher worktree copy in a temporary directory, then byte-compare the replay result with the final working-tree `scripts/launch-gnhf.ps1`
-6. `git diff --name-only 6bf9a02..HEAD`, checked against the union of approved source paths plus this goal directory
-7. `git log --format='%h %s' 6bf9a02..HEAD`, showing exactly one C01, C02, C03, C04, C05, and C06 commit and no merge commit
+4. Record `git diff --binary -- .claude/agent-context/snapshot.md | git hash-object --stdin`, disclose the unavailable pre-C01 hash, and verify snapshot absence from all C01-C10 commit path lists
+5. Normalize and replay the saved C04 task patch over the saved pre-edit launcher copy in a temporary directory, then byte-compare the recovered file with the saved final copy and repository `scripts/launch-gnhf.ps1`
+6. `git diff --name-only 6bf9a02..HEAD`, classifying approved ID paths separately from preserved non-ID external commit paths
+7. `git log --format='%H%x09%P%x09%s' 6bf9a02..HEAD`, showing exactly one C01, C02, C03, C04, C05, and planned C06 commit, preserving disclosed non-ID commits, and showing no merge commit
 8. `bun test`
 9. Run `code-review` with fixed point `6bf9a02` and this PLAN/APPROVALS pair as the spec source; critical or high findings must stay inside an approved ID or become a new proposal.
 
@@ -213,7 +213,7 @@ Artifacts to evaluate:
 - `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\PLAN.md`
 - `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\APPROVALS.md`
 - all six issue slices
-- final files in the approved C01-C05 source boundaries
+- final files in the approved C01-C10 source boundaries
 - `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\UNTOUCHED_WORK_PROOF.md`
 - `PROGRESS.md` only for exact command output, staged-path evidence, and commit SHAs; do not use Maker opinions or self-assessment as qualitative evidence
 - conditional C04 PROOF verdict and red-team result
@@ -232,7 +232,7 @@ PASS threshold: mean score at least 4.0/5.0, no dimension below 3, every mechani
 Artifacts to evaluate: the paths listed in CHECKER_BRIEF.
 
 Dimensions (score 1-5 each):
-- Approval integrity: 5 = complete C01-C06 traceability with no unapproved edit | 1 = any unapproved edit.
+- Approval integrity: 5 = complete C01-C10 traceability with no unapproved edit | 1 = any unapproved edit.
 - Scope discipline: 5 = exact file and behavior boundaries with one ID per commit | 1 = bundled cleanup or unauthorized action.
 - Technical quality: 5 = robust role contracts and safe non-launching readiness behavior | 1 = fragile or still gnhf-dependent behavior.
 - Evidence: 5 = reproducible commands, tests, proof, and commits for every ID | 1 = assertions without command-backed evidence.
@@ -242,7 +242,7 @@ PASS threshold: mean score at least 4.0/5.0, no dimension below 3, all gates pas
 
 ## SHIP_BRIEF
 
-Intent: apply only C01-C06 to make loop-engineer approval-aware and independent of gnhf execution while preserving branch readiness, treehouse/worktree isolation readiness, fail-fast reporting, invalid-tree safeguards, and pre-existing dirty user work.
+Intent: apply only approved IDs C01-C10 to make loop-engineer approval-aware and independent of gnhf execution while preserving branch readiness, branch-safe treehouse/worktree isolation, fail-fast reporting, invalid-tree safeguards, and pre-existing dirty user work.
 
 This goal does not ship. After Checker PASS, present the final decision matrix and request separate explicit shipping approval. On this invocation the required outcome is `N/A - shipping not approved`. Do not spawn Shipper, run `/no-mistakes`, push, open a PR, or merge.
 
@@ -289,7 +289,7 @@ This goal does not ship. After Checker PASS, present the final decision matrix a
 - [ ] Verdict: PASS / PLATEAU
 
 ### Final
-- [ ] Decision matrix lists C01-C06, exact files, tests, and commits
+- [ ] Decision matrix lists C01-C10, exact files, tests, and commits
 - [ ] UNTOUCHED_WORK_PROOF.md proves protected and unrelated work state
 - [ ] `.claude/agent-context/snapshot.md` remains unstaged and uncommitted
 - [ ] Pre-existing `scripts/launch-gnhf.ps1` user delta remains preserved
@@ -315,3 +315,62 @@ Total: ~50 turns
 Sequential: C01 -> C02 -> C03 -> C04 -> C05 -> C06. C03 must be active before the protected launcher is touched. C05 depends on final C04 behavior. C06 depends on all prior commits and saved baseline evidence.
 
 Parallel-safe: none during Maker execution. Shared role files, shared tests, protected working-tree state, and one-ID commit boundaries make parallel edits unsafe. Prover and red-team may run after the C04 gate and before Checker, but not concurrently with source edits.
+
+## Approved review follow-up phases - 2026-07-20
+
+Final code review blocked C06 with three independently confirmed HIGH findings. The user approved C07, C08, and C09 as separate phases and commits. No prior commit is rewritten. C06 resumes only after all three gates pass.
+
+### Phase 7: C07 Canonical pipeline target routing
+
+Observable outcome: write-goal-prompt keeps the workspace Git root separate from a canonical pipeline invocation target, and readiness receives the pipeline directory as `RepoPath` plus workspace root as `WorkspaceRoot`.
+
+Exact source boundary:
+- `skills/write-goal-prompt/SKILL.md`
+- `scripts/harness-agent-contracts.test.ts`
+
+Mechanical gate: `bun test scripts/harness-agent-contracts.test.ts`
+
+Commit contract: one commit whose subject starts `C07`, containing only this source boundary plus goal-local planning/bookkeeping.
+
+### Phase 8: C08 Shipping consent propagation
+
+Observable outcome: generated parent goals and SHIP_BRIEF require separate explicit shipping approval after Checker PASS; without it, Shipper is not spawned and the terminal outcome is `N/A - shipping not approved`.
+
+Exact source boundary:
+- `skills/write-goal-prompt/SKILL.md`
+- `scripts/harness-agent-contracts.test.ts`
+
+Mechanical gate: `bun test scripts/harness-agent-contracts.test.ts`
+
+Commit contract: one commit whose subject starts `C08`, containing only this source boundary plus goal-local bookkeeping.
+
+### Phase 9: C09 Isolated run branch
+
+Observable outcome: explicit Treehouse preparation converts a validated detached lease into a unique derived branch at source HEAD, validates and reports that branch as the execution branch, keeps the source branch unchanged, and returns the lease on failure.
+
+Exact source boundary:
+- `scripts/prepare-harness-run.ps1`
+- `scripts/prepare-harness-run.test.ts`
+- `README.md`
+- `CLAUDE.md`
+- `skills/write-goal-prompt/references/parallel-execution.md`
+
+Mechanical gate: `bun test scripts/prepare-harness-run.test.ts`
+
+Commit contract: one commit whose subject starts `C09`, containing only this source boundary plus goal-local bookkeeping.
+
+## Revised dependencies
+
+Sequential: C01 -> C02 -> C03 -> C04 -> C05 -> C07 -> C08 -> C09 -> C10 -> C06. C06 proof and Checker must include the new commits and rerun review after C10.
+
+### Phase 10: C10 Cross-platform target routing
+
+Observable outcome: the actual Step 0 shell snippet normalizes Windows Git Bash and Git path forms, resolves canonical pipeline target/workspace values correctly, and gives standalone repositories a parent trust boundary rather than identical roots.
+
+Exact source boundary:
+- `skills/write-goal-prompt/SKILL.md`
+- `scripts/harness-agent-contracts.test.ts`
+
+Mechanical gate: `bun test scripts/harness-agent-contracts.test.ts`
+
+Commit contract: one commit whose subject starts `C10`, containing only this source boundary plus goal-local bookkeeping.

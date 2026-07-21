@@ -124,7 +124,13 @@ Verification command:
 
 Status: APPROVED
 
-Recommendation: produce a final, command-backed proof that only approved paths changed, six ID commits exist, the volatile snapshot delta is unchanged and unstaged, the pre-existing launcher delta remains preserved, and the index is clean.
+Recommendation: produce a final, command-backed proof that exactly one commit exists for each approved ID C01-C10, preserve and disclose non-ID external commits, prove the volatile snapshot remains unstaged and uncommitted, preserve recoverable launcher lineage, and leave the index clean.
+
+Approval amendment recorded during C04 execution:
+- Preserve non-ID external commits instead of rewriting or excluding them.
+- Prove exactly one commit for each approved ID C01-C10 and no merge commit.
+- The pre-C01 snapshot diff hash was not durably captured. Disclose that limitation; prove the current snapshot remains unstaged and absent from all C01-C10 commits rather than claiming unavailable byte equality.
+- Use the saved pre-edit launcher, final launcher copy, and task patch as recoverable lineage evidence. A normalized replay may prove recovery without depending on the original absolute patch headers.
 
 Exact deliverable:
 - `.harness/goals/harness-approval-gated-lessons/UNTOUCHED_WORK_PROOF.md`
@@ -132,7 +138,62 @@ Exact deliverable:
 Verification commands:
 - `git diff --cached --quiet`
 - `git diff --cached --name-only -- .claude/agent-context/snapshot.md` must print nothing
-- compare the final snapshot diff hash with the hash captured before C01
-- replay the C04 task-only staged patch over the pre-C01 launcher worktree copy and compare it byte-for-byte with the final launcher worktree file
-- `git diff --name-only 6bf9a02..HEAD` must contain only approved source files and this goal directory
-- `git log --format='%h %s' 6bf9a02..HEAD` must show one commit for each C01 through C06 and no merge commit
+- record the current snapshot diff hash, disclose the unavailable pre-C01 hash, and prove snapshot absence from every C01-C10 commit
+- normalize and replay the saved C04 task patch over the saved pre-edit launcher copy, then compare the recovered file byte-for-byte with the saved final copy and repository launcher
+- `git diff --name-only 6bf9a02..HEAD` must classify approved C01-C10 paths separately from preserved non-ID external commit paths
+- `git log --format='%H%x09%P%x09%s' 6bf9a02..HEAD` must show exactly one commit for each approved ID C01-C10, preserve disclosed non-ID commits, and show no merge commit
+
+## Approved review follow-ups - 2026-07-20
+
+The final two-axis code review found three independently confirmed HIGH defects. The user approved three new IDs with no history rewrite. C06 pauses until C07-C09 complete.
+
+### C07 - Canonical pipeline target routing
+
+Status: APPROVED
+
+Exact source files:
+- `skills/write-goal-prompt/SKILL.md`
+- `scripts/harness-agent-contracts.test.ts`
+
+Verification command:
+`bun test scripts/harness-agent-contracts.test.ts`
+
+### C08 - Shipping consent propagation
+
+Status: APPROVED
+
+Exact source files:
+- `skills/write-goal-prompt/SKILL.md`
+- `scripts/harness-agent-contracts.test.ts`
+
+Verification command:
+`bun test scripts/harness-agent-contracts.test.ts`
+
+### C09 - Isolated run branch
+
+Status: APPROVED - automatic derived-branch approach
+
+Exact source files:
+- `scripts/prepare-harness-run.ps1`
+- `scripts/prepare-harness-run.test.ts`
+- `README.md`
+- `CLAUDE.md`
+- `skills/write-goal-prompt/references/parallel-execution.md`
+
+Verification command:
+`bun test scripts/prepare-harness-run.test.ts`
+
+C09 creates and validates a unique derived branch at the checked source HEAD inside an explicitly prepared lease, reports that run branch, and returns the lease on failure. No reset, force, push, merge, PR, or shipping is approved.
+
+### C10 - Cross-platform target routing
+
+Status: APPROVED
+
+Final review confirmed that C07 compared Git Bash `/c/...` paths with Git `C:/...` paths and passed identical repo/workspace roots for standalone repositories. The user approved a new commit without history rewrite.
+
+Exact source files:
+- `skills/write-goal-prompt/SKILL.md`
+- `scripts/harness-agent-contracts.test.ts`
+
+Verification command:
+`bun test scripts/harness-agent-contracts.test.ts`

@@ -12,7 +12,7 @@ PROOF:
    0 fail
    25 expect() calls
   Ran 6 tests across 1 file. [38.00ms]
-Commit: SELF - C01 approval-aware role contracts (resolved SHA recorded in C06 proof)
+Commit: `02c4bd7` - C01 approval-aware role contracts
 
 ## Phase 2: C02 Deterministic skill-routing fallback - COMPLETE
 Slice: C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\issues\02-skill-routing-fallback.md - Status: done
@@ -26,7 +26,7 @@ PROOF:
    0 fail
    31 expect() calls
   Ran 7 tests across 1 file. [42.00ms]
-Commit: SELF - C02 deterministic skill-routing fallback (resolved SHA recorded in C06 proof)
+Commit: `07ca251` - C02 deterministic skill-routing fallback
 
 ## Phase 3: C03 Protected dirty-work policy - COMPLETE
 Slice: C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\issues\03-protected-dirty-work-policy.md - Status: done
@@ -53,7 +53,7 @@ PROOF:
   Staged-path verification:
   git diff --cached --name-only -- .claude/agent-context/snapshot.md
   (empty output)
-Commit: <short SHA> — C03 protected dirty-work policy
+Commit: `db34fc1` - C03 protected dirty-work policy
 
 ## Phase 4: C04 Non-launching harness readiness - COMPLETE
 Slice: C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\issues\04-non-launching-harness-readiness.md - Status: done
@@ -314,4 +314,53 @@ PROOF:
   - Detached default-based lease became the reported derived `runBranch` at source HEAD.
   - Namespace collision failed NOT_READY and called `treehouse return`.
   Independent prior-HIGH re-review: NONE.
-Commit: SELF - C09 isolated run branch (resolved SHA recorded in final proof)
+Commit: `43eabfa` - C09 isolated run branch
+
+## Phase 10: C10 Cross-platform target routing - COMPLETE
+
+Slice: `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\issues\10-cross-platform-target-routing.md` - Status: done
+Skill invoked: `tdd`
+Artifacts:
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\skills\write-goal-prompt\SKILL.md`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\harness-agent-contracts.test.ts`
+Mechanical gate: `bun test scripts/harness-agent-contracts.test.ts`
+PROOF:
+  Executable RED: exit 1
+  14 pass
+  1 fail
+  67 expect() calls
+  Canonical fixture expected pipeline target but received workspace Git root because `/c/...` and `C:/...` did not match.
+  GREEN: exit 0
+  15 pass
+  0 fail
+  71 expect() calls
+  Ran 15 tests across 1 file. [473.00ms]
+  Actual Step 0 shell fence now normalizes path forms. Canonical fixture resolves pipeline/Git-root; standalone fixture resolves repo/parent boundary.
+Commit: `f72d851` - C10 cross-platform target routing
+
+## Phase 6: C06 Untouched-work and commit proof - COMPLETE
+
+Slice: `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\issues\06-untouched-work-proof.md` - Status: done
+Skill invoked: direct deterministic proof plus two-axis `code-review`
+Artifact: `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\UNTOUCHED_WORK_PROOF.md`
+Mechanical gates:
+- `git diff --cached --quiet`
+- `git diff --cached --name-only -- .claude/agent-context/snapshot.md`
+- snapshot diff hashing and commit-path audit
+- normalized launcher patch replay
+- `git log --reverse --format='%H%x09%P%x09%s' 6bf9a02..HEAD`
+- `bun test`
+PROOF:
+  Final full suite: 66 pass, 0 fail, 212 expect() calls across 5 files. [34.53s]
+  Index clean before C06 staging: exit 0
+  Snapshot staged count: 0
+  Snapshot post-baseline commit count: 0
+  Final snapshot diff Git hash: `f8218e4dcd3d64ad6f5cae98c4c7b841b4c10212`
+  Pre-C01 snapshot hash: unavailable and explicitly disclosed
+  Launcher replay: apply check PASS; recovered/saved/repository SHA256 all `C008AFEE3C8E90812594B002E2915998D847DBBBBE5A2ED41F7EEF88E4F60856`
+  Pre-C06 history: one commit for each approved C01-C05 and C07-C10, two disclosed external commits, zero merges
+  Final Standards review: PASS WITH MEDIUM; no critical/high
+  Final Spec review: NONE; no critical/high
+  Remaining medium: help text overstates non-mutation for explicit `PrepareIsolation`; outside approved C10 scope and disclosed
+  Shipping: `N/A - shipping not approved`
+Commit: SELF - C06 untouched-work and commit proof (post-commit SHA verified by Checker)
