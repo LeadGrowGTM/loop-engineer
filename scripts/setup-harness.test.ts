@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import {
   AGENT_FILES,
+  GUARD_RELATIVE_PATH,
   isValidSkillRouting,
   patchClaudeMd,
   scanSkills,
@@ -14,6 +15,7 @@ import {
 // ── test fixtures ──────────────────────────────────────────────────────────
 
 const TMP_BASE = join(import.meta.dir, '../.test-tmp');
+const GUARD_SOURCE = readFileSync(join(import.meta.dir, 'guard-protected-work.ts'), 'utf8');
 let tmpCounter = 0;
 const VALID_ROUTING = [
   '# Skill Routing',
@@ -126,6 +128,13 @@ describe('isValidSkillRouting', () => {
     expect(isValidSkillRouting(commentedTable)).toBe(false);
   });
 });
+
+function runChecked(command: string[]): void {
+  const result = Bun.spawnSync(command, { stdout: 'pipe', stderr: 'pipe' });
+  if (result.exitCode !== 0) {
+    throw new Error(`${command.join(' ')} failed (${result.exitCode})\n${result.stderr.toString()}`);
+  }
+}
 
 // ── scanSkills ─────────────────────────────────────────────────────────────
 
@@ -259,6 +268,7 @@ describe('smokeTest', () => {
     const dir = scaffold({
       '.harness/skill-routing.md': VALID_ROUTING,
       'CLAUDE.md': '## Harness\nInstalled.',
+      [GUARD_RELATIVE_PATH]: GUARD_SOURCE,
     });
     const agentsDir = scaffold(Object.fromEntries(
       AGENT_FILES.map((file) => [file, `---\nname: ${file.replace('.md', '')}\n---`]),
@@ -272,6 +282,7 @@ describe('smokeTest', () => {
     const dir = scaffold({
       '.harness/skill-routing.md': VALID_ROUTING,
       'CLAUDE.md': '## Harness\nInstalled.',
+      [GUARD_RELATIVE_PATH]: GUARD_SOURCE,
     });
     const agentsDir = scaffold(Object.fromEntries(
       AGENT_FILES.filter((file) => file !== 'harness-planner.md').map((file) => [file, '---']),
@@ -283,15 +294,60 @@ describe('smokeTest', () => {
   });
 
   test('fails when skill-routing.md is malformed', () => {
+    const malformedRouting = [
+      '# Skill Routing',
+      '| Task type | Primary skill |',
+      '| not a separator | still not a separator |',
+      '| Bug fix | `/diagnosing-bugs` |',
+    ].join('\n');
     const dir = scaffold({
-      '.harness/skill-routing.md': '| one row |',
+      '.harness/skill-routing.md': malformedRouting,
       'CLAUDE.md': '## Harness\nInstalled.',
+      [GUARD_RELATIVE_PATH]: GUARD_SOURCE,
     });
     const agentsDir = scaffold(Object.fromEntries(AGENT_FILES.map((file) => [file, '---'])));
 
     const results = smokeTest(dir, agentsDir);
     const routingCheck = results.find((r) => r.check.includes('skill-routing'));
     expect(routingCheck?.passed).toBe(false);
+  });
+
+  test('fails when skill-routing.md is too short (< 10 lines)', () => {
+    const dir = scaffold({
+      '.harness/skill-routing.md': '| one row |',
+      'CLAUDE.md': '## Harness\nInstalled.',
+      [GUARD_RELATIVE_PATH]: GUARD_SOURCE,
+    });
+    const agentsDir = scaffold(Object.fromEntries(AGENT_FILES.map((file) => [file, '---'])));
+
+    const results = smokeTest(dir, agentsDir);
+    const routingCheck = results.find((r) => r.check.includes('skill-routing'));
+    expect(routingCheck?.passed).toBe(false);
+  });
+
+  test('fails when the target guard is missing', () => {
+    const dir = scaffold({
+      '.harness/skill-routing.md': VALID_ROUTING,
+      'CLAUDE.md': '## Harness\nInstalled.',
+    });
+    const agentsDir = scaffold(Object.fromEntries(AGENT_FILES.map((file) => [file, '---'])));
+
+    const results = smokeTest(dir, agentsDir);
+    const guardCheck = results.find((result) => result.check.includes('guard-protected-work'));
+    expect(guardCheck?.passed).toBe(false);
+  });
+
+  test('fails when the target guard cannot execute', () => {
+    const dir = scaffold({
+      '.harness/skill-routing.md': VALID_ROUTING,
+      'CLAUDE.md': '## Harness\nInstalled.',
+      [GUARD_RELATIVE_PATH]: 'throw new Error("broken guard");\n',
+    });
+    const agentsDir = scaffold(Object.fromEntries(AGENT_FILES.map((file) => [file, '---'])));
+
+    const results = smokeTest(dir, agentsDir);
+    const guardCheck = results.find((result) => result.check.includes('guard-protected-work'));
+    expect(guardCheck?.passed).toBe(false);
   });
 });
 
@@ -303,6 +359,11 @@ describe('install CLI', () => {
     mkdirSync(target, { recursive: true });
     mkdirSync(home, { recursive: true });
     writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+    runChecked(['git', '-C', target, 'init', '-b', 'setup-test']);
+    runChecked(['git', '-C', target, 'config', 'user.name', 'Setup Test']);
+    runChecked(['git', '-C', target, 'config', 'user.email', 'setup@example.test']);
+    runChecked(['git', '-C', target, 'add', '--', 'CLAUDE.md']);
+    runChecked(['git', '-C', target, 'commit', '-m', 'fixture']);
 
     const result = Bun.spawnSync(
       [process.execPath, join(import.meta.dir, 'setup-harness.ts'), 'install', target],
@@ -314,6 +375,31 @@ describe('install CLI', () => {
     );
 
     expect(result.exitCode).toBe(0);
+    const installedGuard = readFileSync(join(target, GUARD_RELATIVE_PATH), 'utf8');
+    expect(installedGuard).toBe(GUARD_SOURCE);
+    expect(result.stdout.toString()).toContain('guard-protected-work.ts exists and executes');
+    const guardHelp = Bun.spawnSync(
+      [process.execPath, join(target, GUARD_RELATIVE_PATH), '--help'],
+      { stdout: 'pipe', stderr: 'pipe' },
+    );
+    expect(guardHelp.exitCode).toBe(0);
+    const guardCapture = Bun.spawnSync(
+      [
+        process.execPath,
+        join(target, GUARD_RELATIVE_PATH),
+        'capture',
+        '--repo', target,
+        '--active-id', 'C24',
+        '--allowed-path', 'CLAUDE.md',
+      ],
+      { stdout: 'pipe', stderr: 'pipe' },
+    );
+    expect(guardCapture.exitCode).toBe(0);
+    expect(JSON.parse(guardCapture.stdout.toString())).toMatchObject({
+      schemaVersion: 1,
+      operation: 'capture',
+      activeId: 'C24',
+    });
     const gitignore = readFileSync(join(target, '.gitignore'), 'utf8');
     expect(gitignore).toContain('.tmp/treehouse/');
     expect(gitignore).not.toContain('.gnhf-runs/');

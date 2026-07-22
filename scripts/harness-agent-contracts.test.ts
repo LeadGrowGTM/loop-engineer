@@ -167,6 +167,27 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).toMatch(/launch-gnhf\.ps1/i);
   });
 
+  test("maker invokes the installed protected-work guard before edits and every commit", () => {
+    const source = readAgent("harness-maker");
+    const guardPath = "$PROJECT_ROOT/scripts/guard-protected-work.ts";
+    const captureCommand = `bun "${guardPath}" capture`;
+    const validateCommand = `bun "${guardPath}" validate`;
+    const captureIndex = source.indexOf(captureCommand);
+    const sourceEditIndex = source.indexOf("source edits");
+    const validateIndex = source.indexOf(validateCommand);
+    const commitIndex = source.indexOf("Before every commit");
+
+    expect(captureIndex).toBeGreaterThan(-1);
+    expect(captureIndex).toBeLessThan(sourceEditIndex);
+    expect(validateIndex).toBeGreaterThan(-1);
+    expect(validateIndex).toBeGreaterThan(commitIndex);
+    expect(source).toContain("--active-id");
+    expect(source).toContain("--allowed-path");
+    expect(source).toContain("--baseline");
+    expect(source).toContain("$PROTECTED_WORK_BASELINE");
+    expect(source).toMatch(/BLOCKED.*stop|stop.*BLOCKED/is);
+  });
+
   test("maker forbids broad staging and destructive worktree operations", () => {
     const source = readAgent("harness-maker");
     expect(source).toMatch(/git add -A/i);

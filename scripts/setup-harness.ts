@@ -181,6 +181,8 @@ export function isValidSkillRouting(content: string): boolean {
   return foundRoutingTable;
 }
 
+export const GUARD_RELATIVE_PATH = 'scripts/guard-protected-work.ts';
+
 // ── scanSkills ─────────────────────────────────────────────────────────────
 
 function parseFrontmatter(content: string): Record<string, string> | null {
@@ -274,12 +276,22 @@ export function smokeTest(targetDir: string, agentsDir: string): SmokeResult[] {
   const routingPath = join(targetDir, '.harness', 'skill-routing.md');
   const routingOk = existsSync(routingPath) &&
     isValidSkillRouting(readFileSync(routingPath, 'utf8'));
+  const guardPath = join(targetDir, GUARD_RELATIVE_PATH);
+  const guardResult = existsSync(guardPath)
+    ? Bun.spawnSync([process.execPath, guardPath, '--help'], { stdout: 'pipe', stderr: 'pipe' })
+    : null;
+  const guardOk = guardResult?.exitCode === 0
+    && guardResult.stdout.toString().includes('guard-protected-work');
 
   return [
     ...AGENT_FILES.map((file) => ({
       check: `${file} in agents dir`,
       passed: existsSync(join(agentsDir, file)),
     })),
+    {
+      check: 'guard-protected-work.ts exists and executes',
+      passed: guardOk,
+    },
     {
       check: 'skill-routing.md has the required heading and route table',
       passed: routingOk,
@@ -316,6 +328,12 @@ if (import.meta.main) {
       copyFileSync(join(sourceAgentsDir, f), join(agentsDir, f));
       console.log(`Copied ${f} → ${agentsDir}`);
     }
+
+    const sourceGuardPath = join(import.meta.dir, 'guard-protected-work.ts');
+    const targetGuardPath = join(targetDir, GUARD_RELATIVE_PATH);
+    mkdirSync(dirname(targetGuardPath), { recursive: true });
+    copyFileSync(sourceGuardPath, targetGuardPath);
+    console.log(`Copied ${GUARD_RELATIVE_PATH} → ${targetGuardPath}`);
 
     const templatePath = join(import.meta.dir, '../skills/setup-harness/routing-template.md');
     const template = existsSync(templatePath) ? readFileSync(templatePath, 'utf8') : '';
@@ -365,7 +383,13 @@ if (import.meta.main) {
 
     const claudeMdPath = join(targetDir, 'CLAUDE.md');
     if (existsSync(claudeMdPath)) {
-      const sha = (() => { try { return require('child_process').execSync('git -C ' + __dirname + ' rev-parse --short HEAD', { encoding: 'utf8' }).trim(); } catch { return 'unknown'; } })();
+      const sha = (() => {
+        const result = Bun.spawnSync(
+          ['git', '--no-optional-locks', '-C', import.meta.dir, 'rev-parse', '--short', 'HEAD'],
+          { stdout: 'pipe', stderr: 'pipe' },
+        );
+        return result.exitCode === 0 ? result.stdout.toString().trim() : 'unknown';
+      })();
       const block = `## Harness\nInstalled: ${new Date().toISOString().slice(0, 10)}. Source: LeadGrowGTM/loop-engineer@${sha}.\nRouting: \`.harness/skill-routing.md\`. Goals: \`.harness/goals/<slug>/\`. Backlog: \`.tasks.toml\` → \`.claude/backlog.md\` (project-scoped). Worktrees: \`treehouse.toml\` (project-scoped). Readiness: run loop-engineer's non-launching readiness check before work; use explicit isolation preparation when a worktree is required. Agents: global (\`~/.claude/agents/\`).`;
       writeFileSync(claudeMdPath, patchClaudeMd(readFileSync(claudeMdPath, 'utf8'), block));
       console.log('Updated CLAUDE.md ## Harness block');

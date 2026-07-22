@@ -1,6 +1,6 @@
 ---
 name: setup-harness
-description: Installs the loop-engineer harness (planner/maker/prover/checker/shipper agents + tuned skill-routing.md) into any repo. Run before first use of /write-goal-prompt in a new repo, or to update an existing install. Copies harness agents to ~/.claude/agents/ (global) and seeds .harness/skill-routing.md from a scan of the target repo's available skills.
+description: Installs the loop-engineer harness (planner/maker/prover/checker/shipper agents, protected-work guard, and tuned skill-routing.md) into any repo. Run before first use of /write-goal-prompt in a new repo, or to update an existing install. Copies harness agents to ~/.claude/agents/ (global), installs the guard in the target repo, and seeds .harness/skill-routing.md from the target repo's available skills.
 disable-model-invocation: true
 ---
 
@@ -38,16 +38,17 @@ bun C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\setup-harness
 
 This does atomically:
 1. Copies `harness-planner.md`, `harness-maker.md`, `harness-prover.md`, `harness-checker.md`, `harness-shipper.md` → `~/.claude/agents/`
-2. Scans `<repo-root>` for SKILL.md files
-3. Seeds `.harness/skill-routing.md` from `routing-template.md` + repo-specific skills, and `.harness/goals/` (working dir for goal runs)
-4. Seeds a per-project `.tasks.toml` (tasks-axi backlog → `.claude/backlog.md`) and `treehouse.toml` (worktree pool), if not already present
-5. Adds `.tmp/treehouse/` to `.gitignore`
-6. Patches `CLAUDE.md` with `## Harness` block (install date, source SHA, readiness command, and explicit worktree preparation guidance)
-7. Runs smoke test — prints ✓/✗ per check (7 checks: 5 agent files, skill-routing.md, `## Harness` block)
+2. Copies `guard-protected-work.ts` → `<repo-root>/scripts/guard-protected-work.ts`
+3. Scans `<repo-root>` for SKILL.md files
+4. Seeds `.harness/skill-routing.md` from `routing-template.md` + repo-specific skills, and `.harness/goals/` (working dir for goal runs)
+5. Seeds a per-project `.tasks.toml` (tasks-axi backlog → `.claude/backlog.md`) and `treehouse.toml` (worktree pool), if not already present
+6. Adds `.tmp/treehouse/` to `.gitignore`
+7. Patches `CLAUDE.md` with `## Harness` block (install date, source SHA, readiness command, and explicit worktree preparation guidance)
+8. Runs smoke test - prints ✓/✗ per check (8 checks: 5 agent files, executable protected-work guard, skill-routing.md, `## Harness` block)
 
 ### 4. Present smoke test results
 
-If all 7 checks pass — done. Tell the user which engineering workflows are now available.
+If all 8 checks pass - done. Tell the user which engineering workflows are now available.
 
 If any check fails — show the failing line, diagnose, fix manually, re-run smoke:
 
@@ -67,5 +68,6 @@ Tell the user:
 ## Reference
 
 - Script: `tools/agent/agent-harness/scripts/setup-harness.ts`
+- Protected-work guard: `tools/agent/agent-harness/scripts/guard-protected-work.ts`
 - Routing seed: `tools/agent/agent-harness/skills/setup-harness/routing-template.md`
 - Harness agents: `tools/agent/agent-harness/.claude/agents/harness-*.md` (source of truth)
