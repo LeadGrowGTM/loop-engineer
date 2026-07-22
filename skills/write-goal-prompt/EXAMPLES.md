@@ -62,11 +62,27 @@ ApiClient is at src/lib/api-client.ts — read it before migrating.
 - grep for verification of API calls
 
 [HARNESS]
-Read HARNESS.md before starting. Four-stage execution:
-1. Planner (turns 1-5): decompose task → write PLAN.md (phases, skill routing, checker rubric).
+Read HARNESS.md before starting. Before stage 1, generate the runtime guard with this argv call
+without a shell:
+["bun", "/home/user/.claude/skills/write-goal-prompt/scripts/resolve-skill-routing.ts",
+ "--emit-shell-guard", "--project-root", "/home/user/projects/myapp"]
+Run the generated stdout exactly:
+ROUTING_EXIT=0
+ROUTING_EVIDENCE=$(bun '/home/user/.claude/skills/write-goal-prompt/scripts/resolve-skill-routing.ts' --project-root '/home/user/projects/myapp' --canonical-path '/home/user/.claude/skills/write-goal-prompt/references/skill-routing.md') || ROUTING_EXIT=$?
+printf '%s\n' "$ROUTING_EVIDENCE"
+if [ "$ROUTING_EXIT" -ne 0 ]; then
+  exit "$ROUTING_EXIT"
+fi
+A nonzero status stops the run before Planner. On success, invoke Planner with:
+[SKILL_ROUTING_RESOLUTION]
+<exact ROUTING_EVIDENCE JSON printed above>
+
+Four-stage execution:
+1. Planner (turns 1-5): decompose task and write PLAN.md. PLAN.md must copy the exact routing evidence,
+   record the selected source and fallback, phases, skill routing, and checker rubric.
    Do not produce task artifacts until PLAN.md is written.
 2. Maker (turns 6-<N>): execute per PLAN.md, invoke skills per phase, commit at each phase boundary.
-3. Checker: spawn fresh subagent per checker brief in HARNESS.md. Pass artifact paths only —
+3. Checker: spawn fresh subagent per checker brief in HARNESS.md. Pass artifact paths only,
    not your reasoning context. Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
 4. Ship: only after Checker PASS, spawn a fresh `harness-shipper` with the original task as
    intent. It invokes `/no-mistakes` and drives it to a terminal outcome. Record the PR URL;

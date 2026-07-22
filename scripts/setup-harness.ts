@@ -34,6 +34,153 @@ export const AGENT_FILES = [
   'harness-shipper.md',
 ] as const;
 
+export const SKILL_ROUTING_REQUIRED_STRUCTURE =
+  'a Skill Routing heading and a Task type/Primary skill table with a separator and at least one route row';
+
+function isEscaped(value: string, index: number): boolean {
+  let backslashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && value[cursor] === '\\'; cursor -= 1) {
+    backslashes += 1;
+  }
+  return backslashes % 2 === 1;
+}
+
+type MarkdownFence = {
+  marker: '`' | '~';
+  width: number;
+};
+
+function openingFence(line: string): MarkdownFence | null {
+  const match = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+  if (!match) return null;
+  return {
+    marker: match[1][0] as MarkdownFence['marker'],
+    width: match[1].length,
+  };
+}
+
+function closesFence(line: string, fence: MarkdownFence): boolean {
+  const match = /^ {0,3}(`+|~+)[ \t]*$/.exec(line);
+  return match !== null && match[1][0] === fence.marker && match[1].length >= fence.width;
+}
+
+function stripHtmlComments(
+  line: string,
+  startsInsideComment: boolean,
+): { visible: string; endsInsideComment: boolean } {
+  let visible = '';
+  let insideComment = startsInsideComment;
+  let cursor = 0;
+
+  while (cursor < line.length) {
+    if (insideComment) {
+      const commentEnd = line.indexOf('-->', cursor);
+      if (commentEnd === -1) return { visible, endsInsideComment: true };
+      insideComment = false;
+      cursor = commentEnd + 3;
+      continue;
+    }
+
+    const commentStart = line.indexOf('<!--', cursor);
+    if (commentStart === -1) {
+      visible += line.slice(cursor);
+      break;
+    }
+    visible += line.slice(cursor, commentStart);
+    insideComment = true;
+    cursor = commentStart + 4;
+  }
+
+  return { visible, endsInsideComment: insideComment };
+}
+
+function activeMarkdownLines(content: string): Array<string | null> {
+  let fence: MarkdownFence | null = null;
+  let insideComment = false;
+
+  return content.split(/\r?\n/).map((rawLine) => {
+    if (fence) {
+      if (closesFence(rawLine, fence)) fence = null;
+      return null;
+    }
+
+    const stripped = stripHtmlComments(rawLine, insideComment);
+    insideComment = stripped.endsInsideComment;
+    if (/^(?: {4}|\t)/.test(stripped.visible)) return null;
+
+    const openedFence = openingFence(stripped.visible);
+    if (openedFence) {
+      fence = openedFence;
+      return null;
+    }
+    return stripped.visible;
+  });
+}
+
+function parseMarkdownTableRow(line: string): string[] | null {
+  const row = line.trim();
+  const pipeIndexes: number[] = [];
+  for (let index = 0; index < row.length; index += 1) {
+    if (row[index] === '|' && !isEscaped(row, index)) pipeIndexes.push(index);
+  }
+  if (pipeIndexes.length === 0) return null;
+
+  const startsWithOuterPipe = pipeIndexes[0] === 0;
+  const endsWithOuterPipe = pipeIndexes.at(-1) === row.length - 1;
+  const rowStart = startsWithOuterPipe ? 1 : 0;
+  const rowEnd = endsWithOuterPipe ? row.length - 1 : row.length;
+  const delimiters = pipeIndexes.filter((index) => index >= rowStart && index < rowEnd);
+
+  const cells: string[] = [];
+  let cellStart = rowStart;
+  for (const delimiter of delimiters) {
+    cells.push(row.slice(cellStart, delimiter).trim());
+    cellStart = delimiter + 1;
+  }
+  cells.push(row.slice(cellStart, rowEnd).trim());
+  return cells;
+}
+
+export function isValidSkillRouting(content: string): boolean {
+  const lines = activeMarkdownLines(content);
+  const headingIndex = lines.findIndex((line) =>
+    line !== null && /^#{1,6}\s+.*\bskill routing\b/i.test(line.trim()),
+  );
+  if (headingIndex === -1) return false;
+
+  let foundRoutingTable = false;
+  for (let index = headingIndex + 1; index < lines.length; index += 1) {
+    const header = parseMarkdownTableRow(lines[index] ?? '');
+    const isRoutingHeader = header?.[0]?.toLowerCase() === 'task type' &&
+      header[1]?.toLowerCase() === 'primary skill';
+    if (!header || !isRoutingHeader) continue;
+    foundRoutingTable = true;
+
+    const separator = parseMarkdownTableRow(lines[index + 1] ?? '');
+    if (!separator || separator.length !== header.length) return false;
+    if (!separator.every((cell) => /^:?-{3,}:?$/.test(cell))) return false;
+
+    let routeCount = 0;
+    let routeIndex = index + 2;
+    for (; routeIndex < lines.length; routeIndex += 1) {
+      const route = parseMarkdownTableRow(lines[routeIndex] ?? '');
+      if (!route) break;
+      if (
+        route.length !== header.length ||
+        route[0].length === 0 ||
+        route[1].length === 0
+      ) {
+        return false;
+      }
+      routeCount += 1;
+    }
+    if (routeCount === 0) return false;
+    index = routeIndex - 1;
+  }
+
+  return foundRoutingTable;
+}
+
 // ── scanSkills ─────────────────────────────────────────────────────────────
 
 function parseFrontmatter(content: string): Record<string, string> | null {
@@ -76,6 +223,13 @@ export function scanSkills(dir: string): SkillEntry[] {
 
 // ── seedRoutingTable ───────────────────────────────────────────────────────
 
+function escapeMarkdownTableCell(value: string): string {
+  return value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('|', '\\|')
+    .replace(/\r\n|\r|\n/g, '<br>');
+}
+
 export function seedRoutingTable(skills: SkillEntry[], template: string): string {
   const knownNames = new Set<string>();
   const templateMatches = template.match(/`\/([a-z0-9:_-]+)`/g) ?? [];
@@ -86,7 +240,12 @@ export function seedRoutingTable(skills: SkillEntry[], template: string): string
 
   const header = `\n\n## Repo-specific skills (auto-seeded by setup-harness)\n\n| Task type | Primary skill | Notes |\n| --- | --- | --- |`;
   const rows = repoSpecific
-    .map((s) => `| ${s.description || s.name} | \`/${s.name}\` | (repo-specific) |`)
+    .map((skill) => {
+      const taskType = escapeMarkdownTableCell(skill.description || skill.name);
+      const primarySkill = escapeMarkdownTableCell(`/${skill.name}`);
+      const notes = escapeMarkdownTableCell('(repo-specific)');
+      return `| ${taskType} | \`${primarySkill}\` | ${notes} |`;
+    })
     .join('\n');
 
   return template + header + '\n' + rows;
@@ -114,7 +273,7 @@ export function patchClaudeMd(content: string, block: string): string {
 export function smokeTest(targetDir: string, agentsDir: string): SmokeResult[] {
   const routingPath = join(targetDir, '.harness', 'skill-routing.md');
   const routingOk = existsSync(routingPath) &&
-    readFileSync(routingPath, 'utf8').split('\n').length >= 10;
+    isValidSkillRouting(readFileSync(routingPath, 'utf8'));
 
   return [
     ...AGENT_FILES.map((file) => ({
@@ -122,7 +281,7 @@ export function smokeTest(targetDir: string, agentsDir: string): SmokeResult[] {
       passed: existsSync(join(agentsDir, file)),
     })),
     {
-      check: 'skill-routing.md exists and ≥ 10 lines',
+      check: 'skill-routing.md has the required heading and route table',
       passed: routingOk,
     },
     {
@@ -215,6 +374,7 @@ if (import.meta.main) {
     const smoke = smokeTest(targetDir, agentsDir);
     console.log('\nSmoke test:');
     for (const r of smoke) console.log(`  ${r.passed ? '✓' : '✗'} ${r.check}`);
+    if (!smoke.every((r) => r.passed)) process.exit(1);
   } else {
     console.error('Commands: scan <dir> | smoke <target-dir> <agents-dir> | install <target-dir>');
     process.exit(1);

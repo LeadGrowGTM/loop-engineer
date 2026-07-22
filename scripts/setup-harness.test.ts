@@ -2,12 +2,25 @@ import { test, expect, describe } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { AGENT_FILES, scanSkills, seedRoutingTable, patchClaudeMd, smokeTest } from './setup-harness';
+import {
+  AGENT_FILES,
+  isValidSkillRouting,
+  patchClaudeMd,
+  scanSkills,
+  seedRoutingTable,
+  smokeTest,
+} from './setup-harness';
 
 // ── test fixtures ──────────────────────────────────────────────────────────
 
 const TMP_BASE = join(import.meta.dir, '../.test-tmp');
 let tmpCounter = 0;
+const VALID_ROUTING = [
+  '# Skill Routing',
+  '| Task type | Primary skill |',
+  '| --- | --- |',
+  '| Bug fix | `/diagnosing-bugs` |',
+].join('\n');
 
 function scaffold(files: Record<string, string>): string {
   const dir = join(TMP_BASE, String(tmpCounter++));
@@ -19,6 +32,100 @@ function scaffold(files: Record<string, string>): string {
   }
   return dir;
 }
+
+// ── isValidSkillRouting ────────────────────────────────────────────────────
+
+describe('isValidSkillRouting', () => {
+  test('accepts a short routing document with the required structure', () => {
+    expect(isValidSkillRouting(VALID_ROUTING)).toBe(true);
+  });
+
+  test('rejects long unrelated content', () => {
+    expect(isValidSkillRouting(Array(20).fill('garbage').join('\n'))).toBe(false);
+  });
+
+  test('rejects blank lines', () => {
+    expect(isValidSkillRouting('\n'.repeat(20))).toBe(false);
+  });
+
+  test('rejects a malformed routing table', () => {
+    const malformed = [
+      '# Skill Routing',
+      '| Task type | Primary skill |',
+      '| not a separator | still not a separator |',
+      '| Bug fix | `/diagnosing-bugs` |',
+    ].join('\n');
+
+    expect(isValidSkillRouting(malformed)).toBe(false);
+  });
+
+  test('rejects a missing-primary route without a closing outer pipe', () => {
+    const malformed = [
+      '# Skill Routing',
+      '| Task type | Primary skill | Notes |',
+      '| --- | --- | --- |',
+      '| Bug fix | `/diagnosing-bugs` | Valid route |',
+      '| New feature',
+    ].join('\n');
+
+    expect(isValidSkillRouting(malformed)).toBe(false);
+  });
+
+  test('accepts a routing table without outer pipes', () => {
+    const routing = [
+      '# Skill Routing',
+      'Task type | Primary skill | Notes',
+      '--- | --- | ---',
+      'Bug fix | `/diagnosing-bugs` | Find the cause',
+    ].join('\n');
+
+    expect(isValidSkillRouting(routing)).toBe(true);
+  });
+
+  test('accepts an escaped pipe inside Notes', () => {
+    const routing = [
+      '# Skill Routing',
+      '| Task type | Primary skill | Notes |',
+      '| --- | --- | --- |',
+      '| Bug fix | `/diagnosing-bugs` | Keep A \\| B in one cell |',
+    ].join('\n');
+
+    expect(isValidSkillRouting(routing)).toBe(true);
+  });
+
+  test('rejects routing found only inside a fenced code block', () => {
+    const fenced = ['```markdown', VALID_ROUTING, '```'].join('\n');
+
+    expect(isValidSkillRouting(fenced)).toBe(false);
+  });
+
+  test('ignores indented-code and HTML-comment routing headings and tables', () => {
+    const indentedRouting = VALID_ROUTING
+      .split('\n')
+      .map((line) => `    ${line}`)
+      .join('\n');
+    const commentedRouting = ['<!--', VALID_ROUTING, '-->'].join('\n');
+    const indentedTable = [
+      '# Skill Routing',
+      '    | Task type | Primary skill |',
+      '    | --- | --- |',
+      '    | Bug fix | `/diagnosing-bugs` |',
+    ].join('\n');
+    const commentedTable = [
+      '# Skill Routing',
+      '<!--',
+      '| Task type | Primary skill |',
+      '| --- | --- |',
+      '| Bug fix | `/diagnosing-bugs` |',
+      '-->',
+    ].join('\n');
+
+    expect(isValidSkillRouting(indentedRouting)).toBe(false);
+    expect(isValidSkillRouting(commentedRouting)).toBe(false);
+    expect(isValidSkillRouting(indentedTable)).toBe(false);
+    expect(isValidSkillRouting(commentedTable)).toBe(false);
+  });
+});
 
 // ── scanSkills ─────────────────────────────────────────────────────────────
 
@@ -100,6 +207,18 @@ describe('seedRoutingTable', () => {
     const lines = result.split('\n').filter((l) => l.trim());
     expect(lines[0]).toMatch(/^\|/);
   });
+
+  test('escapes a pipe-bearing description into validator-safe routing', () => {
+    const skills = [{
+      name: 'compare-systems',
+      description: 'Compare system A | system B',
+      path: '/x',
+    }];
+    const result = seedRoutingTable(skills, `# Skill Routing\n\n${TEMPLATE}`);
+
+    expect(result).toContain('Compare system A \\| system B');
+    expect(isValidSkillRouting(result)).toBe(true);
+  });
 });
 
 // ── patchClaudeMd ──────────────────────────────────────────────────────────
@@ -138,7 +257,7 @@ Routing: \`.harness/skill-routing.md\`. Agents: global (\`~/.claude/agents/\`).`
 describe('smokeTest', () => {
   test('all pass when all files exist', () => {
     const dir = scaffold({
-      '.harness/skill-routing.md': Array(11).fill('| row |').join('\n'),
+      '.harness/skill-routing.md': VALID_ROUTING,
       'CLAUDE.md': '## Harness\nInstalled.',
     });
     const agentsDir = scaffold(Object.fromEntries(
@@ -151,7 +270,7 @@ describe('smokeTest', () => {
 
   test('fails when harness-planner.md missing from agents dir', () => {
     const dir = scaffold({
-      '.harness/skill-routing.md': Array(11).fill('| row |').join('\n'),
+      '.harness/skill-routing.md': VALID_ROUTING,
       'CLAUDE.md': '## Harness\nInstalled.',
     });
     const agentsDir = scaffold(Object.fromEntries(
@@ -163,7 +282,7 @@ describe('smokeTest', () => {
     expect(plannerCheck?.passed).toBe(false);
   });
 
-  test('fails when skill-routing.md is too short (< 10 lines)', () => {
+  test('fails when skill-routing.md is malformed', () => {
     const dir = scaffold({
       '.harness/skill-routing.md': '| one row |',
       'CLAUDE.md': '## Harness\nInstalled.',
@@ -201,5 +320,25 @@ describe('install CLI', () => {
     const claudeMd = readFileSync(join(target, 'CLAUDE.md'), 'utf8');
     expect(claudeMd).toContain('non-launching readiness');
     expect(claudeMd.toLowerCase()).not.toContain('gnhf');
+  });
+
+  test('exits nonzero when the final smoke checks fail', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-smoke-failure-'));
+    const target = join(root, 'target');
+    const home = join(root, 'home');
+    mkdirSync(target, { recursive: true });
+    mkdirSync(home, { recursive: true });
+
+    const result = Bun.spawnSync(
+      [process.execPath, join(import.meta.dir, 'setup-harness.ts'), 'install', target],
+      {
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout.toString()).toContain('✗ CLAUDE.md has ## Harness block');
   });
 });

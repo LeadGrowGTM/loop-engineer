@@ -7,7 +7,9 @@ const repoRoot = join(import.meta.dir, "..");
 const agentPath = (name: string) => join(repoRoot, ".claude", "agents", `${name}.md`);
 const readAgent = (name: string) => readFileSync(agentPath(name), "utf8");
 const goalSkillPath = join(repoRoot, "skills", "write-goal-prompt", "SKILL.md");
+const goalExamplesPath = join(repoRoot, "skills", "write-goal-prompt", "EXAMPLES.md");
 const readGoalSkill = () => readFileSync(goalSkillPath, "utf8");
+const readGoalExamples = () => readFileSync(goalExamplesPath, "utf8");
 const gitExecutable = Bun.which("git");
 if (!gitExecutable) throw new Error("Git executable not found");
 const gitBash = resolve(dirname(gitExecutable), "..", "bin", "bash.exe");
@@ -97,19 +99,61 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).toMatch(/never merge/i);
   });
 
-  test("planner follows a deterministic skill-routing fallback chain", () => {
-    const source = readAgent("harness-planner");
-    const primary = "<PROJECT_ROOT>/.harness/skill-routing.md";
-    const canonical = "skills/write-goal-prompt/references/skill-routing.md";
-    const primaryIndex = source.indexOf(primary);
-    const canonicalIndex = source.indexOf(canonical);
-    const directIndex = source.indexOf("direct implementation quality bar");
+  test("write-goal parent runs the skill-routing resolver before Planner", () => {
+    const source = readGoalSkill();
 
-    expect(primaryIndex).toBeGreaterThan(-1);
-    expect(canonicalIndex).toBeGreaterThan(primaryIndex);
-    expect(directIndex).toBeGreaterThan(canonicalIndex);
+    expect(source).toContain("scripts/resolve-skill-routing.ts");
+    expect(source).toContain("--project-root");
+    expect(source).toContain("--emit-shell-guard");
+    expect(source).toContain("ROUTING_EVIDENCE");
+    expect(source).toContain("[ROUTING_GUARD]");
+    expect(source).toContain("[SKILL_ROUTING_RESOLUTION]");
+    expect(source).not.toContain("<ABSOLUTE_ROUTING_RESOLVER>");
+    expect(source).toMatch(/nonzero.*do not invoke (the )?Planner|do not invoke (the )?Planner.*nonzero/is);
+  });
+
+  test("complete example runs the routing guard before Planner", () => {
+    const source = readGoalExamples();
+
+    expect(source).toContain("resolve-skill-routing.ts");
+    expect(source).toContain("--emit-shell-guard");
+    expect(source).toContain("ROUTING_EVIDENCE");
+    expect(source).toContain("[SKILL_ROUTING_RESOLUTION]");
+    expect(source).toMatch(/nonzero.*stop.*Planner|stop.*Planner.*nonzero/is);
+    expect(source).toMatch(/PLAN\.md.*exact routing evidence.*selected source.*fallback/is);
+  });
+
+  test("Harness Architect supports direct routing without reading a routing file", () => {
+    const source = readGoalSkill();
+    const match = source.match(
+      /\*\*Agent 4[^\n]*Harness Architect[^\n]*\*\*\r?\n\r?\n```\r?\n([\s\S]*?)\r?\n```\r?\n\r?\nSynthesize/,
+    );
+    expect(match).not.toBeNull();
+    const contract = match![1];
+
+    expect(contract).toMatch(
+      /selectedSource is project-local or canonical, read only normalizedPath/i,
+    );
+    expect(contract).toMatch(
+      /selectedSource\s+is direct, do not read a routing file/i,
+    );
+    expect(contract).toMatch(/documented\s+direct quality bar/i);
+    expect(contract).toContain("- [ ] routing resolution consumed");
+    expect(contract).toMatch(
+      /selected routing file read.*project-local or canonical only.*omit for direct/i,
+    );
+    expect(contract).not.toContain("- [ ] skill-routing.md read");
+  });
+
+  test("planner consumes exact routing evidence without gaining Bash", () => {
+    const source = readAgent("harness-planner");
+
+    expect(source).toMatch(/^tools: Read, Glob, Write$/m);
+    expect(source).not.toMatch(/^tools:.*Bash.*$/m);
+    expect(source).toContain("[SKILL_ROUTING_RESOLUTION]");
+    expect(source).toMatch(/copy.*JSON.*exactly.*PLAN\.md/is);
+    expect(source).toMatch(/selected source.*fallback.*PLAN\.md/is);
     expect(source).toMatch(/HARNESS routing/i);
-    expect(source).toMatch(/record.*fallback.*PLAN\.md/i);
     expect(source).toMatch(/never invent.*unavailable skill/i);
   });
 

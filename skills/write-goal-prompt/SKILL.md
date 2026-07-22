@@ -85,6 +85,26 @@ Everything this run writes lives under `$PROJECT_ROOT`:
 
 Pass both resolved absolute paths to every harness agent. Agents write bare artifact names relative to `$PROJECT_ROOT`.
 
+### Step 0.1 - Resolve Planner skill routing with the executable guard
+
+Planner has no Bash and must not decide filesystem fallback. Resolve this skill's `scripts/resolve-skill-routing.ts` path and `$PROJECT_ROOT` as data. Invoke both CLI modes with an argument-vector process API, never by inserting either path into `bash -c` source:
+
+```text
+resolution argv: ["bun", ROUTING_RESOLVER, "--project-root", PROJECT_ROOT]
+guard argv:      ["bun", ROUTING_RESOLVER, "--emit-shell-guard", "--project-root", PROJECT_ROOT]
+```
+
+The resolution call prints JSON. On a nonzero exit, preserve that JSON and do not invoke Planner. On success, pass stdout unchanged in the Planner invocation context:
+
+```text
+[SKILL_ROUTING_RESOLUTION]
+<exact ROUTING_EVIDENCE JSON>
+```
+
+The guard-generation call prints a complete POSIX shell snippet. The resolver applies standard single-quote argument escaping to every absolute path, so `$()`, backticks, spaces, and quotes remain literal argv data. Insert that stdout unchanged under `[ROUTING_GUARD]` in the generated goal. Do not hand-build the command, replace path placeholders, or re-quote the output. At runtime, execute the emitted snippet immediately before Planner. It prints `ROUTING_EVIDENCE` and exits with the resolver's nonzero status, so Planner stays blocked on malformed or unreadable routing.
+
+Keep the Step 0.1 JSON and pass it to Harness Architect during Phase 1.5. The runtime JSON is authoritative for Planner. For `project-local` or `canonical`, readers use only `normalizedPath`. For `direct`, use confirmed HARNESS routing or a documented direct quality bar. Do not fall through a present malformed or unreadable file.
+
 Then determine execution mode. Ask if not obvious from context. This is the **infrastructure** axis (where/how the harness runs); it is distinct from the *task-shape* axis in the "Execution Mode Routing" section below (`references/execution-mode-routing.md`).
 
 | Task shape                                  | Mode                                                                    |
@@ -207,8 +227,13 @@ Read .claude/agent-context/snapshot.md for workspace context before starting.
 Confirm harness agents exist in at least one of these locations (Glob both):
   - .claude/agents/harness-planner.md, harness-maker.md, harness-checker.md, harness-shipper.md
   - ~/.claude/agents/harness-planner.md, harness-maker.md, harness-checker.md, harness-shipper.md
-Read .harness/skill-routing.md (installed by /setup-harness). If missing, fall back to
-  .claude/skills/write-goal-prompt/references/skill-routing.md.
+Use the exact resolver output supplied by the parent; do not probe fallback paths yourself:
+[SKILL_ROUTING_RESOLUTION]
+[EXACT ROUTING_EVIDENCE JSON]
+When selectedSource is project-local or canonical, read only normalizedPath. When selectedSource
+is direct, do not read a routing file; use confirmed HARNESS routing or direct with a documented
+direct quality bar. If status is not resolved or errors is non-empty, return BLOCKED instead of
+designing routing.
 
 Task being goal-prompted: [TASK SUMMARY]
 Skills confirmed available (from Agent 1): [SKILL SCANNER RESULTS]
@@ -223,7 +248,10 @@ What turn budget split makes sense given task complexity?
 MAKER_ROUTING:
 Map each phase to a specific skill from the confirmed list, or "direct" if none match.
 Format: "Phase N: <skill-name or direct> — <artifact it produces>"
-Follow skill-routing.md heuristics.
+Use selectedSource from [SKILL_ROUTING_RESOLUTION]:
+- For project-local or canonical, follow only the routing heuristics in normalizedPath.
+- For direct, do not read a routing file. Use confirmed skills where they match; otherwise use
+  direct and state a task-specific direct implementation quality bar.
 
 PROVER_BRIEF (include only if goal involves a running app — UI feature, API endpoint, or CLI behaviour; otherwise write "PROVER_BRIEF: N/A — static artifact goal"):
 Feature intent: <one sentence — what the feature should do, from the goal>
@@ -263,7 +291,8 @@ omit Prover rows if PROVER_BRIEF is N/A; omit Red-team rows if REDTEAM_BRIEF is 
 
 ### Planner
 - [ ] HARNESS.md read
-- [ ] skill-routing.md read
+- [ ] routing resolution consumed
+- [ ] selected routing file read: `<normalizedPath>` (project-local or canonical only; omit for direct)
 - [ ] PLAN.md written: `<path>`
 
 ### Cycle 1
@@ -349,10 +378,16 @@ Use this context:
 
 [HARNESS]
 Read HARNESS.md before starting. Five-stage execution:
-1. Planner (turns 1-5): decompose task → write PLAN.md (phases, skill routing, checker rubric),
-   then mirror each phase to a durable slice in `issues/NN-<slug>.md` (survives /compact, tracks
-   per-phase Status). PLAN.md `## Phases` stays canonical; slices are the durable drive-list.
-   Do not produce task artifacts until PLAN.md is written.
+Before stage 1, the goal parent runs the exact safe snippet generated in Execution Router Step 0.1:
+[ROUTING_GUARD]
+<exact stdout from resolver --emit-shell-guard mode>
+A nonzero result stops before Planner. On success, pass exact `ROUTING_EVIDENCE` stdout to Planner
+under `[SKILL_ROUTING_RESOLUTION]`; do not parse or reformat it in the parent.
+1. Planner (turns 1-5): consume the routing resolution, decompose task → write PLAN.md (phases,
+   exact routing evidence, selected source/fallback, checker rubric), then mirror each phase to a
+   durable slice in `issues/NN-<slug>.md` (survives /compact, tracks per-phase Status). PLAN.md
+   `## Phases` stays canonical; slices are the durable drive-list. Do not produce task artifacts
+   until PLAN.md is written.
 2. Maker (turns 6-<N>): execute per PLAN.md, invoke skills per phase, commit at each phase boundary.
 3. Prover (running-app goals only): spawn harness-prover with PROVER_BRIEF from HARNESS.md.
    Pass feature intent + exercise instructions. Get PROOF VERDICT before Checker.
@@ -470,7 +505,9 @@ The file must contain six sections: `PLANNER_BRIEF`, `MAKER_ROUTING`, `PROVER_BR
 `REDTEAM_BRIEF`, `CHECKER_BRIEF`, `SHIP_BRIEF`, followed by `LOOP_TRACKER`.
 
 Then update the `[HARNESS]` block in the goal candidate so the first line reads:
-`Read <absolute-path>/HARNESS.md before starting.`
+`Read <absolute-path>/HARNESS.md before starting.` Replace the `[ROUTING_GUARD]` placeholder with
+exact stdout from resolver `--emit-shell-guard` mode. Never interpolate or re-quote its paths.
+Any unresolved placeholder blocks emission.
 
 The task working directory is `$PROJECT_ROOT/.harness/goals/<task-slug>/` (resolved in
 Execution Router Step 0). Write HARNESS.md there and use that absolute path.

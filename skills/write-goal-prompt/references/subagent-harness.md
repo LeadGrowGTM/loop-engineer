@@ -107,7 +107,7 @@ HARNESS.md for the specific task; the agent files contain the structural templat
 **Role:** Decompose the goal into phases. Select the right skills. Write BRIEF.md (product brief)
 and the execution plan before any artifacts are produced. This is the only phase that reads the full spec.
 
-**Inputs:** Goal statement, [TASK] block, [TOOLS] block, HARNESS.md planner brief.
+**Inputs:** Goal statement, [TASK] block, [TOOLS] block, HARNESS.md planner brief, and the exact `[SKILL_ROUTING_RESOLUTION]` JSON produced by the parent guard. A nonzero guard exit blocks Planner invocation.
 
 **Output — BRIEF.md must contain (written first):**
 - Problem: one sentence on why this work matters
@@ -117,6 +117,7 @@ and the execution plan before any artifacts are produced. This is the only phase
 **Output — PLAN.md must contain (written second):**
 
 - Phase list with names and ordering (e.g., Phase 1: Research, Phase 2: Draft, Phase 3: Finalize)
+- Skill-routing evidence: exact guard JSON plus selected source and fallback
 - Skill-per-phase routing: which skill or direct implementation step covers each phase
 - Checker rubric: exact dimensions the checker will score (1-5), threshold for PASS
 - Dependency graph: which phases can run in parallel vs. must be sequential

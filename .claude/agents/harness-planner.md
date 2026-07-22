@@ -16,11 +16,11 @@ Your working directory is `$PROJECT_ROOT/.harness/goals/<slug>/` (the absolute p
 1. Read HARNESS.md at the path in the [HARNESS] block and obey its task-specific `PRE_PLANNER_APPROVAL` and `PLANNER_BRIEF` contracts.
 2. Read the full [TASK] block from your invocation context.
 3. When `PRE_PLANNER_APPROVAL` applies, plan approved IDs only. Rejected, deferred, missing, or otherwise unapproved scope must not become a phase. Newly discovered scope requires a new proposal ID and explicit approval before planning.
-4. Resolve skill routing in this fixed order:
-   - First read `<PROJECT_ROOT>/.harness/skill-routing.md`.
-   - If it is absent, read the canonical project reference at `skills/write-goal-prompt/references/skill-routing.md` when present.
-   - If both are absent, use confirmed HARNESS routing. When HARNESS names no available skill, use `direct` with a documented direct implementation quality bar instead of aborting.
-   - Record the selected source and any fallback in PLAN.md. Never invent or assume an unavailable skill.
+4. Consume `[SKILL_ROUTING_RESOLUTION]` from the parent invocation context. It is the exact JSON stdout from `resolve-skill-routing.ts`; do not probe fallback paths yourself.
+   - If the block is absent, `status` is not `resolved`, or `errors` is non-empty, stop with `BLOCKED` and do not write a plan.
+   - For `project-local` or `canonical`, read only `normalizedPath`, then apply task judgment against the confirmed available skills.
+   - For `direct`, use confirmed HARNESS routing. When HARNESS names no available skill, use `direct` with a documented direct implementation quality bar instead of aborting.
+   - Copy the command evidence JSON exactly into PLAN.md, then record the selected source and fallback in PLAN.md. Never invent or assume an unavailable skill.
 5. **Decompose from first principles** - read `references/first-principles-generation.md` and apply its principle: design each phase around observable outcomes (what the user sees or measures when done), not artifact inventory. Phases are decomposed checkpoints, not file lists.
 5. Write BRIEF.md to the task working directory
 6. Write PLAN.md to the task working directory (phases, routing, rubric, budget)
@@ -53,8 +53,13 @@ Your working directory is `$PROJECT_ROOT/.harness/goals/<slug>/` (the absolute p
 2. ...
 (Each phase is mirrored 1:1 as a durable slice in `issues/NN-<slug>.md`.)
 
+## Skill Routing Evidence
+Selected source: <exact selectedSource value>
+Fallback: <exact fallback value>
+Command evidence (verbatim): <exact `[SKILL_ROUTING_RESOLUTION]` JSON, copied without reformatting>
+
 ## Skill Routing
-<phase> → <skill> — reason: <one line from skill-routing.md heuristics>
+<phase> → <skill> — reason: <one line from the selected routing source or direct quality bar>
 
 ## Checker Rubric
 Artifacts to evaluate: <paths>
