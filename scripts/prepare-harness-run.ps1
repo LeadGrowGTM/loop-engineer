@@ -20,7 +20,10 @@ param(
   [switch]$Parallel,
   [switch]$CurrentBranch,
   [string]$LeaseHolder = "harness-readiness",
-  [string]$DefaultBranch = ""
+  [string]$DefaultBranch = "",
+  [Parameter(DontShow)]
+  [ValidateRange(100, 30000)]
+  [int]$InternalTreehouseStatusTimeoutMilliseconds = 30000
 )
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
@@ -89,6 +92,446 @@ function Quote-NativeArgument([string]$Value) {
   return $builder.ToString()
 }
 
+function New-CleanupDeadline([int]$TimeoutMilliseconds) {
+  return [pscustomobject]@{
+    Stopwatch          = [System.Diagnostics.Stopwatch]::StartNew()
+    TimeoutMilliseconds = $TimeoutMilliseconds
+  }
+}
+
+function Get-RemainingCleanupMilliseconds([pscustomobject]$Deadline) {
+  $remaining = [int]$Deadline.TimeoutMilliseconds - [int]$Deadline.Stopwatch.ElapsedMilliseconds
+  if ($remaining -le 0) { return 0 }
+  return $remaining
+}
+
+function Initialize-WindowsJobInterop {
+  if ($null -ne ('Harness.Readiness.JobObjectNative' -as [type])) { return }
+
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+
+namespace Harness.Readiness
+{
+    public static class JobObjectNative
+    {
+        public const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
+        public const int JobObjectBasicAccountingInformation = 1;
+        public const int JobObjectExtendedLimitInformation = 9;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct IO_COUNTERS
+        {
+            public ulong ReadOperationCount;
+            public ulong WriteOperationCount;
+            public ulong OtherOperationCount;
+            public ulong ReadTransferCount;
+            public ulong WriteTransferCount;
+            public ulong OtherTransferCount;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JOBOBJECT_BASIC_LIMIT_INFORMATION
+        {
+            public long PerProcessUserTimeLimit;
+            public long PerJobUserTimeLimit;
+            public uint LimitFlags;
+            public UIntPtr MinimumWorkingSetSize;
+            public UIntPtr MaximumWorkingSetSize;
+            public uint ActiveProcessLimit;
+            public IntPtr Affinity;
+            public uint PriorityClass;
+            public uint SchedulingClass;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+        {
+            public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+            public IO_COUNTERS IoInfo;
+            public UIntPtr ProcessMemoryLimit;
+            public UIntPtr JobMemoryLimit;
+            public UIntPtr PeakProcessMemoryUsed;
+            public UIntPtr PeakJobMemoryUsed;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JOBOBJECT_BASIC_ACCOUNTING_INFORMATION
+        {
+            public long TotalUserTime;
+            public long TotalKernelTime;
+            public long ThisPeriodTotalUserTime;
+            public long ThisPeriodTotalKernelTime;
+            public uint TotalPageFaultCount;
+            public uint TotalProcesses;
+            public uint ActiveProcesses;
+            public uint TotalTerminatedProcesses;
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern SafeFileHandle CreateJobObjectW(IntPtr jobAttributes, string name);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SetInformationJobObject(
+            SafeFileHandle job,
+            int informationClass,
+            ref JOBOBJECT_EXTENDED_LIMIT_INFORMATION information,
+            uint informationLength);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool AssignProcessToJobObject(SafeFileHandle job, IntPtr process);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool TerminateJobObject(SafeFileHandle job, uint exitCode);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool QueryInformationJobObject(
+            SafeFileHandle job,
+            int informationClass,
+            out JOBOBJECT_BASIC_ACCOUNTING_INFORMATION information,
+            uint informationLength,
+            IntPtr returnLength);
+    }
+}
+'@
+}
+
+function New-WindowsProcessJob {
+  Initialize-WindowsJobInterop
+  $job = [Harness.Readiness.JobObjectNative]::CreateJobObjectW([IntPtr]::Zero, $null)
+  $errorCode = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+  if ($null -eq $job -or $job.IsInvalid) {
+    if ($job) { $job.Dispose() }
+    throw "CreateJobObjectW failed with Windows error $errorCode."
+  }
+
+  try {
+    $basicLimits = New-Object 'Harness.Readiness.JobObjectNative+JOBOBJECT_BASIC_LIMIT_INFORMATION'
+    $basicLimits.LimitFlags = [Harness.Readiness.JobObjectNative]::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    $limits = New-Object 'Harness.Readiness.JobObjectNative+JOBOBJECT_EXTENDED_LIMIT_INFORMATION'
+    $limits.BasicLimitInformation = $basicLimits
+    $size = [uint32][System.Runtime.InteropServices.Marshal]::SizeOf($limits)
+    $configured = [Harness.Readiness.JobObjectNative]::SetInformationJobObject(
+      $job,
+      [Harness.Readiness.JobObjectNative]::JobObjectExtendedLimitInformation,
+      [ref]$limits,
+      $size
+    )
+    $errorCode = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    if (-not $configured) { throw "SetInformationJobObject failed with Windows error $errorCode." }
+    return $job
+  }
+  catch {
+    $job.Dispose()
+    throw
+  }
+}
+
+$script:WindowsBoundedWrapperEncodedCommand = $null
+function Get-WindowsBoundedWrapperEncodedCommand {
+  if ($script:WindowsBoundedWrapperEncodedCommand) {
+    return $script:WindowsBoundedWrapperEncodedCommand
+  }
+
+  $wrapper = @'
+$ErrorActionPreference = 'Stop'
+$nativeSource = @"
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class HarnessBoundTargetNative
+{
+    private const uint CREATE_NO_WINDOW = 0x08000000;
+    private const int STARTF_USESTDHANDLES = 0x00000100;
+    private const int STD_INPUT_HANDLE = -10;
+    private const int STD_OUTPUT_HANDLE = -11;
+    private const int STD_ERROR_HANDLE = -12;
+    private const uint INFINITE = 0xffffffff;
+    private const uint WAIT_OBJECT_0 = 0x00000000;
+    private const uint WAIT_FAILED = 0xffffffff;
+    private const uint HANDLE_FLAG_INHERIT = 0x00000001;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct STARTUPINFO
+    {
+        public int cb;
+        public string lpReserved;
+        public string lpDesktop;
+        public string lpTitle;
+        public int dwX;
+        public int dwY;
+        public int dwXSize;
+        public int dwYSize;
+        public int dwXCountChars;
+        public int dwYCountChars;
+        public int dwFillAttribute;
+        public int dwFlags;
+        public short wShowWindow;
+        public short cbReserved2;
+        public IntPtr lpReserved2;
+        public IntPtr hStdInput;
+        public IntPtr hStdOutput;
+        public IntPtr hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_INFORMATION
+    {
+        public IntPtr hProcess;
+        public IntPtr hThread;
+        public int unusedProcessNumber;
+        public int unusedThreadNumber;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateProcessW(
+        string applicationName,
+        StringBuilder commandLine,
+        IntPtr processAttributes,
+        IntPtr threadAttributes,
+        bool inheritHandles,
+        uint creationFlags,
+        IntPtr environment,
+        string currentDirectory,
+        ref STARTUPINFO startupInfo,
+        out PROCESS_INFORMATION processInformation);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GetStdHandle(int standardHandle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetExitCodeProcess(IntPtr process, out uint exitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetHandleInformation(IntPtr handle, uint mask, uint flags);
+
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    public static void ClearInheritFlag(IntPtr handle)
+    {
+        var cleared = SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0);
+        var error = Marshal.GetLastWin32Error();
+        if (!cleared) throw new Win32Exception((int)error);
+    }
+
+    public static int Run(string executable, string arguments, string workingDirectory)
+    {
+        var startupInfo = new STARTUPINFO();
+        startupInfo.cb = Marshal.SizeOf(startupInfo);
+        startupInfo.dwFlags = STARTF_USESTDHANDLES;
+        startupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        startupInfo.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+        startupInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+        if (startupInfo.hStdOutput == IntPtr.Zero || startupInfo.hStdOutput == new IntPtr(-1))
+        {
+            throw new Win32Exception("Wrapper stdout handle is invalid.");
+        }
+        if (startupInfo.hStdError == IntPtr.Zero || startupInfo.hStdError == new IntPtr(-1))
+        {
+            throw new Win32Exception("Wrapper stderr handle is invalid.");
+        }
+
+        var commandLine = new StringBuilder("\"" + executable + "\"");
+        if (!String.IsNullOrEmpty(arguments)) commandLine.Append(" ").Append(arguments);
+        PROCESS_INFORMATION processInformation;
+        var created = CreateProcessW(
+            executable,
+            commandLine,
+            IntPtr.Zero,
+            IntPtr.Zero,
+            true,
+            CREATE_NO_WINDOW,
+            IntPtr.Zero,
+            workingDirectory,
+            ref startupInfo,
+            out processInformation);
+        var createError = Marshal.GetLastWin32Error();
+        if (!created) throw new Win32Exception((int)createError);
+        CloseHandle(processInformation.hThread);
+
+        try
+        {
+            var waitResult = WaitForSingleObject(processInformation.hProcess, INFINITE);
+            var waitError = Marshal.GetLastWin32Error();
+            if (waitResult == WAIT_FAILED) throw new Win32Exception((int)waitError);
+            if (waitResult != WAIT_OBJECT_0)
+            {
+                throw new InvalidOperationException("WaitForSingleObject returned " + waitResult + ".");
+            }
+
+            uint exitCode;
+            var readExitCode = GetExitCodeProcess(processInformation.hProcess, out exitCode);
+            var exitCodeError = Marshal.GetLastWin32Error();
+            if (!readExitCode) throw new Win32Exception((int)exitCodeError);
+            return unchecked((int)exitCode);
+        }
+        finally
+        {
+            CloseHandle(processInformation.hProcess);
+        }
+    }
+}
+"@
+$pipe = $null
+$reader = $null
+$controlPipe = $null
+$controlWriter = $null
+try {
+  $pipe = [System.IO.Pipes.NamedPipeClientStream]::new(
+    '.',
+    $env:HARNESS_BOUND_PIPE_NAME,
+    [System.IO.Pipes.PipeDirection]::In,
+    [System.IO.Pipes.PipeOptions]::Asynchronous
+  )
+  $pipe.Connect()
+  $controlPipe = [System.IO.Pipes.NamedPipeClientStream]::new(
+    '.',
+    $env:HARNESS_BOUND_CONTROL_PIPE_NAME,
+    [System.IO.Pipes.PipeDirection]::Out,
+    [System.IO.Pipes.PipeOptions]::Asynchronous
+  )
+  $controlPipe.Connect()
+  $reader = [System.IO.StreamReader]::new(
+    $pipe,
+    (New-Object System.Text.UTF8Encoding($false)),
+    $true
+  )
+  $json = $reader.ReadToEnd()
+  $payload = ConvertFrom-Json -InputObject $json
+  $reader.Dispose()
+  $reader = $null
+  $pipe.Dispose()
+  $pipe = $null
+
+  Add-Type -TypeDefinition $nativeSource
+  [HarnessBoundTargetNative]::ClearInheritFlag($controlPipe.SafePipeHandle.DangerousGetHandle())
+  [Environment]::SetEnvironmentVariable('HARNESS_BOUND_PIPE_NAME', $null, [EnvironmentVariableTarget]::Process)
+  [Environment]::SetEnvironmentVariable('HARNESS_BOUND_CONTROL_PIPE_NAME', $null, [EnvironmentVariableTarget]::Process)
+  if ([bool]$payload.ScrubGitEnvironment) {
+    $variables = [Environment]::GetEnvironmentVariables()
+    foreach ($key in @($variables.Keys)) {
+      if ([string]$key -like 'GIT_*') {
+        [Environment]::SetEnvironmentVariable([string]$key, $null, [EnvironmentVariableTarget]::Process)
+      }
+    }
+    [Environment]::SetEnvironmentVariable('GIT_OPTIONAL_LOCKS', '0', [EnvironmentVariableTarget]::Process)
+    [Environment]::SetEnvironmentVariable('GIT_TERMINAL_PROMPT', '0', [EnvironmentVariableTarget]::Process)
+    [Environment]::SetEnvironmentVariable('LC_ALL', 'C.UTF-8', [EnvironmentVariableTarget]::Process)
+    [Environment]::SetEnvironmentVariable('LANG', 'C.UTF-8', [EnvironmentVariableTarget]::Process)
+  }
+
+  $targetExitCode = [HarnessBoundTargetNative]::Run(
+    [string]$payload.FileName,
+    [string]$payload.Arguments,
+    [string]$payload.WorkingDirectory
+  )
+  $controlWriter = [System.IO.StreamWriter]::new(
+    $controlPipe,
+    (New-Object System.Text.UTF8Encoding($false)),
+    1024,
+    $false
+  )
+  $controlWriter.Write($targetExitCode.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+  $controlWriter.Flush()
+  $controlWriter.Dispose()
+  $controlWriter = $null
+  $controlPipe = $null
+  exit $targetExitCode
+}
+catch {
+  [Console]::Error.WriteLine($_.Exception.Message)
+  exit 1
+}
+finally {
+  if ($controlWriter) { $controlWriter.Dispose() }
+  if ($controlPipe) { $controlPipe.Dispose() }
+  if ($reader) { $reader.Dispose() }
+  if ($pipe) { $pipe.Dispose() }
+}
+'@
+  $bytes = [System.Text.Encoding]::Unicode.GetBytes($wrapper)
+  $script:WindowsBoundedWrapperEncodedCommand = [Convert]::ToBase64String($bytes)
+  return $script:WindowsBoundedWrapperEncodedCommand
+}
+
+function Add-WindowsProcessToJob(
+  [Microsoft.Win32.SafeHandles.SafeFileHandle]$Job,
+  [IntPtr]$ProcessHandle
+) {
+  $assigned = [Harness.Readiness.JobObjectNative]::AssignProcessToJobObject($Job, $ProcessHandle)
+  $errorCode = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+  if (-not $assigned) { throw "AssignProcessToJobObject failed with Windows error $errorCode." }
+}
+
+function Request-WindowsJobTermination([Microsoft.Win32.SafeHandles.SafeFileHandle]$Job) {
+  $terminated = [Harness.Readiness.JobObjectNative]::TerminateJobObject($Job, 1)
+  $errorCode = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+  return [pscustomobject]@{ Succeeded = $terminated; ErrorCode = $errorCode }
+}
+
+function Get-WindowsJobActiveProcessCount([Microsoft.Win32.SafeHandles.SafeFileHandle]$Job) {
+  $accounting = New-Object 'Harness.Readiness.JobObjectNative+JOBOBJECT_BASIC_ACCOUNTING_INFORMATION'
+  $size = [uint32][System.Runtime.InteropServices.Marshal]::SizeOf($accounting)
+  $queried = [Harness.Readiness.JobObjectNative]::QueryInformationJobObject(
+    $Job,
+    [Harness.Readiness.JobObjectNative]::JobObjectBasicAccountingInformation,
+    [ref]$accounting,
+    $size,
+    [IntPtr]::Zero
+  )
+  $errorCode = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+  if (-not $queried) { throw "QueryInformationJobObject failed with Windows error $errorCode." }
+  return [int]$accounting.ActiveProcesses
+}
+
+function Stop-NonWindowsBoundedProcess(
+  [System.Diagnostics.Process]$Process,
+  [pscustomobject]$Deadline
+) {
+  try {
+    if ($Process.HasExited) {
+      return [pscustomobject]@{
+        Succeeded = $false
+        Error     = 'Root process exited before process-tree cleanup; descendant termination is unverifiable on this platform.'
+      }
+    }
+    if ((Get-RemainingCleanupMilliseconds $Deadline) -le 0) {
+      return [pscustomobject]@{ Succeeded = $false; Error = 'Process-tree cleanup deadline expired.' }
+    }
+    $Process.Kill($true)
+    return [pscustomobject]@{ Succeeded = $true; Error = '' }
+  }
+  catch {
+    $killError = $_.Exception.Message
+    try {
+      if ($Process.HasExited) {
+        return [pscustomobject]@{
+          Succeeded = $false
+          Error     = "Root process exited before tree termination could be proved: $killError"
+        }
+      }
+    }
+    catch { }
+    return [pscustomobject]@{ Succeeded = $false; Error = "Process tree kill failed: $killError" }
+  }
+}
+
 function Invoke-BoundedProcess(
   [string]$Executable,
   [string[]]$Arguments,
@@ -97,41 +540,254 @@ function Invoke-BoundedProcess(
   [int]$TimeoutMilliseconds = 30000,
   [int]$MaxOutputCharacters = 4194304
 ) {
+  $isWindows = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
   $actualExecutable = $Executable
   $actualArguments = @($Arguments)
   if ([System.IO.Path]::GetExtension($Executable) -ieq '.ps1') {
     $actualExecutable = (Get-Process -Id $PID).Path
     $actualArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Executable) + $actualArguments
   }
-
-  $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-  $startInfo.FileName = $actualExecutable
-  $startInfo.Arguments = (($actualArguments | ForEach-Object { Quote-NativeArgument "$_" }) -join ' ')
-  $startInfo.WorkingDirectory = $WorkingDirectory
-  $startInfo.UseShellExecute = $false
-  $startInfo.RedirectStandardOutput = $true
-  $startInfo.RedirectStandardError = $true
-  $startInfo.CreateNoWindow = $true
-  try {
-    $utf8 = New-Object System.Text.UTF8Encoding($false)
-    $startInfo.StandardOutputEncoding = $utf8
-    $startInfo.StandardErrorEncoding = $utf8
-  } catch { }
-
-  if ($ScrubGitEnvironment) {
-    foreach ($key in @($startInfo.EnvironmentVariables.Keys)) {
-      if ($key -like 'GIT_*') { $startInfo.EnvironmentVariables.Remove($key) }
-    }
-    $startInfo.EnvironmentVariables['GIT_OPTIONAL_LOCKS'] = '0'
-    $startInfo.EnvironmentVariables['GIT_TERMINAL_PROMPT'] = '0'
-    $startInfo.EnvironmentVariables['LC_ALL'] = 'C.UTF-8'
-    $startInfo.EnvironmentVariables['LANG'] = 'C.UTF-8'
-  }
+  $serializedArguments = (($actualArguments | ForEach-Object { Quote-NativeArgument "$_" }) -join ' ')
 
   $process = New-Object System.Diagnostics.Process
-  $process.StartInfo = $startInfo
-  if (-not $process.Start()) {
-    return [pscustomobject]@{ ExitCode = -1; Stdout = ''; Stderr = 'Process failed to start.'; TimedOut = $false; OutputLimitExceeded = $false }
+  $job = $null
+  $pipe = $null
+  $controlPipe = $null
+  $controlReader = $null
+  $controlTask = $null
+  $targetExitCode = $null
+  $targetExitCodeReceived = $false
+  $controlSignalFailed = $false
+  $controlSignalError = ''
+  $processStarted = $false
+  $setupFailed = $false
+  $setupTimedOut = $false
+  $setupError = ''
+  $setupKillError = ''
+  $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+  if ($isWindows) {
+    try {
+      $job = New-WindowsProcessJob
+      $remainingMilliseconds = $TimeoutMilliseconds - [int]$stopwatch.ElapsedMilliseconds
+      if ($remainingMilliseconds -le 0) {
+        $setupTimedOut = $true
+        throw 'Windows process setup reached the invocation timeout.'
+      }
+
+      $pipeName = "harness-bound-$PID-$([Guid]::NewGuid().ToString('N'))"
+      $pipe = [System.IO.Pipes.NamedPipeServerStream]::new(
+        $pipeName,
+        [System.IO.Pipes.PipeDirection]::Out,
+        1,
+        [System.IO.Pipes.PipeTransmissionMode]::Byte,
+        [System.IO.Pipes.PipeOptions]::Asynchronous
+      )
+      $controlPipeName = "harness-bound-control-$PID-$([Guid]::NewGuid().ToString('N'))"
+      try {
+        $controlPipe = [System.IO.Pipes.NamedPipeServerStream]::new(
+          $controlPipeName,
+          [System.IO.Pipes.PipeDirection]::In,
+          1,
+          [System.IO.Pipes.PipeTransmissionMode]::Byte,
+          [System.IO.Pipes.PipeOptions]::Asynchronous
+        )
+      }
+      catch {
+        $controlSignalFailed = $true
+        $controlSignalError = "Control pipe creation failed: $($_.Exception.Message)"
+        throw
+      }
+      $wrapperInfo = New-Object System.Diagnostics.ProcessStartInfo
+      $wrapperInfo.FileName = (Get-Process -Id $PID).Path
+      $wrapperInfo.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ' + (Get-WindowsBoundedWrapperEncodedCommand)
+      $wrapperInfo.WorkingDirectory = $WorkingDirectory
+      $wrapperInfo.UseShellExecute = $false
+      $wrapperInfo.RedirectStandardOutput = $true
+      $wrapperInfo.RedirectStandardError = $true
+      $wrapperInfo.CreateNoWindow = $true
+      $wrapperInfo.EnvironmentVariables['HARNESS_BOUND_PIPE_NAME'] = $pipeName
+      $wrapperInfo.EnvironmentVariables['HARNESS_BOUND_CONTROL_PIPE_NAME'] = $controlPipeName
+      try {
+        $utf8 = New-Object System.Text.UTF8Encoding($false)
+        $wrapperInfo.StandardOutputEncoding = $utf8
+        $wrapperInfo.StandardErrorEncoding = $utf8
+      }
+      catch { }
+      $process.StartInfo = $wrapperInfo
+      if (-not $process.Start()) { throw 'Windows PowerShell wrapper failed to start.' }
+      $processStarted = $true
+      $wrapperHandle = $process.Handle
+      Add-WindowsProcessToJob -Job $job -ProcessHandle $wrapperHandle
+
+      $remainingMilliseconds = $TimeoutMilliseconds - [int]$stopwatch.ElapsedMilliseconds
+      if ($remainingMilliseconds -le 0) {
+        $setupTimedOut = $true
+        throw 'Windows PowerShell wrapper reached the invocation timeout before pipe connection.'
+      }
+      $connection = $pipe.WaitForConnectionAsync()
+      try { $controlConnection = $controlPipe.WaitForConnectionAsync() }
+      catch {
+        $controlSignalFailed = $true
+        $controlSignalError = "Control pipe connection failed: $($_.Exception.Message)"
+        throw
+      }
+      if (-not $connection.Wait($remainingMilliseconds)) {
+        $setupTimedOut = $true
+        throw 'Windows PowerShell wrapper pipe connection timed out.'
+      }
+
+      $remainingMilliseconds = $TimeoutMilliseconds - [int]$stopwatch.ElapsedMilliseconds
+      if ($remainingMilliseconds -le 0) {
+        $setupTimedOut = $true
+        $controlSignalFailed = $true
+        $controlSignalError = 'Control pipe connection reached the invocation timeout.'
+        throw $controlSignalError
+      }
+      try {
+        if (-not $controlConnection.Wait($remainingMilliseconds)) {
+          $setupTimedOut = $true
+          $controlSignalFailed = $true
+          $controlSignalError = 'Windows PowerShell wrapper control pipe connection timed out.'
+          throw $controlSignalError
+        }
+        $controlReader = [System.IO.StreamReader]::new(
+          $controlPipe,
+          (New-Object System.Text.UTF8Encoding($false)),
+          $true
+        )
+        $controlTask = $controlReader.ReadToEndAsync()
+      }
+      catch {
+        if (-not $controlSignalFailed) {
+          $controlSignalFailed = $true
+          $controlSignalError = "Control pipe setup failed: $($_.Exception.Message)"
+        }
+        throw
+      }
+
+      $payload = [ordered]@{
+        FileName            = $actualExecutable
+        Arguments           = $serializedArguments
+        WorkingDirectory    = $WorkingDirectory
+        ScrubGitEnvironment = $ScrubGitEnvironment
+      } | ConvertTo-Json -Compress
+      $payloadBytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($payload)
+      $remainingMilliseconds = $TimeoutMilliseconds - [int]$stopwatch.ElapsedMilliseconds
+      if ($remainingMilliseconds -le 0) {
+        $setupTimedOut = $true
+        throw 'Windows PowerShell wrapper reached the invocation timeout before payload release.'
+      }
+      $write = $pipe.WriteAsync($payloadBytes, 0, $payloadBytes.Length)
+      if (-not $write.Wait($remainingMilliseconds)) {
+        $setupTimedOut = $true
+        throw 'Windows PowerShell wrapper payload release timed out.'
+      }
+      $pipe.Dispose()
+      $pipe = $null
+    }
+    catch {
+      $setupFailed = $true
+      $setupError = $_.Exception.Message
+      if ($processStarted) {
+        try {
+          if (-not $process.HasExited) { $process.Kill() }
+        }
+        catch { $setupKillError = $_.Exception.Message }
+      }
+    }
+    finally {
+      if ($pipe) {
+        $pipe.Dispose()
+        $pipe = $null
+      }
+      if ($setupFailed) {
+        if ($controlReader) {
+          $controlReader.Dispose()
+          $controlReader = $null
+        }
+        if ($controlPipe) {
+          $controlPipe.Dispose()
+          $controlPipe = $null
+        }
+      }
+    }
+  }
+  else {
+    try {
+      $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+      $startInfo.FileName = $actualExecutable
+      $startInfo.Arguments = $serializedArguments
+      $startInfo.WorkingDirectory = $WorkingDirectory
+      $startInfo.UseShellExecute = $false
+      $startInfo.RedirectStandardOutput = $true
+      $startInfo.RedirectStandardError = $true
+      $startInfo.CreateNoWindow = $true
+      try {
+        $utf8 = New-Object System.Text.UTF8Encoding($false)
+        $startInfo.StandardOutputEncoding = $utf8
+        $startInfo.StandardErrorEncoding = $utf8
+      }
+      catch { }
+      if ($ScrubGitEnvironment) {
+        foreach ($key in @($startInfo.EnvironmentVariables.Keys)) {
+          if ($key -like 'GIT_*') { $startInfo.EnvironmentVariables.Remove($key) }
+        }
+        $startInfo.EnvironmentVariables['GIT_OPTIONAL_LOCKS'] = '0'
+        $startInfo.EnvironmentVariables['GIT_TERMINAL_PROMPT'] = '0'
+        $startInfo.EnvironmentVariables['LC_ALL'] = 'C.UTF-8'
+        $startInfo.EnvironmentVariables['LANG'] = 'C.UTF-8'
+      }
+      $process.StartInfo = $startInfo
+      if (-not $process.Start()) { throw 'Process failed to start.' }
+      $processStarted = $true
+    }
+    catch {
+      $setupFailed = $true
+      $setupError = $_.Exception.Message
+    }
+  }
+
+  if (-not $processStarted) {
+    $stopwatch.Stop()
+    $cleanupFailed = $controlSignalFailed
+    $cleanupError = if ($controlSignalFailed) { $controlSignalError } else { '' }
+    if ($job) {
+      $cleanupDeadline = New-CleanupDeadline 5000
+      try {
+        $termination = Request-WindowsJobTermination $job
+        $activeProcesses = Get-WindowsJobActiveProcessCount $job
+        if (-not $termination.Succeeded -and $activeProcesses -ne 0) {
+          $cleanupFailed = $true
+          $cleanupError = "TerminateJobObject failed with Windows error $($termination.ErrorCode) while the job had $activeProcesses active processes."
+        }
+        elseif ($activeProcesses -ne 0) {
+          $cleanupFailed = $true
+          $cleanupError = "Windows job still had $activeProcesses active processes after failed startup."
+        }
+      }
+      catch {
+        $cleanupFailed = $true
+        $cleanupError = $_.Exception.Message
+      }
+      $cleanupDeadline.Stopwatch.Stop()
+    }
+    if ($controlReader) { $controlReader.Dispose() }
+    if ($controlPipe) { $controlPipe.Dispose() }
+    $process.Dispose()
+    if ($job) { $job.Dispose() }
+    return [pscustomobject]@{
+      ExitCode            = if ($cleanupFailed) { -4 } elseif ($setupTimedOut) { -2 } else { -1 }
+      Stdout              = ''
+      Stderr              = ((
+        $setupError +
+        $(if ($setupTimedOut) { " Process timed out after $TimeoutMilliseconds milliseconds." }) +
+        $(if ($cleanupFailed) { " Process-tree cleanup failed: $cleanupError" })
+      ).Trim())
+      TimedOut            = $setupTimedOut
+      OutputLimitExceeded = $false
+      CleanupFailed       = $cleanupFailed
+    }
   }
 
   $bufferCharacters = 32768
@@ -144,16 +800,11 @@ function Invoke-BoundedProcess(
   $stdoutComplete = $false
   $stderrComplete = $false
   $capturedCharacters = 0
-  $timedOut = $false
+  $timedOut = $setupTimedOut
   $outputLimitExceeded = $false
-  $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-  while (-not ($stdoutComplete -and $stderrComplete -and $process.HasExited)) {
-    $remainingMilliseconds = $TimeoutMilliseconds - [int]$stopwatch.ElapsedMilliseconds
-    if ($remainingMilliseconds -le 0) {
-      $timedOut = $true
-      break
-    }
+  while (-not $setupFailed) {
+    if (-not $isWindows -and $stdoutComplete -and $stderrComplete -and $process.HasExited) { break }
 
     $madeProgress = $false
     if (-not $stdoutComplete -and $stdoutTask.IsCompleted) {
@@ -189,42 +840,277 @@ function Invoke-BoundedProcess(
     }
 
     if ($outputLimitExceeded) { break }
+    if ($isWindows -and -not $targetExitCodeReceived -and -not $controlSignalFailed -and $controlTask.IsCompleted) {
+      try {
+        $controlText = [string]$controlTask.Result
+        $parsedExitCode = 0
+        if ($controlText -notmatch '^-?(0|[1-9][0-9]*)$' -or -not [int]::TryParse($controlText, [ref]$parsedExitCode)) {
+          throw 'Target exit-code control signal was missing or malformed.'
+        }
+        $targetExitCode = $parsedExitCode
+        $targetExitCodeReceived = $true
+      }
+      catch {
+        $controlSignalFailed = $true
+        $controlSignalError = "Target exit-code control signal failed: $($_.Exception.Message)"
+      }
+    }
+    if ($targetExitCodeReceived -or $controlSignalFailed) { break }
+
+    $remainingMilliseconds = $TimeoutMilliseconds - [int]$stopwatch.ElapsedMilliseconds
+    if ($isWindows -and $process.HasExited) {
+      if ($remainingMilliseconds -gt 0 -and -not $controlTask.IsCompleted) {
+        try { [void]$controlTask.Wait([Math]::Min(50, $remainingMilliseconds)) }
+        catch { }
+      }
+      if ($controlTask.IsCompleted) { continue }
+      $controlSignalFailed = $true
+      $controlSignalError = 'Windows PowerShell wrapper exited before sending a target exit-code control signal.'
+      break
+    }
+    if ($remainingMilliseconds -le 0) {
+      $timedOut = $true
+      break
+    }
     if ($madeProgress) { continue }
 
     $waitTasks = @()
     if (-not $stdoutComplete) { $waitTasks += $stdoutTask }
     if (-not $stderrComplete) { $waitTasks += $stderrTask }
-    $waitMilliseconds = $remainingMilliseconds
+    if ($isWindows -and -not $controlTask.IsCompleted) { $waitTasks += $controlTask }
     if ($waitTasks.Count -gt 0) {
+      $waitMilliseconds = if ($isWindows) { [Math]::Min(50, $remainingMilliseconds) } else { $remainingMilliseconds }
       $null = [System.Threading.Tasks.Task]::WaitAny([System.Threading.Tasks.Task[]]$waitTasks, $waitMilliseconds)
     }
     else {
-      [void]$process.WaitForExit($waitMilliseconds)
+      [void]$process.WaitForExit($remainingMilliseconds)
     }
   }
 
   $stopwatch.Stop()
-  if ($timedOut -or $outputLimitExceeded) {
-    try { $process.Kill() } catch { }
-    try { [void]$process.WaitForExit(5000) } catch { }
-    try { [System.Threading.Tasks.Task]::WaitAll([System.Threading.Tasks.Task[]]@($stdoutTask, $stderrTask), 5000) | Out-Null } catch { }
+  $cleanupFailed = $controlSignalFailed
+  $cleanupErrors = New-Object 'System.Collections.Generic.List[string]'
+  if ($controlSignalFailed) { [void]$cleanupErrors.Add($controlSignalError) }
+  if ($isWindows -or $timedOut -or $outputLimitExceeded) {
+    $cleanupDeadline = New-CleanupDeadline 5000
+    try {
+      if ($isWindows) {
+        if ($setupKillError) {
+          $cleanupFailed = $true
+          [void]$cleanupErrors.Add("Held wrapper termination failed: $setupKillError")
+        }
+
+        $termination = Request-WindowsJobTermination $job
+        $jobReachedZero = $false
+        $jobQueryFailed = $false
+        $lastActiveProcesses = $null
+        if (-not $termination.Succeeded) {
+          try {
+            $lastActiveProcesses = Get-WindowsJobActiveProcessCount $job
+            if ($lastActiveProcesses -eq 0) {
+              $jobReachedZero = $true
+            }
+            else {
+              $cleanupFailed = $true
+              [void]$cleanupErrors.Add(
+                "TerminateJobObject failed with Windows error $($termination.ErrorCode) while the job had $lastActiveProcesses active processes."
+              )
+            }
+          }
+          catch {
+            $cleanupFailed = $true
+            $jobQueryFailed = $true
+            [void]$cleanupErrors.Add($_.Exception.Message)
+          }
+        }
+      }
+      else {
+        $cleanup = Stop-NonWindowsBoundedProcess -Process $process -Deadline $cleanupDeadline
+        if (-not $cleanup.Succeeded) {
+          $cleanupFailed = $true
+          [void]$cleanupErrors.Add($cleanup.Error)
+        }
+      }
+
+      $wrapperExited = $false
+      try {
+        if ($process.HasExited) {
+          $wrapperExited = $true
+        }
+        else {
+          $remainingCleanupMilliseconds = Get-RemainingCleanupMilliseconds $cleanupDeadline
+          if ($remainingCleanupMilliseconds -gt 0) {
+            $wrapperExited = $process.WaitForExit($remainingCleanupMilliseconds)
+          }
+        }
+      }
+      catch {
+        $cleanupFailed = $true
+        [void]$cleanupErrors.Add("Wrapper exit could not be verified: $($_.Exception.Message)")
+      }
+      if (-not $wrapperExited) {
+        $cleanupFailed = $true
+        [void]$cleanupErrors.Add('Wrapper process did not exit by the cleanup deadline.')
+      }
+
+      $streamsClosed = $stdoutComplete -and $stderrComplete
+      try {
+        while (-not $streamsClosed) {
+          $remainingCleanupMilliseconds = Get-RemainingCleanupMilliseconds $cleanupDeadline
+          if ($remainingCleanupMilliseconds -le 0) { break }
+
+          $madeDrainProgress = $false
+          if (-not $stdoutComplete -and $stdoutTask.IsCompleted) {
+            $stdoutCount = [int]$stdoutTask.Result
+            $madeDrainProgress = $true
+            if ($stdoutCount -eq 0) {
+              $stdoutComplete = $true
+            }
+            else {
+              if (-not $outputLimitExceeded) {
+                if ($stdoutCount -gt ($MaxOutputCharacters - $capturedCharacters)) {
+                  $outputLimitExceeded = $true
+                }
+                else {
+                  [void]$stdoutBuilder.Append($stdoutBuffer, 0, $stdoutCount)
+                  $capturedCharacters += $stdoutCount
+                }
+              }
+              $stdoutTask = $process.StandardOutput.ReadBlockAsync($stdoutBuffer, 0, $stdoutBuffer.Length)
+            }
+          }
+          if (-not $stderrComplete -and $stderrTask.IsCompleted) {
+            $stderrCount = [int]$stderrTask.Result
+            $madeDrainProgress = $true
+            if ($stderrCount -eq 0) {
+              $stderrComplete = $true
+            }
+            else {
+              if (-not $outputLimitExceeded) {
+                if ($stderrCount -gt ($MaxOutputCharacters - $capturedCharacters)) {
+                  $outputLimitExceeded = $true
+                }
+                else {
+                  [void]$stderrBuilder.Append($stderrBuffer, 0, $stderrCount)
+                  $capturedCharacters += $stderrCount
+                }
+              }
+              $stderrTask = $process.StandardError.ReadBlockAsync($stderrBuffer, 0, $stderrBuffer.Length)
+            }
+          }
+
+          $streamsClosed = $stdoutComplete -and $stderrComplete
+          if ($streamsClosed -or $madeDrainProgress) { continue }
+
+          $waitTasks = @()
+          if (-not $stdoutComplete) { $waitTasks += $stdoutTask }
+          if (-not $stderrComplete) { $waitTasks += $stderrTask }
+          if ($waitTasks.Count -gt 0) {
+            $null = [System.Threading.Tasks.Task]::WaitAny(
+              [System.Threading.Tasks.Task[]]$waitTasks,
+              [Math]::Min(100, $remainingCleanupMilliseconds)
+            )
+          }
+        }
+      }
+      catch {
+        $cleanupFailed = $true
+        [void]$cleanupErrors.Add("Redirected process output could not be drained: $($_.Exception.Message)")
+      }
+      if (-not $streamsClosed) {
+        $cleanupFailed = $true
+        [void]$cleanupErrors.Add('Redirected process output did not reach EOF after cleanup.')
+      }
+
+      if ($isWindows -and -not $jobQueryFailed -and -not $jobReachedZero) {
+        while ((Get-RemainingCleanupMilliseconds $cleanupDeadline) -gt 0) {
+          try {
+            $lastActiveProcesses = Get-WindowsJobActiveProcessCount $job
+          }
+          catch {
+            $cleanupFailed = $true
+            $jobQueryFailed = $true
+            [void]$cleanupErrors.Add($_.Exception.Message)
+            break
+          }
+          if ($lastActiveProcesses -eq 0) {
+            $jobReachedZero = $true
+            break
+          }
+          $remainingCleanupMilliseconds = Get-RemainingCleanupMilliseconds $cleanupDeadline
+          if ($remainingCleanupMilliseconds -gt 0) {
+            Start-Sleep -Milliseconds ([Math]::Min(20, $remainingCleanupMilliseconds))
+          }
+        }
+        if (-not $jobReachedZero -and -not $jobQueryFailed) {
+          $cleanupFailed = $true
+          [void]$cleanupErrors.Add("Windows job still had $lastActiveProcesses active processes at the cleanup deadline.")
+        }
+      }
+    }
+    catch {
+      $cleanupFailed = $true
+      [void]$cleanupErrors.Add($_.Exception.Message)
+    }
+    $cleanupDeadline.Stopwatch.Stop()
   }
 
   $stdout = $stdoutBuilder.ToString()
   $stderr = $stderrBuilder.ToString()
+  $diagnostics = New-Object 'System.Collections.Generic.List[string]'
+  if ($setupFailed) {
+    [void]$diagnostics.Add("Process setup failed: $setupError")
+  }
+  if ($timedOut) {
+    [void]$diagnostics.Add("Process timed out after $TimeoutMilliseconds milliseconds.")
+  }
   if ($outputLimitExceeded) {
     $stdout = ''
-    $stderr = "Process output exceeded the $MaxOutputCharacters character safety limit."
+    $stderr = ''
+    [void]$diagnostics.Add("Process output exceeded the $MaxOutputCharacters character safety limit.")
+  }
+  if ($cleanupFailed) {
+    [void]$diagnostics.Add("Process-tree cleanup failed: $(($cleanupErrors | Select-Object -Unique) -join ' ')")
+  }
+  if ($diagnostics.Count -gt 0) {
+    $stderr = (($stderr.TrimEnd() + ' ' + ($diagnostics -join ' ')).Trim())
   }
 
-  $exitCode = if ($timedOut) { -2 } elseif ($outputLimitExceeded) { -3 } else { $process.ExitCode }
+  $observedExitCode = $null
+  try {
+    if ($process.HasExited) { $observedExitCode = $process.ExitCode }
+  }
+  catch { }
+  $exitCode = if ($cleanupFailed) {
+    -4
+  }
+  elseif ($timedOut) {
+    -2
+  }
+  elseif ($outputLimitExceeded) {
+    -3
+  }
+  elseif ($isWindows -and $targetExitCodeReceived) {
+    $targetExitCode
+  }
+  elseif ($setupFailed -or $null -eq $observedExitCode) {
+    -1
+  }
+  else {
+    $observedExitCode
+  }
+
+  if ($controlReader) { $controlReader.Dispose() }
+  if ($controlPipe) { $controlPipe.Dispose() }
   $process.Dispose()
+  if ($job) { $job.Dispose() }
   return [pscustomobject]@{
-    ExitCode = $exitCode
-    Stdout = $stdout
-    Stderr = $stderr
-    TimedOut = $timedOut
+    ExitCode            = $exitCode
+    Stdout              = $stdout
+    Stderr              = $stderr
+    TimedOut            = $timedOut
     OutputLimitExceeded = $outputLimitExceeded
+    CleanupFailed       = $cleanupFailed
   }
 }
 
@@ -534,7 +1420,7 @@ try {
   }
 
   if ($CheckOnly -and $result.isolationRequired) {
-    $treehouseStatus = Invoke-BoundedProcess $treehouse @('status') $gitInspectionRoot $false 30000
+    $treehouseStatus = Invoke-BoundedProcess $treehouse @('status') $gitInspectionRoot $false $InternalTreehouseStatusTimeoutMilliseconds
     if ($treehouseStatus.TimedOut -or $treehouseStatus.OutputLimitExceeded -or $treehouseStatus.ExitCode -ne 0) {
       Add-ReadinessError 'treehouse_not_ready' ("Treehouse status failed from '$gitInspectionRoot': " + (($treehouseStatus.Stderr + ' ' + $treehouseStatus.Stdout).Trim()))
       Complete-Readiness 1
