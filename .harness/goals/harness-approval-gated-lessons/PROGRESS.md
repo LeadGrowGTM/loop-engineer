@@ -364,3 +364,40 @@ PROOF:
   Remaining medium: help text overstates non-mutation for explicit `PrepareIsolation`; outside approved C10 scope and disclosed
   Shipping: `N/A - shipping not approved`
 Commit: SELF - C06 untouched-work and commit proof (post-commit SHA verified by Checker)
+
+## Issue #25 post-proof Checker closeout - PRE-CHECKER
+
+Protected original CYCLE_LOG source: `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\CYCLE_LOG.md`
+Expected/current source SHA256: `246AE22109DD74BA798556D7B06BC03396B0DF2D905CF221D37176D6168A14D9`
+RED artifact assertion: exit 1; missing `followups`, `phases`, `slices`, `policy`, `approval`, `cycleLog`.
+Intended sequence: byte-identical copy, then append-only fresh Checker.
+Post-proof output requires separately approved closeout commit.
+State: PRE-CHECKER; no commit claim.
+
+### PRE-CHECKER gate update - 2026-07-23
+
+- Protected and target Cycle 1 SHA256: `246AE22109DD74BA798556D7B06BC03396B0DF2D905CF221D37176D6168A14D9`; byte comparison exit 0.
+- Corrected artifact assertion: all `followups`, `phases`, `slices`, `policy`, `approval`, and `cycleLog` checks true; missing list empty.
+- Full-suite gate exposed three stale Windows test bounds while production inner timeout and cleanup behavior remained correct. Each received a measured, seam-specific TDD fix in `scripts/prepare-harness-run.test.ts`.
+- Tight regression gate: 3 pass, 0 fail, 25 expect() calls.
+- Final full suite: 124 pass, 0 fail, 484 expect() calls across 7 files. [278.13s]
+- PowerShell parser: `PS1-PARSER-OK`.
+- `git diff --check`: exit 0.
+- Prior C01-C10 lineage: exact, with two disclosed external commits and zero merges.
+- Current integration lineage: zero merges; snapshot commit log and staged output empty.
+- Fresh timeout-fix review: PASS, no findings.
+- Test-only follow-up commit: `781f9f4` (`test(readiness): stabilize measured timeouts (#22)`).
+- State: READY FOR FRESH CHECKER; closeout commit remains pending.
+
+### Fresh Checker result
+
+- Cycle 2 verdict: PASS 5.0/5.0, but independent review rejected five invalid absolute citations.
+- Cycle 3 verdict: PASS 5.0/5.0 across Approval integrity, Scope discipline, Technical quality, Evidence, and Decision fidelity.
+- Cycle 3 closes the Cycle 2 citation defect with exact slot-1 paths.
+- Independent Cycle 3 validation: 33 unique paths, 26 cited range segments, 0 missing paths, 0 range failures, 0 Treehouse-root mismatches.
+- Exact 19,740-byte Cycle 1+2 prefix restored and verified at SHA256 `39F9BB4D38498B58636707F773817D257A58DCAD7CA23C9D301DF4873CF3F64C`; Cycle 3 remains appended after that prefix.
+- Protected original Cycle 1 remains SHA256 `246AE22109DD74BA798556D7B06BC03396B0DF2D905CF221D37176D6168A14D9`.
+- Protected-work guard: initial in-place capture was rejected because it occurred after task edits and correctly classified them as pre-existing dirt. No guard was weakened.
+- Clean replacement proof from `781f9f4` captured only the protected snapshot as pre-dirty, applied the exact staged six-file patch, and returned PASS with no blockers, no unexpected staged paths, and `volatileSnapshotStaged: false`.
+- Final validation artifact remains outside Git and is reported after staging, avoiding self-referential proof drift inside the commit.
+- State: PASS; separately approved closeout commit pending.

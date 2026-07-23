@@ -83,3 +83,36 @@ Commit: phase 2 closeout commit result.
 Reason: Cherry-pick of #24 commit `89c899b5a82bdc6a0184d7ccb40e51f4cb49101a` hit conflicts in `scripts/setup-harness.ts` and `scripts/setup-harness.test.ts` after clean imports for #21-#23.
 Tried: direct source cherry-pick in exact order per approved sequence.
 Unblocked work: create clean replacement lease from latest integration `HEAD` `7be8dcb` and reapply only #24 patch cleanly before rerunning phase gates.
+
+## Phase 3: Issue #25 Checker closeout - PRE-CHECKER
+
+- Approved scope: four prior-goal files and matching current-task proof files.
+- Protected original `CYCLE_LOG.md` SHA256: `246AE22109DD74BA798556D7B06BC03396B0DF2D905CF221D37176D6168A14D9`.
+- RED output: valid; missing `followups`, `phases`, `slices`, `policy`, `approval`, and `cycleLog`.
+- Next steps: byte-copy protected original, reach GREEN, run gates, then append fresh Checker output only.
+- State: PRE-CHECKER; no PASS or commit claimed.
+
+### Phase 3 pre-Checker gate update - 2026-07-23
+
+- Protected and target Cycle 1 SHA256: `246AE22109DD74BA798556D7B06BC03396B0DF2D905CF221D37176D6168A14D9`; byte comparison exit 0.
+- Corrected artifact assertion: all six contract checks true; missing list empty.
+- Three stale Windows test bounds failed under the complete-suite load. Public CLI measurements and independent reviews confirmed test jitter, not production timeout or cleanup failure.
+- Tight combined regression gate: 3 pass, 0 fail, 25 expect() calls.
+- Final full suite: 124 pass, 0 fail, 484 expect() calls across 7 files. [278.13s]
+- PowerShell parser: `PS1-PARSER-OK`; `git diff --check`: exit 0.
+- C01-C10 plus two disclosed external commits remain exact; prior and integration ranges contain zero merges.
+- Snapshot is unstaged and absent from current integration commits.
+- Separate test-only commit: `781f9f4` (`test(readiness): stabilize measured timeouts (#22)`).
+- Fresh timeout-fix review: PASS, no findings.
+- State: READY FOR FRESH CHECKER; Phase 3 closeout commit remains pending.
+
+### Phase 3 Checker result
+
+- Cycle 2 scored PASS 5.0/5.0 but failed independent evidence review because five absolute citations omitted the slot-1 Treehouse segment.
+- Fresh Cycle 3 scored PASS 5.0/5.0 and explicitly closed the citation defect.
+- Independent Cycle 3 validation: 33 paths, 26 ranges, 0 missing, 0 range failures, 0 root mismatches.
+- Exact Cycle 1+2 prefix restored at 19,740 bytes and SHA256 `39F9BB4D38498B58636707F773817D257A58DCAD7CA23C9D301DF4873CF3F64C`; Cycle 3 remains append-only.
+- Protected original Cycle 1 remains SHA256 `246AE22109DD74BA798556D7B06BC03396B0DF2D905CF221D37176D6168A14D9`.
+- Protected-work guard: late in-place capture correctly blocked; clean replacement proof from `781f9f4` captured only protected snapshot dirt and validated the exact six-file staged patch.
+- Replacement guard result: PASS, no blockers, no unexpected staged paths, snapshot unstaged. Final validation artifact remains outside Git and is reported after staging to avoid self-reference.
+- Phase 3 gate: PASS; closeout commit pending.

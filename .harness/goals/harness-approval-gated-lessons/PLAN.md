@@ -11,9 +11,9 @@
 
 ## PLANNER_BRIEF
 
-The initial plan covered C01-C06; the approved review follow-up section adds C07-C09. Each phase is an observable checkpoint, not a file inventory. One ID maps to one phase, one durable slice, one mechanical gate, and one Maker commit. The Maker must use path-specific staging, include goal-local bookkeeping in the matching commit, and stop for a new approval if any source path or behavior falls outside `APPROVALS.md`.
+The initial plan covered C01-C06; the approved review follow-up section adds C07-C10. Each phase is an observable checkpoint, not a file inventory. One ID maps to one phase, one durable slice, one mechanical gate, and one Maker commit. The Maker must use path-specific staging, include goal-local bookkeeping in the matching commit, and stop for a new approval if any source path or behavior falls outside `APPROVALS.md`.
 
-The six phases are sequential because C02 and C03 refine role files introduced by C01, C04 may touch the protected launcher only after C03 is active, C05 documents C04's final behavior, and C06 proves the complete commit and working-tree state.
+The ten phases run in this approved order: C01 -> C02 -> C03 -> C04 -> C05 -> C07 -> C08 -> C09 -> C10 -> C06. C02 and C03 refine C01 roles, C04 depends on C03 safeguards, C05 documents C04, C07-C10 close review findings without rewriting history, and C06 proves the final commit and working-tree state.
 
 ## Phases
 
@@ -212,7 +212,7 @@ Artifacts to evaluate:
 - `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\BRIEF.md`
 - `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\PLAN.md`
 - `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\APPROVALS.md`
-- all six issue slices
+- all ten issue slices
 - final files in the approved C01-C10 source boundaries
 - `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\UNTOUCHED_WORK_PROOF.md`
 - `PROGRESS.md` only for exact command output, staged-path evidence, and commit SHAs; do not use Maker opinions or self-assessment as qualitative evidence
@@ -239,6 +239,16 @@ Dimensions (score 1-5 each):
 - Decision fidelity: 5 = protected dirty work preserved and shipping withheld | 1 = protected work staged/lost or shipping attempted.
 
 PASS threshold: mean score at least 4.0/5.0, no dimension below 3, all gates pass, and no approval-integrity violation.
+
+## Post-proof Checker closeout
+
+Post-proof Checker output may enter history only through a separately approved closeout commit. The closeout commit must be atomic. The tracked `CYCLE_LOG.md` must begin with all prior cycles byte-for-byte; a fresh Checker appends the next cycle and never replaces earlier output. This closeout never amends C01-C10 or widens source, shipping, or publication scope.
+
+Exact prior-goal boundary:
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\PLAN.md`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\APPROVALS.md`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\PROGRESS.md`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\CYCLE_LOG.md`
 
 ## SHIP_BRIEF
 

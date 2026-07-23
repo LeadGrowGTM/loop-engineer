@@ -197,3 +197,17 @@ Exact source files:
 
 Verification command:
 `bun test scripts/harness-agent-contracts.test.ts`
+
+## Approved post-proof Checker closeout - 2026-07-22
+
+Status: APPROVED
+
+This bookkeeping closeout is not a new C01-C10 ID and changes no approved source boundary.
+
+Exact prior-goal boundary:
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\PLAN.md`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\APPROVALS.md`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\PROGRESS.md`
+- `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-approval-gated-lessons\CYCLE_LOG.md`
+
+The target `CYCLE_LOG.md` must begin with the byte-identical Cycle 1 artifact. A fresh Checker appends its next cycle and never replaces prior output. One separate atomic closeout commit records these four prior-goal files plus matching task proof. Never amend or rewrite C01-C10. No source, shipping, or publication scope is added.
