@@ -374,11 +374,14 @@ const DIRTY_TREE_TEST_TIMEOUT_MS = 20_000;
 const THREE_ROOT_VALIDATION_TEST_TIMEOUT_MS = 15_000;
 const MODE_VALIDATION_TEST_TIMEOUT_MS = 10_000;
 const TREEHOUSE_STATUS_TEST_TIMEOUT_MS = 10_000;
-const TWO_READINESS_TEST_TIMEOUT_MS = 12_000;
+// Unknown-default plus explicit-default readiness measured 15,344 ms, so this
+// two-call seam gets its own bound without weakening other readiness tests.
+const DEFAULT_BRANCH_PAIR_TEST_TIMEOUT_MS = 20_000;
 // Native direct-handle launch adds one in-wrapper interop compile per command.
 const ISOLATION_PREPARATION_TEST_TIMEOUT_MS = 20_000;
 const CANONICAL_ISOLATION_TEST_TIMEOUT_MS = 25_000;
-// The two-repository default/detached seam measured 16,360 ms under the same load.
+// The two-call default-branch and default/detached seams measured 15,344 ms and
+// 16,360 ms under load, so both share the measured double-readiness bound.
 const DOUBLE_READINESS_TEST_TIMEOUT_MS = 25_000;
 // Timeout cleanup measured 8,407 ms under load with the prior 2,500 ms process
 // timeout and a 5,000 ms cleanup deadline. The control connection adds a second
@@ -388,8 +391,12 @@ const FAILURE_INNER_TIMEOUT_MS = 3_000;
 const FLOOD_FALLBACK_TIMEOUT_MS = 5_000;
 // The exiting-broker flood reached the 5-second inner bound after control-pipe setup.
 const BROKER_FLOOD_FALLBACK_TIMEOUT_MS = 7_500;
-const TIMEOUT_PROMPT_LIMIT_MS = 12_000;
-const DANGLING_PROMPT_LIMIT_MS = 12_000;
+// Full-suite replay measured the stderr timeout seam at 12,058 ms. Keep the
+// prompt bound below the 15-second test ceiling while allowing startup jitter.
+const TIMEOUT_PROMPT_LIMIT_MS = 14_000;
+// Full-suite load measured the broker/grandchild cleanup seam at 12,143 ms.
+// Keep a narrow margin below the 15-second cleanup test ceiling.
+const DANGLING_PROMPT_LIMIT_MS = 13_000;
 const OUTPUT_LIMIT_PROMPT_LIMIT_MS = 12_000;
 // Attempt 11 measured the 3.5 MiB inherited-output stress seam at 12,845 ms.
 const INHERITED_OUTPUT_PROMPT_LIMIT_MS = 20_000;
@@ -872,7 +879,7 @@ describe('prepare-harness-run CLI', () => {
     const explicitResult = invokePrepare(trunkRepo, workspace, ['-DefaultBranch', 'trunk']);
     expect(explicitResult.exitCode).toBe(0);
     expect(JSON.parse(explicitResult.stdout.toString()).defaultBranch).toBe('trunk');
-  }, TWO_READINESS_TEST_TIMEOUT_MS);
+  }, DEFAULT_BRANCH_PAIR_TEST_TIMEOUT_MS);
 
   test('unborn HEAD fails closed', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'prepare-harness-unborn-'));
