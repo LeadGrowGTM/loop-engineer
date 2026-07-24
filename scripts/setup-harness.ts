@@ -10,8 +10,17 @@
  *   bun scripts/setup-harness.ts install <target-dir>
  */
 
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs';
-import { join, dirname } from 'path';
+import {
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'path';
 
 // ── types ──────────────────────────────────────────────────────────────────
 
@@ -182,6 +191,144 @@ export function isValidSkillRouting(content: string): boolean {
 }
 
 export const GUARD_RELATIVE_PATH = 'scripts/guard-protected-work.ts';
+const SOURCE_GUARD_PATH = join(import.meta.dir, 'guard-protected-work.ts');
+
+type ContainedPathKind = 'directory' | 'regular-file';
+
+type InstallPaths = {
+  targetDir: string;
+  guardPath: string;
+  routingPath: string;
+  goalsDir: string;
+  claudeDir: string;
+  tasksTomlPath: string;
+  treehouseTomlPath: string;
+  gitignorePath: string;
+  claudeMdPath: string;
+};
+
+function lstatIfPresent(path: string): ReturnType<typeof lstatSync> | null {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if (
+      error !== null &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 'ENOENT'
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function pathKey(path: string): string {
+  const resolved = resolve(path);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function pathsMatch(left: string, right: string): boolean {
+  return pathKey(left) === pathKey(right);
+}
+
+function isPathContained(root: string, candidate: string): boolean {
+  const rel = relative(root, candidate);
+  return rel === '' || (
+    rel !== '..' &&
+    !rel.startsWith(`..${sep}`) &&
+    !isAbsolute(rel)
+  );
+}
+
+function canonicalExistingEntry(path: string): string {
+  const stats = lstatIfPresent(path);
+  if (!stats) throw new Error(`Required path does not exist: ${path}`);
+  if (stats.isSymbolicLink()) {
+    throw new Error(`Refusing symbolic link, junction, or reparse path: ${path}`);
+  }
+
+  const canonical = realpathSync.native(path);
+  const canonicalParent = realpathSync.native(dirname(path));
+  const expected = resolve(canonicalParent, basename(path));
+  if (!pathsMatch(canonical, expected)) {
+    throw new Error(`Refusing symbolic link, junction, or reparse path: ${path}`);
+  }
+  return canonical;
+}
+
+function trustedTargetDirectory(targetDir: string): string {
+  const requested = resolve(targetDir);
+  const stats = lstatIfPresent(requested);
+  if (!stats) throw new Error(`Target directory does not exist: ${requested}`);
+  if (!stats.isDirectory()) throw new Error(`Target is not a directory: ${requested}`);
+  return canonicalExistingEntry(requested);
+}
+
+function trustedContainedPath(
+  trustedTargetDir: string,
+  relativePath: string,
+  expectedKind: ContainedPathKind,
+): string {
+  const candidate = resolve(trustedTargetDir, relativePath);
+  if (!isPathContained(trustedTargetDir, candidate)) {
+    throw new Error(`Refusing path outside target: ${candidate}`);
+  }
+
+  const rel = relative(trustedTargetDir, candidate);
+  const components = rel === '' ? [] : rel.split(sep);
+  let current = trustedTargetDir;
+
+  for (let index = 0; index < components.length; index += 1) {
+    current = join(current, components[index]);
+    const stats = lstatIfPresent(current);
+    if (!stats) break;
+
+    const canonical = canonicalExistingEntry(current);
+    if (!isPathContained(trustedTargetDir, canonical)) {
+      throw new Error(`Refusing path outside target: ${current}`);
+    }
+
+    const isFinal = index === components.length - 1;
+    if ((!isFinal || expectedKind === 'directory') && !stats.isDirectory()) {
+      throw new Error(`Expected directory path component: ${current}`);
+    }
+    if (isFinal && expectedKind === 'regular-file' && !stats.isFile()) {
+      throw new Error(`Expected regular file: ${current}`);
+    }
+  }
+
+  return candidate;
+}
+
+function validateInstallPaths(targetDir: string): InstallPaths {
+  const trustedTargetDir = trustedTargetDirectory(targetDir);
+  return {
+    targetDir: trustedTargetDir,
+    guardPath: trustedContainedPath(trustedTargetDir, GUARD_RELATIVE_PATH, 'regular-file'),
+    routingPath: trustedContainedPath(
+      trustedTargetDir,
+      '.harness/skill-routing.md',
+      'regular-file',
+    ),
+    goalsDir: trustedContainedPath(trustedTargetDir, '.harness/goals', 'directory'),
+    claudeDir: trustedContainedPath(trustedTargetDir, '.claude', 'directory'),
+    tasksTomlPath: trustedContainedPath(trustedTargetDir, '.tasks.toml', 'regular-file'),
+    treehouseTomlPath: trustedContainedPath(trustedTargetDir, 'treehouse.toml', 'regular-file'),
+    gitignorePath: trustedContainedPath(trustedTargetDir, '.gitignore', 'regular-file'),
+    claudeMdPath: trustedContainedPath(trustedTargetDir, 'CLAUDE.md', 'regular-file'),
+  };
+}
+
+function trustedExistingRegularFile(targetDir: string, relativePath: string): string | null {
+  try {
+    const trustedTargetDir = trustedTargetDirectory(targetDir);
+    const path = trustedContainedPath(trustedTargetDir, relativePath, 'regular-file');
+    return lstatIfPresent(path)?.isFile() ? path : null;
+  } catch {
+    return null;
+  }
+}
 
 // ── scanSkills ─────────────────────────────────────────────────────────────
 
@@ -276,8 +423,10 @@ export function smokeTest(targetDir: string, agentsDir: string): SmokeResult[] {
   const routingPath = join(targetDir, '.harness', 'skill-routing.md');
   const routingOk = existsSync(routingPath) &&
     isValidSkillRouting(readFileSync(routingPath, 'utf8'));
-  const guardPath = join(targetDir, GUARD_RELATIVE_PATH);
-  const guardResult = existsSync(guardPath)
+  const guardPath = trustedExistingRegularFile(targetDir, GUARD_RELATIVE_PATH);
+  const guardMatchesSource = guardPath !== null &&
+    readFileSync(guardPath).equals(readFileSync(SOURCE_GUARD_PATH));
+  const guardResult = guardMatchesSource
     ? Bun.spawnSync([process.execPath, guardPath, '--help'], { stdout: 'pipe', stderr: 'pipe' })
     : null;
   const guardOk = guardResult?.exitCode === 0
@@ -319,7 +468,8 @@ if (import.meta.main) {
     }
     if (!results.every((r) => r.passed)) process.exit(1);
   } else if (cmd === 'install') {
-    const targetDir = rest[0];
+    const installPaths = validateInstallPaths(rest[0]);
+    const targetDir = installPaths.targetDir;
     const agentsDir = join(process.env.HOME ?? process.env.USERPROFILE ?? '', '.claude', 'agents');
     const sourceAgentsDir = join(import.meta.dir, '../.claude/agents');
 
@@ -329,26 +479,24 @@ if (import.meta.main) {
       console.log(`Copied ${f} → ${agentsDir}`);
     }
 
-    const sourceGuardPath = join(import.meta.dir, 'guard-protected-work.ts');
-    const targetGuardPath = join(targetDir, GUARD_RELATIVE_PATH);
-    mkdirSync(dirname(targetGuardPath), { recursive: true });
-    copyFileSync(sourceGuardPath, targetGuardPath);
-    console.log(`Copied ${GUARD_RELATIVE_PATH} → ${targetGuardPath}`);
+    mkdirSync(dirname(installPaths.guardPath), { recursive: true });
+    copyFileSync(SOURCE_GUARD_PATH, installPaths.guardPath);
+    console.log(`Copied ${GUARD_RELATIVE_PATH} → ${installPaths.guardPath}`);
 
     const templatePath = join(import.meta.dir, '../skills/setup-harness/routing-template.md');
     const template = existsSync(templatePath) ? readFileSync(templatePath, 'utf8') : '';
     const skills = scanSkills(targetDir);
     const routing = seedRoutingTable(skills, template);
-    mkdirSync(join(targetDir, '.harness'), { recursive: true });
-    writeFileSync(join(targetDir, '.harness', 'skill-routing.md'), routing);
+    mkdirSync(dirname(installPaths.routingPath), { recursive: true });
+    writeFileSync(installPaths.routingPath, routing);
     console.log(`Wrote .harness/skill-routing.md (${skills.length} skills scanned)`);
 
     // Working-dir home for goal runs (BRIEF/PLAN/issues/PROGRESS/CYCLE_LOG/HANDOFF live under here).
-    mkdirSync(join(targetDir, '.harness', 'goals'), { recursive: true });
+    mkdirSync(installPaths.goalsDir, { recursive: true });
 
     // Seed a per-project backlog so tasks-axi scopes to THIS repo, not the monorepo root.
-    mkdirSync(join(targetDir, '.claude'), { recursive: true });
-    const tasksTomlPath = join(targetDir, '.tasks.toml');
+    mkdirSync(installPaths.claudeDir, { recursive: true });
+    const tasksTomlPath = installPaths.tasksTomlPath;
     if (existsSync(tasksTomlPath)) {
       console.log('.tasks.toml already present — left as-is');
     } else {
@@ -362,7 +510,7 @@ if (import.meta.main) {
     // Seed a per-project treehouse pool so parallel worktrees anchor to THIS repo.
     // treehouse resolves the nearest treehouse.toml from cwd; without one, a run from
     // the project would fall through to the monorepo pool.
-    const treehouseTomlPath = join(targetDir, 'treehouse.toml');
+    const treehouseTomlPath = installPaths.treehouseTomlPath;
     if (existsSync(treehouseTomlPath)) {
       console.log('treehouse.toml already present — left as-is');
     } else {
@@ -371,7 +519,7 @@ if (import.meta.main) {
     }
 
     // Keep the project-local worktree pool out of git.
-    const gitignorePath = join(targetDir, '.gitignore');
+    const gitignorePath = installPaths.gitignorePath;
     const ignoreLines = ['.tmp/treehouse/'];
     const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
     const missing = ignoreLines.filter((l) => !existingIgnore.split(/\r?\n/).includes(l));
@@ -381,7 +529,7 @@ if (import.meta.main) {
       console.log(`Added ${missing.join(', ')} to .gitignore`);
     }
 
-    const claudeMdPath = join(targetDir, 'CLAUDE.md');
+    const claudeMdPath = installPaths.claudeMdPath;
     if (existsSync(claudeMdPath)) {
       const sha = (() => {
         const result = Bun.spawnSync(

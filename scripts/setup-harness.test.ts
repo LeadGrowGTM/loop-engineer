@@ -1,5 +1,13 @@
 import { test, expect, describe } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -349,9 +357,160 @@ describe('smokeTest', () => {
     const guardCheck = results.find((result) => result.check.includes('guard-protected-work'));
     expect(guardCheck?.passed).toBe(false);
   });
+
+  test('smoke CLI rejects a target-controlled guard without executing it', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-untrusted-guard-'));
+    const target = join(root, 'target');
+    const agentsDir = join(root, 'agents');
+    const outsideSentinel = join(root, 'outside-sentinel.bin');
+    const sentinel = Buffer.from([9, 8, 7, 6, 5, 4]);
+    mkdirSync(join(target, '.harness'), { recursive: true });
+    mkdirSync(join(target, 'scripts'), { recursive: true });
+    mkdirSync(agentsDir, { recursive: true });
+    writeFileSync(join(target, '.harness', 'skill-routing.md'), VALID_ROUTING);
+    writeFileSync(join(target, 'CLAUDE.md'), '## Harness\nInstalled.');
+    writeFileSync(outsideSentinel, sentinel);
+    writeFileSync(
+      join(target, GUARD_RELATIVE_PATH),
+      `import { writeFileSync } from 'fs';\nwriteFileSync(${JSON.stringify(outsideSentinel)}, 'executed');\nconsole.log('guard-protected-work');\n`,
+    );
+    for (const file of AGENT_FILES) writeFileSync(join(agentsDir, file), '---');
+
+    const result = Bun.spawnSync(
+      [process.execPath, join(import.meta.dir, 'setup-harness.ts'), 'smoke', target, agentsDir],
+      { stdout: 'pipe', stderr: 'pipe' },
+    );
+
+    expect({
+      failed: result.exitCode !== 0,
+      outsideSentinelUnchanged: readFileSync(outsideSentinel).equals(sentinel),
+    }).toEqual({
+      failed: true,
+      outsideSentinelUnchanged: true,
+    });
+  });
 });
 
 describe('install CLI', () => {
+  test('fails closed before writes when target scripts links outside the target', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-linked-scripts-'));
+    const target = join(root, 'target');
+    const outsideScripts = join(root, 'outside-scripts');
+    const home = join(root, 'home');
+    mkdirSync(target, { recursive: true });
+    mkdirSync(outsideScripts, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+
+    const outsideGuard = join(outsideScripts, 'guard-protected-work.ts');
+    const sentinel = Buffer.from([0, 255, 17, 34, 51, 68]);
+    writeFileSync(outsideGuard, sentinel);
+    symlinkSync(
+      outsideScripts,
+      join(target, 'scripts'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    const result = Bun.spawnSync(
+      [process.execPath, join(import.meta.dir, 'setup-harness.ts'), 'install', target],
+      {
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
+
+    expect({
+      failed: result.exitCode !== 0,
+      outsideSentinelUnchanged: readFileSync(outsideGuard).equals(sentinel),
+      agentsCopied: existsSync(join(home, '.claude', 'agents')),
+    }).toEqual({
+      failed: true,
+      outsideSentinelUnchanged: true,
+      agentsCopied: false,
+    });
+  });
+
+  test('fails closed before writes when the guard file links outside the target', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-linked-guard-'));
+    const target = join(root, 'target');
+    const home = join(root, 'home');
+    const outsideGuard = join(root, 'outside-guard.ts');
+    const sentinel = Buffer.from([101, 102, 103, 104]);
+    mkdirSync(join(target, 'scripts'), { recursive: true });
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+    writeFileSync(outsideGuard, sentinel);
+    try {
+      symlinkSync(
+        outsideGuard,
+        join(target, GUARD_RELATIVE_PATH),
+        process.platform === 'win32' ? 'file' : undefined,
+      );
+    } catch (error) {
+      if (
+        process.platform === 'win32' &&
+        error !== null &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error.code === 'EPERM' || error.code === 'EACCES')
+      ) {
+        return;
+      }
+      throw error;
+    }
+
+    const result = Bun.spawnSync(
+      [process.execPath, join(import.meta.dir, 'setup-harness.ts'), 'install', target],
+      {
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
+
+    expect({
+      failed: result.exitCode !== 0,
+      outsideSentinelUnchanged: readFileSync(outsideGuard).equals(sentinel),
+      agentsCopied: existsSync(join(home, '.claude', 'agents')),
+    }).toEqual({
+      failed: true,
+      outsideSentinelUnchanged: true,
+      agentsCopied: false,
+    });
+  });
+
+  test('fails closed before writes on a non-directory intermediate component', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-file-component-'));
+    const target = join(root, 'target');
+    const home = join(root, 'home');
+    const scriptsPath = join(target, 'scripts');
+    const sentinel = Buffer.from([201, 202, 203, 204]);
+    mkdirSync(target, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+    writeFileSync(scriptsPath, sentinel);
+
+    const result = Bun.spawnSync(
+      [process.execPath, join(import.meta.dir, 'setup-harness.ts'), 'install', target],
+      {
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
+
+    expect({
+      failed: result.exitCode !== 0,
+      intermediateUnchanged: readFileSync(scriptsPath).equals(sentinel),
+      agentsCopied: existsSync(join(home, '.claude', 'agents')),
+    }).toEqual({
+      failed: true,
+      intermediateUnchanged: true,
+      agentsCopied: false,
+    });
+  });
+
   test('seeds treehouse readiness without runner state or execution guidance', () => {
     const root = mkdtempSync(join(tmpdir(), 'setup-harness-install-'));
     const target = join(root, 'target repo');
