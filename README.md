@@ -103,17 +103,23 @@ bun scripts/manage-pi-openai-server-compaction.ts disable <project-root>
 ```
 
 `check` is read-only and reports `DISABLED`, `READY`, or `NOT_READY` as JSON. `setup` is the
-only enabling path. It first backs up settings, records the exact package with `autoload: false`,
-reconciles only that package, and verifies the clone HEAD, package metadata, settings entry, and
-compatible versions. It then writes the project-local lock and config atomically and changes
-`autoload` to `true` only in the final settings write. A failed setup retains its work in an inert
-state rather than leaving an active partial setup.
+only enabling path. It first writes a non-sensitive rollback marker recording that it is about to
+add one pinned package entry, records the exact package with `autoload: false`, reconciles only
+that package, and verifies the clone HEAD, package metadata, settings entry, and compatible
+versions. It then writes the project-local lock and config atomically and changes `autoload` to
+`true` only in the final settings write. A failed setup retains its work in an inert state rather
+than leaving an active partial setup. On an already-`READY` project, `setup` re-verifies the live
+clone against the pinned commit (`git rev-parse HEAD` and a clean `git status --porcelain`) before
+affirming `READY`, rather than trusting the lockfile's declared commit; a moved `HEAD` or dirty
+worktree fails with `GIT_HEAD_MISMATCH` or `CLONE_WORKTREE_DIRTY`.
 
-All managed state stays under `<project-root>/.pi/`: the preserved `settings.json`, the extension
-clone, `openai-server-compaction.lock.json`, `openai-server-compaction.json`, and exclusive settings
-and enabled-config backups. `disable` writes `enabled: false` before `autoload: false`. It deletes
-nothing and retains the package, clone, lock, config, and backups for rollback. For an emergency
-bypass, run `disable` before manual operator recovery and inspect its JSON result.
+All managed state stays under `<project-root>/.pi/`: `settings.json`, the extension clone,
+`openai-server-compaction.lock.json`, `openai-server-compaction.json`, and exclusive settings and
+enabled-config backups. The settings backup is metadata only (package name, source spec, and the
+fact that one entry was added) — never a copy of `settings.json` itself, so it cannot carry operator
+secrets. `disable` writes `enabled: false` before `autoload: false`. It deletes nothing and retains
+the package, clone, lock, config, and backups for rollback. For an emergency bypass, run `disable`
+before manual operator recovery and inspect its JSON result.
 
 ### Data and model disclosure
 
@@ -125,6 +131,8 @@ bypass, run `disable` before manual operator recovery and inspect its JSON resul
 - Local Pi sessions may contain opaque compaction artifacts in JSONL or other session files. The
   manager does not copy those artifacts into this repo. It stores no credentials, prompts,
   conversation context, model secrets, or opaque session artifacts in managed config or JSON output.
+- The settings backup written by `setup` never contains a verbatim copy of `settings.json`, so it
+  cannot leak operator secrets that may live alongside the managed entry.
 - Tests are offline. They fake Node, Pi, Git and package records, processes, the filesystem, and the
   network on Windows and POSIX. They do not authenticate, call OpenAI, or fetch the extension.
 
