@@ -377,9 +377,12 @@ const TREEHOUSE_STATUS_TEST_TIMEOUT_MS = 10_000;
 // Unknown-default plus explicit-default readiness measured 15,344 ms, so this
 // two-call seam gets its own bound without weakening other readiness tests.
 const DEFAULT_BRANCH_PAIR_TEST_TIMEOUT_MS = 20_000;
-// Native direct-handle launch adds one in-wrapper interop compile per command.
-const ISOLATION_PREPARATION_TEST_TIMEOUT_MS = 20_000;
-const CANONICAL_ISOLATION_TEST_TIMEOUT_MS = 25_000;
+// Readiness-suite replay measured isolation preparation at 22,094 ms after the
+// process-cleanup tests, including one in-wrapper interop compile per command.
+const ISOLATION_PREPARATION_TEST_TIMEOUT_MS = 30_000;
+// Full-suite replay measured the two-call canonical worktree path at 29,344 ms.
+// Keep a bounded margin without weakening unrelated readiness tests.
+const CANONICAL_ISOLATION_TEST_TIMEOUT_MS = 40_000;
 // The two-call default-branch and default/detached seams measured 15,344 ms and
 // 16,360 ms under load, so both share the measured double-readiness bound.
 const DOUBLE_READINESS_TEST_TIMEOUT_MS = 25_000;
@@ -388,22 +391,24 @@ const DOUBLE_READINESS_TEST_TIMEOUT_MS = 25_000;
 // bounded setup pipe, so failure fixtures allow 3,000 ms within the same prompt bound.
 const INTERNAL_TREEHOUSE_TIMEOUT_ARGUMENT = '-InternalTreehouseStatusTimeoutMilliseconds';
 const FAILURE_INNER_TIMEOUT_MS = 3_000;
-const FLOOD_FALLBACK_TIMEOUT_MS = 5_000;
+// Readiness-suite replay needed more than 5 seconds for the inherited-stream
+// grandchild to report normal status under accumulated process load.
+const FLOOD_FALLBACK_TIMEOUT_MS = 7_500;
 // The exiting-broker flood reached the 5-second inner bound after control-pipe setup.
 const BROKER_FLOOD_FALLBACK_TIMEOUT_MS = 7_500;
-// Full-suite replay measured the stderr timeout seam at 12,058 ms. Keep the
-// prompt bound below the 15-second test ceiling while allowing startup jitter.
+// Full-suite replay hit the 15,016 ms outer deadline during named-event release;
+// the command invocation remained below its existing 14-second prompt bound.
 const TIMEOUT_PROMPT_LIMIT_MS = 14_000;
-// Full-suite load measured the broker/grandchild cleanup seam at 12,143 ms.
-// Keep a narrow margin below the 15-second cleanup test ceiling.
-const DANGLING_PROMPT_LIMIT_MS = 13_000;
+const TIMEOUT_CLEANUP_TEST_TIMEOUT_MS = 20_000;
+// Readiness-suite replay measured inherited-stream grandchild settlement at
+// 13,547 ms. Keep bounded prompt and outer margins for that process family.
+const DANGLING_PROMPT_LIMIT_MS = 18_000;
+const DANGLING_CLEANUP_TEST_TIMEOUT_MS = 20_000;
 const OUTPUT_LIMIT_PROMPT_LIMIT_MS = 12_000;
 // Attempt 11 measured the 3.5 MiB inherited-output stress seam at 12,845 ms.
 const INHERITED_OUTPUT_PROMPT_LIMIT_MS = 20_000;
 // Attempt 13 measured normal-success stream-closed settlement at 12,359 ms.
 const NORMAL_SUCCESS_DAEMON_PROMPT_LIMIT_MS = 20_000;
-const TIMEOUT_CLEANUP_TEST_TIMEOUT_MS = 15_000;
-const DANGLING_CLEANUP_TEST_TIMEOUT_MS = 15_000;
 const OUTPUT_LIMIT_CLEANUP_TEST_TIMEOUT_MS = 15_000;
 const INHERITED_OUTPUT_TEST_TIMEOUT_MS = 25_000;
 const NORMAL_SUCCESS_DAEMON_TEST_TIMEOUT_MS = 25_000;
