@@ -81,6 +81,53 @@ powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
 
 Treehouse is optional for a standalone serial repository. Add `-Parallel` when preparing a parallel stream; parallel streams and canonical monorepo pipelines require isolation. If Treehouse is missing when isolation is required, readiness fails with remediation instead of falling back. The `-PrepareIsolation` mode acquires a Treehouse lease and creates a unique derived `runBranch` at the checked source `HEAD` before returning READY. It keeps `branch` as the source branch and returns `runPath` plus `returnCommand`. Work and commit only on `runBranch`; verify that branch contains the intended commits before deliberately returning the lease.
 
+## Optional Pi OpenAI server compaction
+
+This integration is optional and off by default. Neither `scripts/setup-harness.ts` nor
+`scripts/prepare-harness-run.ps1` invokes the manager, changes Pi state, or installs the extension.
+Ordinary harness setup, readiness, and goal runs are unaffected.
+
+The project must already contain `.pi/settings.json`. Setup requires Node `>=22`, Pi
+`>=0.80.9 <0.81.0`, and this immutable package spec:
+
+```
+git:github.com/algal/pi-openai-server-compaction@c6d593087709e9481223dc6c6c2269b371b5e055
+```
+
+Use the dedicated manager from this repo:
+
+```bash
+bun scripts/manage-pi-openai-server-compaction.ts check <project-root>
+bun scripts/manage-pi-openai-server-compaction.ts setup <project-root> --enable --acknowledge-openai-retention
+bun scripts/manage-pi-openai-server-compaction.ts disable <project-root>
+```
+
+`check` is read-only and reports `DISABLED`, `READY`, or `NOT_READY` as JSON. `setup` is the
+only enabling path. It first backs up settings, records the exact package with `autoload: false`,
+reconciles only that package, and verifies the clone HEAD, package metadata, settings entry, and
+compatible versions. It then writes the project-local lock and config atomically and changes
+`autoload` to `true` only in the final settings write. A failed setup retains its work in an inert
+state rather than leaving an active partial setup.
+
+All managed state stays under `<project-root>/.pi/`: the preserved `settings.json`, the extension
+clone, `openai-server-compaction.lock.json`, `openai-server-compaction.json`, and exclusive settings
+and enabled-config backups. `disable` writes `enabled: false` before `autoload: false`. It deletes
+nothing and retains the package, clone, lock, config, and backups for rollback. For an emergency
+bypass, run `disable` before manual operator recovery and inspect its JSON result.
+
+### Data and model disclosure
+
+- Setup writes `store: true`, and the extension sends compaction requests with `store: true`.
+  OpenAI receives the context sent for compaction and may retain server-side data under the
+  operator's OpenAI account and API policy.
+- The pinned upstream supports the `openai/*` and `openai-codex/*` model families. Azure support is
+  partial and opt-in upstream; it remains off unless separately configured.
+- Local Pi sessions may contain opaque compaction artifacts in JSONL or other session files. The
+  manager does not copy those artifacts into this repo. It stores no credentials, prompts,
+  conversation context, model secrets, or opaque session artifacts in managed config or JSON output.
+- Tests are offline. They fake Node, Pi, Git and package records, processes, the filesystem, and the
+  network on Windows and POSIX. They do not authenticate, call OpenAI, or fetch the extension.
+
 ## Second goal path: the benchmarking loop
 
 The build loop above produces an *artifact*. The **benchmarking loop** is the second
