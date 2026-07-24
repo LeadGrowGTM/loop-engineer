@@ -56,7 +56,10 @@ if ($Parallel -or $PrepareIsolation) {
   $prepareArgs.Parallel = [bool]$Parallel
 }
 else {
+  # Compatibility current-branch check: isolation is opt-in for this shim, so opt out
+  # of the harness default-on isolation to preserve the non-isolated readiness report.
   $prepareArgs.CheckOnly = $true
+  $prepareArgs.NoIsolation = $true
 }
 
 & $prepareScript @prepareArgs

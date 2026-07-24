@@ -18,6 +18,7 @@ param(
   [switch]$CheckOnly,
   [switch]$PrepareIsolation,
   [switch]$Parallel,
+  [switch]$NoIsolation,
   [switch]$CurrentBranch,
   [string]$LeaseHolder = "harness-readiness",
   [string]$DefaultBranch = "",
@@ -1195,6 +1196,10 @@ try {
     Add-ReadinessError 'invalid_mode' 'Choose exactly one operation mode: CheckOnly or PrepareIsolation.'
     Complete-Readiness 1
   }
+  if ($NoIsolation -and ($PrepareIsolation -or $Parallel)) {
+    Add-ReadinessError 'invalid_mode' '-NoIsolation cannot be combined with -PrepareIsolation or -Parallel.'
+    Complete-Readiness 1
+  }
   $result.mode = if ($CheckOnly) { 'CHECK_ONLY' } else { 'PREPARE_ISOLATION' }
 
   if (-not (Test-Path -LiteralPath $RepoPath -PathType Container)) {
@@ -1403,7 +1408,13 @@ try {
   }
   $sourceCommonDir = Resolve-GitPath $gitInspectionRoot $commonDirResult.Stdout.Trim()
 
-  $result.isolationRequired = [bool]($Parallel -or $PrepareIsolation -or $isCanonicalMonorepoPipeline)
+  # Isolation is the default: every run leases a treehouse worktree unless the caller
+  # opts out with -NoIsolation. Canonical monorepo pipelines always require isolation
+  # and cannot opt out.
+  if ($NoIsolation -and $isCanonicalMonorepoPipeline) {
+    Add-ReadinessError 'noisolation_forbidden_canonical' 'Canonical monorepo pipelines always require isolation; -NoIsolation is not allowed here.'
+  }
+  $result.isolationRequired = [bool]($isCanonicalMonorepoPipeline -or (-not $NoIsolation))
   $treehouse = $null
   if ($result.isolationRequired) {
     $treehouse = Resolve-CommandPath 'treehouse' @('Application', 'ExternalScript') @($resolvedRepo, $resolvedWorkspace)
@@ -1412,7 +1423,7 @@ try {
       $remediation = if ($isCanonicalMonorepoPipeline) {
         'Treehouse is required for this canonical pipeline. Install treehouse or choose a standalone repository.'
       } else {
-        'Treehouse is required for isolation but is not on PATH. Install treehouse or rerun CheckOnly without Parallel.'
+        'Treehouse is required for isolation but is not on PATH. Install treehouse, or pass -NoIsolation to run on the current feature branch without isolation.'
       }
       Add-ReadinessError 'missing_treehouse' $remediation
       Complete-Readiness 1
