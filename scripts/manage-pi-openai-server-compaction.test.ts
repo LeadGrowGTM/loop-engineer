@@ -38,6 +38,13 @@ const EXTENSION_SPEC = `git:github.com/algal/pi-openai-server-compaction@${PINNE
 const PACKAGE_NAME = 'pi-openai-server-compaction';
 const SETTINGS_BACKUP_NAME = 'settings.json.pi-openai-server-compaction.backup';
 const ENABLED_CONFIG_BACKUP_NAME = 'openai-server-compaction.enabled.backup.json';
+// Must match serializeJson(SETTINGS_BACKUP_METADATA) in the CLI byte-for-byte.
+const SETTINGS_BACKUP_METADATA_JSON = `${JSON.stringify({
+  schemaVersion: 1,
+  packageName: PACKAGE_NAME,
+  source: EXTENSION_SPEC,
+  managedEntryAdded: true,
+}, null, 2)}\n`;
 const PERSISTENCE_CANARIES = [
   'harmless-credential-canary-7d2f45',
   'harmless-prompt-canary-a81c09',
@@ -382,6 +389,7 @@ interface SetupScenario {
   swapPiAfterNode?: boolean;
   swapGitAfterUpdate?: boolean;
   gitSwapPaths?: { candidate: string; replacement: string; marker: string };
+  settingsSecret?: string;
 }
 
 function writeHappyPiExecutable(
@@ -389,7 +397,6 @@ function writeHappyPiExecutable(
   parent: string,
   projectRoot: string,
   argvLog: string,
-  originalSettings: string,
   scenario: SetupScenario,
 ): string {
   const fakeSourcePath = join(parent, 'fake-pi.ts');
@@ -405,7 +412,7 @@ function writeHappyPiExecutable(
   );
   const updateSettingsSnapshot = join(parent, 'settings-at-update.json');
   const outsideManagedRoot = join(parent, 'outside-managed');
-  const originalBase64 = Buffer.from(originalSettings).toString('base64');
+  const metadataBackupBase64 = Buffer.from(SETTINGS_BACKUP_METADATA_JSON).toString('base64');
   const packageFixture = scenario.packageFixture ?? 'valid';
   const packageContents = packageFixture === 'missing'
     ? null
@@ -447,7 +454,7 @@ const expectedUpdate = ['update', '--extension', ${JSON.stringify(EXTENSION_SPEC
 if (JSON.stringify(argv) !== JSON.stringify(expectedUpdate)) process.exit(91);
 if (process.cwd() !== ${JSON.stringify(projectRoot)}) process.exit(92);
 const backup = readFileSync(${JSON.stringify(backupPath)});
-if (backup.toString('base64') !== ${JSON.stringify(originalBase64)}) process.exit(93);
+if (backup.toString('base64') !== ${JSON.stringify(metadataBackupBase64)}) process.exit(93);
 const settingsBytes = readFileSync(${JSON.stringify(settingsPath)});
 writeFileSync(${JSON.stringify(updateSettingsSnapshot)}, settingsBytes);
 const settings = JSON.parse(settingsBytes.toString('utf8')) as {
@@ -499,11 +506,13 @@ function runSetupScenario(scenario: SetupScenario = {}): HappySetupRun {
   if (scenario.conflictingEntry) {
     packages.push({ source: EXTENSION_SPEC, autoload: true, owner: 'preexisting' });
   }
-  const originalSettings = `${JSON.stringify({
+  const settingsObject: Record<string, unknown> = {
     theme: 'solarized',
     unrelated: { keep: true, order: [3, 1, 2] },
     packages,
-  }, null, 2)}\n`;
+  };
+  if (scenario.settingsSecret !== undefined) settingsObject.apiKey = scenario.settingsSecret;
+  const originalSettings = `${JSON.stringify(settingsObject, null, 2)}\n`;
   writeFileSync(settings, originalSettings);
 
   const lock = join(pi, 'openai-server-compaction.lock.json');
@@ -556,7 +565,6 @@ function runSetupScenario(scenario: SetupScenario = {}): HappySetupRun {
     parent,
     projectRoot,
     argvLog,
-    originalSettings,
     scenario,
   );
   if (scenario.swapPiAfterNode) {
@@ -736,7 +744,7 @@ function expectRetainedSetupFailure(
   });
 
   if (staged) {
-    expect(readFileSync(run.paths.backup)).toEqual(Buffer.from(run.originalSettings));
+    expect(readFileSync(run.paths.backup, 'utf8')).toBe(SETTINGS_BACKUP_METADATA_JSON);
     expect(settings.packages.filter((entry) => entry.source === EXTENSION_SPEC)).toEqual([{
       source: EXTENSION_SPEC,
       autoload: false,
@@ -942,9 +950,53 @@ function expectNoCanaryPersistence(projectRoot: string, captured: string[]): voi
   for (const canary of PERSISTENCE_CANARIES) expect(scanned).not.toContain(canary);
 }
 
-function runReadySetupAgain(projectRoot: string, inputs: CliInputs = {}): DisableRun {
+interface ReadyReverifyOptions {
+  gitHead?: string;
+  statusOutput?: string;
+  statusExitCode?: number;
+  omitGit?: boolean;
+}
+
+interface ReadyReverifyRun extends DisableRun {
+  argv: string[];
+  clone: string;
+}
+
+// Re-runs setup on an already-READY project. Only git is provided (node and pi stay
+// trapped) so the run also proves the ready short-circuit re-verifies via git alone.
+// The git fake distinguishes rev-parse HEAD from status --porcelain, which the flat
+// writeFakeExecutable echo cannot do.
+function runReadySetupAgain(
+  projectRoot: string,
+  options: ReadyReverifyOptions = {},
+): ReadyReverifyRun {
   const parent = mkdtempSync(join(tmpdir(), 'pi-compaction-setup-again-'));
-  const traps = createProcessTraps(parent);
+  // Always exclude git from the traps: when provided we install our own fake git,
+  // and when omitted git must be genuinely absent from PATH (Bun.which returns null).
+  const traps = createProcessTraps(parent, ['git']);
+  const argvLog = join(parent, 'setup-again-argv.log');
+  writeFileSync(argvLog, '');
+  if (!options.omitGit) {
+    const gitSource = join(parent, 'reverify-git.ts');
+    writeFileSync(
+      gitSource,
+      `import { appendFileSync } from 'node:fs';
+const argv = process.argv.slice(2);
+appendFileSync(${JSON.stringify(argvLog)}, ['git', ...argv].join('\\t') + '\\n');
+if (argv.includes('rev-parse') && argv.includes('HEAD')) {
+  console.log(${JSON.stringify(options.gitHead ?? PINNED_COMMIT)});
+  process.exit(0);
+}
+if (argv.includes('status') && argv.includes('--porcelain')) {
+  if (${options.statusExitCode ?? 0} !== 0) process.exit(${options.statusExitCode ?? 0});
+  process.stdout.write(${JSON.stringify(options.statusOutput ?? '')});
+  process.exit(0);
+}
+process.exit(1);
+`,
+    );
+    writeBunBackedExecutable(traps.bin, 'git', gitSource);
+  }
   const before = treeSnapshot(projectRoot);
   const result = Bun.spawnSync(
     [
@@ -960,13 +1012,13 @@ function runReadySetupAgain(projectRoot: string, inputs: CliInputs = {}): Disabl
         ...process.env,
         PATH: traps.bin,
         PROCESS_TRAP_HITS: traps.hits,
-        ...inputs.env,
+        VERSION_ARGV_LOG: argvLog,
       },
-      stdin: inputs.stdin === undefined ? undefined : Buffer.from(inputs.stdin),
       stdout: 'pipe',
       stderr: 'pipe',
     },
   );
+  const argvText = readFileSync(argvLog, 'utf8').trimEnd();
 
   return {
     exitCode: result.exitCode,
@@ -975,6 +1027,8 @@ function runReadySetupAgain(projectRoot: string, inputs: CliInputs = {}): Disabl
     hits: traps.hits,
     before,
     after: treeSnapshot(projectRoot),
+    argv: argvText ? argvText.split(/\r?\n/) : [],
+    clone: join(projectRoot, '.pi', 'git', 'github.com', 'algal', 'pi-openai-server-compaction'),
   };
 }
 
@@ -1689,7 +1743,7 @@ describe('manage-pi-openai-server-compaction CLI', () => {
     const run = runHappySetup();
 
     expectReadySetup(run);
-    expect(readFileSync(run.paths.backup)).toEqual(Buffer.from(run.originalSettings));
+    expect(readFileSync(run.paths.backup, 'utf8')).toBe(SETTINGS_BACKUP_METADATA_JSON);
 
     const originalSettings = JSON.parse(run.originalSettings) as Record<string, unknown>;
     const settingsAtUpdate = JSON.parse(
@@ -1860,6 +1914,18 @@ describe('manage-pi-openai-server-compaction CLI', () => {
     expect(readFileSync(run.paths.backup, 'utf8')).toBe(collisionBytes);
   });
 
+  test('setup writes a non-sensitive metadata backup that never copies settings secrets', () => {
+    const secret = 'sk-live-super-secret-6e10bd';
+    const run = runSetupScenario({ settingsSecret: secret });
+
+    expectReadySetup(run);
+    const backupText = readFileSync(run.paths.backup, 'utf8');
+    expect(backupText).toBe(SETTINGS_BACKUP_METADATA_JSON);
+    expect(backupText).not.toContain(secret);
+    // The operator's real settings still hold the secret; the backup must not duplicate it.
+    expect(readFileSync(run.paths.settings, 'utf8')).toContain(secret);
+  });
+
   test('setup treats spaces, quotes, and metacharacters as literal path characters', () => {
     const run = runSetupScenario({ projectName: "project space 'quote' & meta" });
 
@@ -2008,6 +2074,42 @@ describe('manage-pi-openai-server-compaction CLI', () => {
     const secondRun = runDisable(setupRun.projectRoot);
     expectDisableResult(secondRun, 'DISABLED');
     expect(secondRun.after).toEqual(secondRun.before);
+  });
+
+  test('disable turns off an actively enabled extension even when the lock file is missing', () => {
+    const setupRun = runHappySetup();
+    renameSync(setupRun.paths.lock, `${setupRun.paths.lock}.aside`);
+
+    const run = runDisable(setupRun.projectRoot);
+    expectDisableResult(run, 'DISABLED');
+    expect(
+      (JSON.parse(readFileSync(setupRun.paths.config, 'utf8')) as { enabled: boolean }).enabled,
+    ).toBe(false);
+    const settings = JSON.parse(readFileSync(setupRun.paths.settings, 'utf8')) as {
+      packages: Array<Record<string, unknown>>;
+    };
+    expect(settings.packages).toContainEqual({ source: EXTENSION_SPEC, autoload: false });
+    expect(
+      settings.packages.some((entry) => entry.source === EXTENSION_SPEC && entry.autoload === true),
+    ).toBe(false);
+  });
+
+  test('disable stays usable across a setup, disable, re-enable, disable cycle', () => {
+    const setupRun = runHappySetup();
+    expectDisableResult(runDisable(setupRun.projectRoot), 'DISABLED');
+
+    const reenableRun = runSetupOnExisting(setupRun.projectRoot);
+    expect(parseSingleLineJson(reenableRun.stdout)).toEqual({ status: 'READY' });
+
+    const secondDisable = runDisable(setupRun.projectRoot);
+    expectDisableResult(secondDisable, 'DISABLED');
+    expect(
+      (JSON.parse(readFileSync(setupRun.paths.config, 'utf8')) as { enabled: boolean }).enabled,
+    ).toBe(false);
+    const settings = JSON.parse(readFileSync(setupRun.paths.settings, 'utf8')) as {
+      packages: Array<Record<string, unknown>>;
+    };
+    expect(settings.packages).toContainEqual({ source: EXTENSION_SPEC, autoload: false });
   });
 
   test('fully consented setup re-enables exact retained disabled state without reinstalling', () => {
@@ -2380,7 +2482,7 @@ describe('manage-pi-openai-server-compaction CLI', () => {
     expectNoCanaryPersistence(setupRun.projectRoot, [run.stdout, run.stderr]);
   });
 
-  test('setup is byte-idempotent and process-free when the project is already READY', () => {
+  test('setup re-verifies the live clone and stays byte-idempotent when already READY', () => {
     const setupRun = runHappySetup();
     const originalBackup = readFileSync(setupRun.paths.backup);
     const run = runReadySetupAgain(setupRun.projectRoot);
@@ -2388,9 +2490,60 @@ describe('manage-pi-openai-server-compaction CLI', () => {
     expect(run.exitCode).toBe(0);
     expect(parseSingleLineJson(run.stdout)).toEqual({ status: 'READY' });
     expect(run.stderr).toBe('');
+    // node and pi are never re-probed; the ready path verifies the clone via git only.
+    expect(run.argv).toEqual([
+      `git\t-C\t${run.clone}\trev-parse\tHEAD`,
+      `git\t-C\t${run.clone}\tstatus\t--porcelain`,
+    ]);
     expect(readdirSync(run.hits)).toEqual([]);
     expect(run.after).toEqual(run.before);
     expect(readFileSync(setupRun.paths.backup)).toEqual(originalBackup);
+  });
+
+  test('setup rejects an already-installed project whose clone HEAD drifted off the pin', () => {
+    const setupRun = runHappySetup();
+    const run = runReadySetupAgain(setupRun.projectRoot, {
+      gitHead: '1234567890123456789012345678901234567890',
+    });
+
+    expect(run.exitCode).toBe(2);
+    expect(parseSingleLineJson(run.stdout)).toMatchObject({
+      status: 'NOT_READY',
+      code: 'GIT_HEAD_MISMATCH',
+    });
+    expect(run.argv).toEqual([`git\t-C\t${run.clone}\trev-parse\tHEAD`]);
+    expect(run.after).toEqual(run.before);
+  });
+
+  test('setup rejects an already-installed project whose clone worktree is dirty', () => {
+    const setupRun = runHappySetup();
+    const run = runReadySetupAgain(setupRun.projectRoot, {
+      statusOutput: ' M src/index.ts\n',
+    });
+
+    expect(run.exitCode).toBe(2);
+    expect(parseSingleLineJson(run.stdout)).toMatchObject({
+      status: 'NOT_READY',
+      code: 'CLONE_WORKTREE_DIRTY',
+    });
+    expect(run.argv).toEqual([
+      `git\t-C\t${run.clone}\trev-parse\tHEAD`,
+      `git\t-C\t${run.clone}\tstatus\t--porcelain`,
+    ]);
+    expect(run.after).toEqual(run.before);
+  });
+
+  test('setup refuses to confirm READY when git is unavailable to verify the clone', () => {
+    const setupRun = runHappySetup();
+    const run = runReadySetupAgain(setupRun.projectRoot, { omitGit: true });
+
+    expect(run.exitCode).toBe(2);
+    expect(parseSingleLineJson(run.stdout)).toMatchObject({
+      status: 'NOT_READY',
+      code: 'GIT_EXECUTABLE_UNTRUSTED',
+    });
+    expect(run.argv).toEqual([]);
+    expect(run.after).toEqual(run.before);
   });
 
   test('ordinary setup-harness install has zero Pi compaction effects', () => {

@@ -25,6 +25,16 @@ const PACKAGE_NAME = 'pi-openai-server-compaction';
 const CLONE_RELATIVE_PATH = '.pi/git/github.com/algal/pi-openai-server-compaction';
 const SETTINGS_BACKUP_NAME = 'settings.json.pi-openai-server-compaction.backup';
 const ENABLED_CONFIG_BACKUP_NAME = 'openai-server-compaction.enabled.backup.json';
+// Non-sensitive rollback marker written in place of a verbatim settings.json copy.
+// A full settings snapshot would duplicate operator secrets onto an un-ignored file;
+// the only thing setup must record to undo itself is that it appended one pinned
+// package entry, which is fully described by these constants.
+const SETTINGS_BACKUP_METADATA = {
+  schemaVersion: 1,
+  packageName: PACKAGE_NAME,
+  source: EXTENSION_SPEC,
+  managedEntryAdded: true,
+};
 
 interface CheckOptions {
   command: 'check';
@@ -64,6 +74,7 @@ type NotReadyCode =
   | 'PI_UPDATE_FAILED'
   | 'PI_UPDATE_OUTPUT_LIMIT_EXCEEDED'
   | 'CLONE_MISSING'
+  | 'CLONE_WORKTREE_DIRTY'
   | 'GIT_COMMAND_FAILED'
   | 'GIT_OUTPUT_LIMIT_EXCEEDED'
   | 'GIT_HEAD_MALFORMED'
@@ -717,10 +728,65 @@ function reenable(
   return { status: 'READY' };
 }
 
+// check() reports READY from the manager's own lockfile, which records the commit
+// the clone was pinned to at install time. That declaration can drift: the clone's
+// live HEAD can move or its worktree can be edited after install. setup is the
+// authoritative install command, so before it affirms READY it re-verifies the live
+// clone against the pin with a trusted git. (check() stays a zero-subprocess probe.)
+function verifyReadyClone(
+  projectRoot: string,
+  gitExecutable: TrustedExecutable,
+): SetupReport {
+  const clonePath = join(projectRoot, ...CLONE_RELATIVE_PATH.split('/'));
+  if (!managedPathIsTrusted(projectRoot, clonePath, 'directory')) {
+    return notReady('MANAGED_PATH_UNTRUSTED');
+  }
+
+  const headResult = runTrustedCommand(
+    gitExecutable,
+    ['-C', clonePath, 'rev-parse', 'HEAD'],
+    projectRoot,
+  );
+  if (!headResult.ok) {
+    return notReady(
+      headResult.reason === 'UNTRUSTED'
+        ? 'GIT_EXECUTABLE_UNTRUSTED'
+        : headResult.reason === 'OUTPUT_LIMIT'
+          ? 'GIT_OUTPUT_LIMIT_EXCEEDED'
+          : 'GIT_COMMAND_FAILED',
+    );
+  }
+  const cloneHead = headResult.stdout.trim();
+  if (!/^[0-9a-f]{40}$/.test(cloneHead)) return notReady('GIT_HEAD_MALFORMED');
+  if (cloneHead !== PINNED_COMMIT) return notReady('GIT_HEAD_MISMATCH');
+
+  const statusResult = runTrustedCommand(
+    gitExecutable,
+    ['-C', clonePath, 'status', '--porcelain'],
+    projectRoot,
+  );
+  if (!statusResult.ok) {
+    return notReady(
+      statusResult.reason === 'UNTRUSTED'
+        ? 'GIT_EXECUTABLE_UNTRUSTED'
+        : statusResult.reason === 'OUTPUT_LIMIT'
+          ? 'GIT_OUTPUT_LIMIT_EXCEEDED'
+          : 'GIT_COMMAND_FAILED',
+    );
+  }
+  if (statusResult.stdout.trim() !== '') return notReady('CLONE_WORKTREE_DIRTY');
+
+  return { status: 'READY' };
+}
+
 function setup(projectRoot: string): SetupReport {
   projectRoot = trustedProjectRoot(projectRoot);
   const existingState = check(projectRoot);
-  if (existingState.status === 'READY') return existingState;
+  if (existingState.status === 'READY') {
+    const gitExecutable = inspectExecutable('git', projectRoot);
+    if (!gitExecutable) return notReady('GIT_EXECUTABLE_UNTRUSTED');
+    return verifyReadyClone(projectRoot, gitExecutable);
+  }
   if (
     existingState.status === 'NOT_READY'
     && existingState.code === 'MANAGED_PATH_UNTRUSTED'
@@ -799,7 +865,7 @@ function setup(projectRoot: string): SetupReport {
       throw new SetupFailure('MANAGED_PATH_UNTRUSTED', 'UNCHANGED', 'Settings backup path is untrusted');
     }
     try {
-      writeFileSync(backupPath, settingsBytes, { flag: 'wx' });
+      writeFileSync(backupPath, serializeJson(SETTINGS_BACKUP_METADATA), { flag: 'wx' });
     } catch {
       throw new SetupFailure('BACKUP_ALREADY_EXISTS', 'UNCHANGED', 'Settings backup already exists');
     }
@@ -951,58 +1017,100 @@ function setup(projectRoot: string): SetupReport {
   }
 }
 
-function disable(projectRoot: string): CheckReport {
-  projectRoot = trustedProjectRoot(projectRoot);
-  const currentState = check(projectRoot);
-  if (currentState.status !== 'READY') return currentState;
+interface ActiveEnabledState {
+  settingsPath: string;
+  configPath: string;
+  enabledBackupPath: string;
+  settings: Record<string, unknown>;
+  config: Record<string, unknown>;
+  pinnedEntry: Record<string, unknown>;
+}
 
+// Observed "on" state, independent of the lock or clone: config.enabled and the
+// pinned entry's autoload are the only two live switches disable must flip off.
+// A missing or malformed lock does not make an actively enabled extension inert.
+function activeEnabledState(projectRoot: string): ActiveEnabledState | null {
   const piDirectory = join(projectRoot, '.pi');
   const settingsPath = join(piDirectory, 'settings.json');
   const configPath = join(piDirectory, 'openai-server-compaction.json');
   const enabledBackupPath = join(piDirectory, ENABLED_CONFIG_BACKUP_NAME);
+  if (
+    !managedPathIsTrusted(projectRoot, piDirectory, 'directory')
+    || !managedPathIsTrusted(projectRoot, settingsPath, 'file')
+    || !managedPathIsTrusted(projectRoot, configPath, 'file')
+    || !managedCreateTargetIsTrusted(projectRoot, enabledBackupPath)
+  ) return null;
 
   const settings = readJsonObject(settingsPath);
   const config = readJsonObject(configPath);
   const pinnedEntries = pinnedPackageEntries(settings);
-  if (!settings || !config || pinnedEntries.length !== 1) {
-    return notReady('INERT_OR_PARTIAL_STATE', 'INERT');
-  }
+  if (
+    !settings
+    || !config
+    || config.enabled !== true
+    || pinnedEntries.length !== 1
+    || pinnedEntries[0].autoload !== true
+  ) return null;
+  return {
+    settingsPath,
+    configPath,
+    enabledBackupPath,
+    settings,
+    config,
+    pinnedEntry: pinnedEntries[0],
+  };
+}
 
-  const enabledConfigBytes = readFileSync(configPath);
-  const enabledBackupKind = pathKind(enabledBackupPath);
+function disable(projectRoot: string): CheckReport {
+  projectRoot = trustedProjectRoot(projectRoot);
+  const active = activeEnabledState(projectRoot);
+  if (!active) return check(projectRoot);
+
+  const enabledConfigBytes = readFileSync(active.configPath);
+  const enabledBackupKind = pathKind(active.enabledBackupPath);
   if (enabledBackupKind !== 'missing') {
-    if (!managedCreateTargetIsTrusted(projectRoot, enabledBackupPath)) {
+    if (!managedCreateTargetIsTrusted(projectRoot, active.enabledBackupPath)) {
       return notReady('MANAGED_PATH_UNTRUSTED', 'UNCHANGED');
     }
-    return notReady('ENABLED_CONFIG_BACKUP_ALREADY_EXISTS', 'UNCHANGED');
-  }
-  if (!managedPathIsTrusted(projectRoot, enabledBackupPath, 'missing')) {
-    return notReady('MANAGED_PATH_UNTRUSTED', 'UNCHANGED');
-  }
-  try {
-    writeFileSync(enabledBackupPath, enabledConfigBytes, { flag: 'wx' });
-  } catch {
-    return notReady('ENABLED_CONFIG_BACKUP_ALREADY_EXISTS', 'UNCHANGED');
+    // Reuse an existing enabled-config backup only when it already holds the exact
+    // bytes we would write. A re-enable preserves this backup, so a later disable
+    // must tolerate its own prior snapshot; a differing backup is an operator
+    // conflict and still blocks.
+    const existing = enabledBackupKind === 'file'
+      ? readFileSync(active.enabledBackupPath)
+      : null;
+    if (!existing || !existing.equals(enabledConfigBytes)) {
+      return notReady('ENABLED_CONFIG_BACKUP_ALREADY_EXISTS', 'UNCHANGED');
+    }
+  } else {
+    if (!managedPathIsTrusted(projectRoot, active.enabledBackupPath, 'missing')) {
+      return notReady('MANAGED_PATH_UNTRUSTED', 'UNCHANGED');
+    }
+    try {
+      writeFileSync(active.enabledBackupPath, enabledConfigBytes, { flag: 'wx' });
+    } catch {
+      return notReady('ENABLED_CONFIG_BACKUP_ALREADY_EXISTS', 'UNCHANGED');
+    }
   }
 
-  config.enabled = false;
-  const disabledConfig = serializeJson(config);
-  if (!managedPathIsTrusted(projectRoot, configPath, 'file')) {
+  active.config.enabled = false;
+  const disabledConfig = serializeJson(active.config);
+  if (!managedPathIsTrusted(projectRoot, active.configPath, 'file')) {
     return notReady('DISABLE_CONFIG_WRITE_FAILED', 'INERT');
   }
   try {
-    writeTextAtomic(configPath, disabledConfig);
+    writeTextAtomic(active.configPath, disabledConfig);
   } catch {
     return notReady('DISABLE_CONFIG_WRITE_FAILED', 'INERT');
   }
 
-  pinnedEntries[0].autoload = false;
-  const disabledSettings = serializeJson(settings);
-  if (!managedPathIsTrusted(projectRoot, settingsPath, 'file')) {
+  active.pinnedEntry.autoload = false;
+  const disabledSettings = serializeJson(active.settings);
+  if (!managedPathIsTrusted(projectRoot, active.settingsPath, 'file')) {
     return notReady('DISABLE_SETTINGS_WRITE_FAILED', 'INERT');
   }
   try {
-    writeTextAtomic(settingsPath, disabledSettings);
+    writeTextAtomic(active.settingsPath, disabledSettings);
   } catch {
     return notReady('DISABLE_SETTINGS_WRITE_FAILED', 'INERT');
   }
