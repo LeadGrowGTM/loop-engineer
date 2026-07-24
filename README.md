@@ -11,7 +11,7 @@ agent-harness/
 │   ├── harness-maker.md     — executes phases, commits (haiku, full tools)
 │   ├── harness-prover.md    — runs live feature (sonnet, Read/Bash only) for running-app goals
 │   ├── harness-checker.md   — scores artifacts fresh (sonnet, Read/Glob only)
-│   └── harness-shipper.md   — runs /no-mistakes once after PASS → PR (sonnet, Read/Bash only)
+│   └── harness-shipper.md   ← runs /no-mistakes once after PASS + separate shipping approval → PR (sonnet, Read/Bash only)
 └── skills/write-goal-prompt/ ← authoring skill (lives at .claude/skills/ for discovery)
     ├── SKILL.md
     ├── EXAMPLES.md
@@ -22,7 +22,7 @@ agent-harness/
         ├── issue-tracker.md      ← durable phase-slice schema (issues/NN-<slug>.md)
         ├── skill-routing.md      ← task type → skill mapping + chaining patterns
         ├── execution-mode-routing.md
-        ├── parallel-execution.md ← treehouse worktree isolation, auto-lease on collision
+        ├── parallel-execution.md ← explicit treehouse worktree isolation
         ├── first-principles-generation.md
         ├── qa-checklist.md
         ├── morning-report-specs.md
@@ -33,7 +33,7 @@ agent-harness/
 
 The model that wrote the code is too generous grading its own homework. Self-eval = agreement loop, not improvement loop.
 
-Fix: **harness-checker** has `tools: Read, Glob, Write` only. It cannot run Bash, spawn agents, or access anything the Maker produced via tool calls. This isolation is enforced by the tool layer, not by prompt instruction. The goal agent follows written instructions to invoke the planner, then maker, then prover (for running-app goals), then checker, then — only after a Checker PASS — the shipper. This ordering is defined in HARNESS.md and relies on the goal agent's instruction-following, not tool enforcement.
+Fix: **harness-checker** has `tools: Read, Glob, Write` only. It cannot run Bash, spawn agents, or access anything the Maker produced via tool calls. This isolation is enforced by the tool layer, not by prompt instruction. The attached goal agent invokes the planner, then maker, then prover (for running-app goals), then checker within the current session. Only explicitly approved scope may enter planning or execution. A Checker PASS does not authorize shipping; the shipper also requires separate explicit shipping approval. This ordering is defined in HARNESS.md and relies on the goal agent's instruction-following, not tool enforcement.
 
 ## The 5-agent loop
 
@@ -43,20 +43,98 @@ Goal agent (depth 0)
   └── harness-maker   (depth 2)  → artifacts + PROGRESS.md (with proof)
   └── harness-prover  (depth 3)  → PROOF verdict (running-app goals only)
   └── harness-checker (depth 4)  → CYCLE_LOG.md (scores + verdict)
-  └── harness-shipper (depth 1)  → /no-mistakes once, on PASS only → PR URL
+  └── harness-shipper (depth 1)  → /no-mistakes once, after PASS + separate shipping approval → PR URL
        ↑ repeat until PASS or plateau (max 3 cycles)
-  PASS → /no-mistakes → review/test/lint/push/PR/CI → PR ready for human merge
+  PASS + shipping approval → /no-mistakes → review/test/lint/push/PR/CI → PR ready for human merge
 ```
 
 Depth budget: goal=0, planner=1, maker=2, prover=3, checker=4, sub-skills max=5. Never need depth 6.
 
 **Prover role:** For goals that produce a running application (browser UI, API, CLI), Prover drives the live feature and returns a binary works/broken verdict before Checker scores. For static artifact goals (docs, code, analysis), skip Prover and go directly to Checker.
 
-**Shipping stage:** After Checker returns PASS, the goal agent spawns a fresh `harness-shipper`, which invokes `/no-mistakes` exactly once and drives it to a terminal outcome. A `checks-passed` outcome means the PR is prepared with green CI for human review and merge. ITERATE and PLATEAU do not ship.
+**Shipping stage:** After Checker returns PASS, the goal agent waits for separate explicit shipping approval. Only then may it spawn a fresh `harness-shipper`, which invokes `/no-mistakes` exactly once and drives it to a terminal outcome. A `checks-passed` outcome means the PR is prepared with green CI for human review; the harness never merges it. ITERATE and PLATEAU do not ship.
 
 ## How goals use this
 
 `write-goal-prompt` skill (Phase 1.5) spawns a Harness Architect agent that customizes `HARNESS.md` for the specific task. The goal template's `[HARNESS]` block points to that file. Runtime agents read it for task-specific context; their structural logic is in the agent files.
+
+## Operator workflow
+
+Run the supported harness in the current interactive Claude Code session. Approval stays under operator control: Planner and Maker are limited to explicitly approved scope, newly discovered scope waits for a new approval, and shipping requires separate approval after Checker PASS. No detached process is part of this path.
+
+Before starting a goal, run the non-launching readiness check:
+
+```powershell
+powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
+  -RepoPath C:\path\to\repo -CheckOnly
+```
+
+The `-CheckOnly` mode does not start task execution and does not mutate Git state. It emits one JSON object and fails fast for an invalid repository or pipeline layout, a missing committed `HEAD`, a detached or default branch, hidden index state, or a dirty working tree. Continue in the current session only when `readyForRun` is `true`.
+
+When isolation is desired or required, acquire a treehouse worktree explicitly:
+
+```powershell
+powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
+  -RepoPath C:\path\to\repo -PrepareIsolation `
+  -LeaseHolder harness-my-task
+```
+
+Treehouse is optional for a standalone serial repository. Add `-Parallel` when preparing a parallel stream; parallel streams and canonical monorepo pipelines require isolation. If Treehouse is missing when isolation is required, readiness fails with remediation instead of falling back. The `-PrepareIsolation` mode acquires a Treehouse lease and creates a unique derived `runBranch` at the checked source `HEAD` before returning READY. It keeps `branch` as the source branch and returns `runPath` plus `returnCommand`. Work and commit only on `runBranch`; verify that branch contains the intended commits before deliberately returning the lease.
+
+## Optional Pi OpenAI server compaction
+
+This integration is optional and off by default. Neither `scripts/setup-harness.ts` nor
+`scripts/prepare-harness-run.ps1` invokes the manager, changes Pi state, or installs the extension.
+Ordinary harness setup, readiness, and goal runs are unaffected.
+
+The project must already contain `.pi/settings.json`. Setup requires Node `>=22`, Pi
+`>=0.80.9 <0.81.0`, and this immutable package spec:
+
+```
+git:github.com/algal/pi-openai-server-compaction@c6d593087709e9481223dc6c6c2269b371b5e055
+```
+
+Use the dedicated manager from this repo:
+
+```bash
+bun scripts/manage-pi-openai-server-compaction.ts check <project-root>
+bun scripts/manage-pi-openai-server-compaction.ts setup <project-root> --enable --acknowledge-openai-retention
+bun scripts/manage-pi-openai-server-compaction.ts disable <project-root>
+```
+
+`check` is read-only and reports `DISABLED`, `READY`, or `NOT_READY` as JSON. `setup` is the
+only enabling path. It first writes a non-sensitive rollback marker recording that it is about to
+add one pinned package entry, records the exact package with `autoload: false`, reconciles only
+that package, and verifies the clone HEAD, package metadata, settings entry, and compatible
+versions. It then writes the project-local lock and config atomically and changes `autoload` to
+`true` only in the final settings write. A failed setup retains its work in an inert state rather
+than leaving an active partial setup. On an already-`READY` project, `setup` re-verifies the live
+clone against the pinned commit (`git rev-parse HEAD` and a clean `git status --porcelain`) before
+affirming `READY`, rather than trusting the lockfile's declared commit; a moved `HEAD` or dirty
+worktree fails with `GIT_HEAD_MISMATCH` or `CLONE_WORKTREE_DIRTY`.
+
+All managed state stays under `<project-root>/.pi/`: `settings.json`, the extension clone,
+`openai-server-compaction.lock.json`, `openai-server-compaction.json`, and exclusive settings and
+enabled-config backups. The settings backup is metadata only (package name, source spec, and the
+fact that one entry was added) — never a copy of `settings.json` itself, so it cannot carry operator
+secrets. `disable` writes `enabled: false` before `autoload: false`. It deletes nothing and retains
+the package, clone, lock, config, and backups for rollback. For an emergency bypass, run `disable`
+before manual operator recovery and inspect its JSON result.
+
+### Data and model disclosure
+
+- Setup writes `store: true`, and the extension sends compaction requests with `store: true`.
+  OpenAI receives the context sent for compaction and may retain server-side data under the
+  operator's OpenAI account and API policy.
+- The pinned upstream supports the `openai/*` and `openai-codex/*` model families. Azure support is
+  partial and opt-in upstream; it remains off unless separately configured.
+- Local Pi sessions may contain opaque compaction artifacts in JSONL or other session files. The
+  manager does not copy those artifacts into this repo. It stores no credentials, prompts,
+  conversation context, model secrets, or opaque session artifacts in managed config or JSON output.
+- The settings backup written by `setup` never contains a verbatim copy of `settings.json`, so it
+  cannot leak operator secrets that may live alongside the managed entry.
+- Tests are offline. They fake Node, Pi, Git and package records, processes, the filesystem, and the
+  network on Windows and POSIX. They do not authenticate, call OpenAI, or fetch the extension.
 
 ## Second goal path: the benchmarking loop
 
@@ -107,9 +185,8 @@ Checker cites `file:line` evidence for every dimension score. Scores without cit
 
 **Prerequisites:** see [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) for every external tool the
 loop uses, its tier (Required / Optional / Bundled), a verify command, and what breaks without it.
-Check them by hand — `scripts/setup-harness.ts` seeds config and installs agent files but verifies
-**no** external binary, so a green setup run tells you nothing about whether `gnhf`, `treehouse`,
-`tasks-axi`, or `no-mistakes` exist.
+Use the Operator workflow above before every goal. `scripts/setup-harness.ts` seeds config and
+installs agent files, but it neither checks repository readiness nor starts task execution.
 
 Agent files live at `C:\Users\mitch\Everything_CC\.claude\agents\` (workspace-level discovery).
 Skill lives at `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\skills\write-goal-prompt\` —

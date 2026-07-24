@@ -1,6 +1,6 @@
 # loop-engineer
 
-Goal prompt writer + planner/maker/checker harness for Claude Code loop engineering.
+Goal prompt writer + approval-gated planner/maker/checker harness for in-session Claude Code loop engineering.
 
 ## Repo Map
 
@@ -14,11 +14,11 @@ Goal prompt writer + planner/maker/checker harness for Claude Code loop engineer
 | `skills/write-goal-prompt/docs/` | Architecture map, reference index |
 | `skills/write-goal-prompt/kb/` | KB scaffold — LOG.md, signals/, docs/ |
 | `scripts/triage.ts` | Bun CLI: list/review/dismiss/log/signal for the triage inbox |
-| `scripts/launch-gnhf.ps1` | Detached gnhf launcher — repo-safety guards, auto-lease treehouse worktree on parallel/collision/monorepo-tracked pipelines |
-| `scripts/validate-pipeline-layout.ps1` | Pre-flight pipeline-layout check called by `launch-gnhf.ps1` |
+| `scripts/prepare-harness-run.ps1` | Non-launching, fail-fast readiness check for repository, branch, tree, layout, and optional treehouse isolation |
+| `scripts/validate-pipeline-layout.ps1` | Pre-flight pipeline-layout check called by `prepare-harness-run.ps1` |
 | `scripts/setup-harness.ts` | Installs harness agents + seeds `.harness/`, `.tasks.toml`, `treehouse.toml` into a repo |
 | `scripts/rename-to-loop-engineer.ps1` | One-shot: rename this repo's dir `agent-harness` → `loop-engineer` + fix refs (not yet run) |
-| `treehouse.toml` | This repo's own treehouse worktree-pool config (`max_trees`, `root`) |
+| `treehouse.toml` | Optional treehouse worktree-pool config (`max_trees`, `root`) for explicit isolation |
 | `docs/agents/` | Matt Pocock engineering skill configuration |
 | `docs/adr/` | Architectural decision records |
 
@@ -28,9 +28,25 @@ The model that wrote the code grades its own homework generously. Five-agent loo
 
 - **Prover** (`tools: Read, Bash`) drives the running app, returns binary PROOF verdict. Running-app goals only — skip for static artifacts.
 - **Checker** (`tools: Read, Glob, Write`) scores artifacts against rubric. Cannot run Bash, cannot spawn agents. Receives PROOF verdict via invocation context.
-- **Shipper** (`tools: Read, Bash`) runs `/no-mistakes` exactly once after a Checker PASS, drives it to a terminal outcome, returns the PR URL. Never runs on ITERATE or PLATEAU.
+- **Shipper** (`tools: Read, Bash`) runs `/no-mistakes` exactly once only after a Checker PASS and explicit post-PASS shipping approval, drives it to a terminal outcome, returns the PR URL. Never runs on ITERATE or PLATEAU.
+
+## Supported execution
+
+Runs stay in the active Claude Code session so approval gates remain visible. Before work starts, run `scripts/prepare-harness-run.ps1 -CheckOnly`. The `-CheckOnly` mode does not start task execution and does not mutate Git state. It fails fast on an unsafe repository, default or detached branch, dirty tree, invalid pipeline layout, or unprepared required isolation.
+
+Use the current clean feature branch by default. If parallel, collision-prone, or canonical pipeline work needs isolation, explicitly rerun readiness with `-PrepareIsolation -Parallel`. The `-PrepareIsolation` mode acquires a Treehouse lease and creates a unique derived `runBranch` at the checked source `HEAD` before returning READY. Run the in-session harness from the returned worktree path, commit only on `runBranch`, and verify that branch before returning the lease. Missing Treehouse fails readiness only when isolation is required.
 
 ## Key commands
+
+```powershell
+powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
+  -RepoPath C:\path\to\repo -CheckOnly
+
+# Optional explicit treehouse isolation
+powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
+  -RepoPath C:\path\to\repo -PrepareIsolation -Parallel `
+  -LeaseHolder harness-my-task
+```
 
 ```bash
 bun scripts/triage.ts                          # morning inbox — pending runs + open signals

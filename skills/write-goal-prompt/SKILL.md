@@ -19,9 +19,9 @@ triggers:
   - hand off this task
   - /goal prompt
   - goal prompt
-  - run with gnhf
+  - run inline
   - autonomous loop
-  - gnhf this
+  - approval-gated loop
   - run overnight
   - parallel agents
 feedback:
@@ -33,34 +33,89 @@ feedback:
 
 # Skill: Write Goal Prompt
 
-Converts a free-form task into a `/goal` command ready to paste into Claude Code, OR a `gnhf` autonomous run command for overnight unattended work. Designed for overnight handoffs — agent runs autonomously, self-evaluates against a fixed signal, leaves a structured morning report. Output: structured goal condition (≤4000 chars) with eval loop, tiered fallbacks, HTML + Excalidraw morning report.
+Converts a free-form task into a `/goal` command ready to paste into Claude Code. Designed for approval-gated in-session work - agent runs against a fixed signal and leaves a structured report. Output: structured goal condition (≤4000 chars) with eval loop, tiered fallbacks, HTML summary, and Excalidraw diagram.
 
 ## Execution Router (Run Before Phase 0)
 
-**Step 0 — Resolve project scope (do this before anything else).** The loop anchors every artifact to the project it runs in, not the workspace root. Resolve the project root once:
+**Step 0 - Resolve project target and workspace root (do this before anything else).** The loop anchors artifacts to the project target while Git safety checks anchor to the containing workspace repository. Resolve both once:
 
 ```bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+normalize_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$1"
+  else
+    (cd "$1" 2>/dev/null && pwd -P) || printf '%s\n' "$1"
+  fi
+}
+
+INVOCATION_ROOT=$(normalize_path "$(pwd -P)")
+GIT_ROOT_RAW=$(git rev-parse --show-toplevel 2>/dev/null || true)
+
+if [ -n "$GIT_ROOT_RAW" ]; then
+  GIT_ROOT=$(normalize_path "$GIT_ROOT_RAW")
+  PROJECT_ROOT="$GIT_ROOT"
+  WORKSPACE_ROOT=$(dirname "$GIT_ROOT")
+
+  case "$INVOCATION_ROOT" in
+    "$GIT_ROOT"/pipelines/*)
+      PIPELINE_RELATIVE=${INVOCATION_ROOT#"$GIT_ROOT"/pipelines/}
+      case "$PIPELINE_RELATIVE" in
+        ""|*/*) ;;
+        *)
+          PROJECT_ROOT="$INVOCATION_ROOT"
+          WORKSPACE_ROOT="$GIT_ROOT"
+          ;;
+      esac
+      ;;
+  esac
+else
+  PROJECT_ROOT="$INVOCATION_ROOT"
+  WORKSPACE_ROOT=$(dirname "$INVOCATION_ROOT")
+fi
 ```
+
+A direct `pipelines/<name>` invocation remains the project target and uses the containing Git root as its workspace boundary; readiness decides whether that target is canonical and allowed. Standalone repositories use their Git toplevel as the project target and its parent as the strict workspace boundary. If no Git root exists, the physical current directory is the target and its parent is the boundary.
 
 Everything this run writes lives under `$PROJECT_ROOT`:
 
-- **Working dir:** `$PROJECT_ROOT/.harness/goals/<slug>/` — BRIEF.md, PLAN.md, issues/, PROGRESS.md, CYCLE_LOG.md, HANDOFF.*
+- **Working dir:** `$PROJECT_ROOT/.harness/goals/<slug>/` - BRIEF.md, PLAN.md, issues/, PROGRESS.md, CYCLE_LOG.md, HANDOFF.*
 - **Backlog:** run tasks-axi from `$PROJECT_ROOT` so it resolves the project-local `.tasks.toml` (seeded by `/setup-harness`), not the monorepo one.
-- **Commits:** the Maker commits to the `$PROJECT_ROOT` repo.
-- **treehouse / gnhf:** launch from `$PROJECT_ROOT` so worktrees and runs anchor to this repo.
+- **Commits:** the Maker works from `$PROJECT_ROOT`; Git resolves `$WORKSPACE_ROOT` for a tracked pipeline.
+- **readiness / treehouse:** pass `$PROJECT_ROOT` as the target and `$WORKSPACE_ROOT` as its trust boundary.
 
-Pass the resolved working-dir absolute path to every harness agent — they write bare filenames relative to it. If `$PROJECT_ROOT` is not a git repo, fall back to cwd (old behavior).
+Pass both resolved absolute paths to every harness agent. Agents write bare artifact names relative to `$PROJECT_ROOT`.
+
+### Step 0.1 - Resolve Planner skill routing with the executable guard
+
+Planner has no Bash and must not decide filesystem fallback. Resolve this skill's `scripts/resolve-skill-routing.ts` path and `$PROJECT_ROOT` as data. Invoke both CLI modes with an argument-vector process API, never by inserting either path into `bash -c` source:
+
+```text
+resolution argv: ["bun", ROUTING_RESOLVER, "--project-root", PROJECT_ROOT]
+guard argv:      ["bun", ROUTING_RESOLVER, "--emit-shell-guard", "--project-root", PROJECT_ROOT]
+```
+
+The resolution call prints JSON. On a nonzero exit, preserve that JSON and do not invoke Planner. On success, pass stdout unchanged in the Planner invocation context:
+
+```text
+[SKILL_ROUTING_RESOLUTION]
+<exact ROUTING_EVIDENCE JSON>
+```
+
+The guard-generation call prints a complete POSIX shell snippet. The resolver applies standard single-quote argument escaping to every absolute path, so `$()`, backticks, spaces, and quotes remain literal argv data. Insert that stdout unchanged under `[ROUTING_GUARD]` in the generated goal. Do not hand-build the command, replace path placeholders, or re-quote the output. At runtime, execute the emitted snippet immediately before Planner. It prints `ROUTING_EVIDENCE` and exits with the resolver's nonzero status, so Planner stays blocked on malformed or unreadable routing.
+
+Keep the Step 0.1 JSON and pass it to Harness Architect during Phase 1.5. The runtime JSON is authoritative for Planner. For `project-local` or `canonical`, readers use only `normalizedPath`. For `direct`, use confirmed HARNESS routing or a documented direct quality bar. Do not fall through a present malformed or unreadable file.
 
 Then determine execution mode. Ask if not obvious from context. This is the **infrastructure** axis (where/how the harness runs); it is distinct from the *task-shape* axis in the "Execution Mode Routing" section below (`references/execution-mode-routing.md`).
 
-| Task shape                                   | Mode                                              |
-| -------------------------------------------- | ------------------------------------------------- |
-| < 1 hr, needs back-and-forth decisions       | **in-session harness** - proceed to Phase 0       |
-| > 1 hr, fully specifiable, can run overnight | **gnhf autonomous** - see gnhf Path section below |
-| Multiple independent streams simultaneously  | **parallel gnhf + treehouse** - see gnhf Path     |
+| Task shape                                  | Mode                                                                    |
+| ------------------------------------------- | ----------------------------------------------------------------------- |
+| < 1 hr, needs back-and-forth decisions      | **in-session harness** - proceed to Phase 0                             |
+| > 1 hr, fully specifiable                   | **in-session approval-gated harness** - budget phases, remain attached  |
+| Multiple independent streams simultaneously | **treehouse-isolated sessions** - run readiness before explicit leasing |
 
-**Always register in tasks-axi first (both modes) — run from `$PROJECT_ROOT` so it hits the project-local backlog:**
+No route starts a detached process. Run the non-launching readiness check before work, and use `references/parallel-execution.md` when isolation is required.
+
+**Always register in tasks-axi first - run from `$PROJECT_ROOT` so it hits the project-local backlog:**
 
 ```bash
 cd "$PROJECT_ROOT"
@@ -172,8 +227,13 @@ Read .claude/agent-context/snapshot.md for workspace context before starting.
 Confirm harness agents exist in at least one of these locations (Glob both):
   - .claude/agents/harness-planner.md, harness-maker.md, harness-checker.md, harness-shipper.md
   - ~/.claude/agents/harness-planner.md, harness-maker.md, harness-checker.md, harness-shipper.md
-Read .harness/skill-routing.md (installed by /setup-harness). If missing, fall back to
-  .claude/skills/write-goal-prompt/references/skill-routing.md.
+Use the exact resolver output supplied by the parent; do not probe fallback paths yourself:
+[SKILL_ROUTING_RESOLUTION]
+[EXACT ROUTING_EVIDENCE JSON]
+When selectedSource is project-local or canonical, read only normalizedPath. When selectedSource
+is direct, do not read a routing file; use confirmed HARNESS routing or direct with a documented
+direct quality bar. If status is not resolved or errors is non-empty, return BLOCKED instead of
+designing routing.
 
 Task being goal-prompted: [TASK SUMMARY]
 Skills confirmed available (from Agent 1): [SKILL SCANNER RESULTS]
@@ -188,7 +248,10 @@ What turn budget split makes sense given task complexity?
 MAKER_ROUTING:
 Map each phase to a specific skill from the confirmed list, or "direct" if none match.
 Format: "Phase N: <skill-name or direct> — <artifact it produces>"
-Follow skill-routing.md heuristics.
+Use selectedSource from [SKILL_ROUTING_RESOLUTION]:
+- For project-local or canonical, follow only the routing heuristics in normalizedPath.
+- For direct, do not read a routing file. Use confirmed skills where they match; otherwise use
+  direct and state a task-specific direct implementation quality bar.
 
 PROVER_BRIEF (include only if goal involves a running app — UI feature, API endpoint, or CLI behaviour; otherwise write "PROVER_BRIEF: N/A — static artifact goal"):
 Feature intent: <one sentence — what the feature should do, from the goal>
@@ -210,10 +273,13 @@ Note: checker agent file enforces fresh context — no extra isolation instructi
 
 SHIP_BRIEF:
 Set `intent` to the user's original objective plus any decisions or constraints that a reviewer
-cannot infer from the diff. After Checker returns PASS, spawn a fresh `harness-shipper` agent;
-that agent invokes `/no-mistakes` once and drives it until `checks-passed`, `passed`, `failed`,
-or `cancelled`. Never ship inline and never invoke it on ITERATE or PLATEAU. Treat
-`checks-passed` as "PR prepared for human merge," not merged.
+cannot infer from the diff. State that Checker PASS is necessary but not sufficient: a separate
+explicit shipping approval for the current invocation is also required. Do not spawn Shipper unless
+both are present. Without shipping approval, terminate with `N/A - shipping not approved`. With
+approval, spawn a fresh `harness-shipper` agent; that agent invokes `/no-mistakes` once and drives
+it until `checks-passed`, `passed`, `failed`, or `cancelled`. Never infer approval from PASS, never
+ship inline, and never invoke Shipper on ITERATE or PLATEAU. Treat `checks-passed` as "PR prepared
+for human merge," not merged.
 
 LOOP_TRACKER:
 A markdown checklist the running agent fills in as the loop progresses.
@@ -225,7 +291,8 @@ omit Prover rows if PROVER_BRIEF is N/A; omit Red-team rows if REDTEAM_BRIEF is 
 
 ### Planner
 - [ ] HARNESS.md read
-- [ ] skill-routing.md read
+- [ ] routing resolution consumed
+- [ ] selected routing file read: `<normalizedPath>` (project-local or canonical only; omit for direct)
 - [ ] PLAN.md written: `<path>`
 
 ### Cycle 1
@@ -259,7 +326,7 @@ omit Prover rows if PROVER_BRIEF is N/A; omit Red-team rows if REDTEAM_BRIEF is 
 - [ ] Verdict: PASS / PLATEAU (max cycles reached)
 
 ### Final
-- [ ] No-mistakes: terminal outcome: `<checks-passed | passed | failed | cancelled | N/A — no PASS>`
+- [ ] Shipping: terminal outcome: `<checks-passed | passed | failed | cancelled | N/A - no PASS | N/A - shipping not approved>`
 - [ ] Pull request: `<URL | N/A>`
 - [ ] HANDOFF.md written: `<path>`
 - [ ] HANDOFF.html written: `<path>`
@@ -311,10 +378,16 @@ Use this context:
 
 [HARNESS]
 Read HARNESS.md before starting. Five-stage execution:
-1. Planner (turns 1-5): decompose task → write PLAN.md (phases, skill routing, checker rubric),
-   then mirror each phase to a durable slice in `issues/NN-<slug>.md` (survives /compact, tracks
-   per-phase Status). PLAN.md `## Phases` stays canonical; slices are the durable drive-list.
-   Do not produce task artifacts until PLAN.md is written.
+Before stage 1, the goal parent runs the exact safe snippet generated in Execution Router Step 0.1:
+[ROUTING_GUARD]
+<exact stdout from resolver --emit-shell-guard mode>
+A nonzero result stops before Planner. On success, pass exact `ROUTING_EVIDENCE` stdout to Planner
+under `[SKILL_ROUTING_RESOLUTION]`; do not parse or reformat it in the parent.
+1. Planner (turns 1-5): consume the routing resolution, decompose task → write PLAN.md (phases,
+   exact routing evidence, selected source/fallback, checker rubric), then mirror each phase to a
+   durable slice in `issues/NN-<slug>.md` (survives /compact, tracks per-phase Status). PLAN.md
+   `## Phases` stays canonical; slices are the durable drive-list. Do not produce task artifacts
+   until PLAN.md is written.
 2. Maker (turns 6-<N>): execute per PLAN.md, invoke skills per phase, commit at each phase boundary.
 3. Prover (running-app goals only): spawn harness-prover with PROVER_BRIEF from HARNESS.md.
    Pass feature intent + exercise instructions. Get PROOF VERDICT before Checker.
@@ -326,10 +399,12 @@ Read HARNESS.md before starting. Five-stage execution:
 4. Checker: spawn fresh harness-checker subagent with CHECKER_BRIEF from HARNESS.md.
    Pass artifact paths + PROOF VERDICT (if running-app goal).
    Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
-5. Ship (only after Checker PASS): spawn a fresh `harness-shipper` agent with SHIP_BRIEF.intent,
-   project root, branch, and the PASS verdict. The shipper invokes `/no-mistakes`; the goal agent
-   must never drive it inline. `checks-passed` means the PR is ready for human review/merge; do
-   not wait for merge. Do not run this stage for ITERATE or PLATEAU.
+5. Ship (only after Checker PASS plus separate explicit shipping approval for this invocation):
+   if approval is absent, do not spawn the Shipper and record `N/A - shipping not approved` as the
+   terminal shipping outcome. If approval is present, spawn a fresh `harness-shipper` agent with
+   SHIP_BRIEF.intent, project root, branch, and both approval signals. The shipper invokes
+   `/no-mistakes`; the goal agent must never drive it inline. `checks-passed` means the PR is ready
+   for human review/merge; do not wait for merge. Do not run this stage for ITERATE or PLATEAU.
 
 Work through the task to completion. If you hit a blocker, do not stop. Use mocks, stubs, or documented assumptions. Record each workaround and continue with everything that does not require my decision.
 
@@ -357,9 +432,11 @@ Then execute the task using this loop — repeat up to <max_cycles> times:
 
 Log each cycle to HANDOFF.md: cycle number, mechanical gate result, reward signal score, what changed.
 After each cycle, update the LOOP_TRACKER section in HARNESS.md — check off completed steps, fill in paths, SHAs, and reward signals.
-After the first PASS, exit the eval loop and run the Ship stage exactly once. Record the
-no-mistakes outcome, fixes, and PR URL in HANDOFF.md and LOOP_TRACKER. If it returns `failed` or
-`cancelled`, report that terminal outcome; do not describe the change as merge-ready.
+After the first PASS, exit the eval loop. Run the Ship stage exactly once only when the current
+invocation also contains separate explicit shipping approval. Otherwise do not spawn Shipper,
+record `N/A - shipping not approved` in HANDOFF.md and LOOP_TRACKER, and terminate successfully.
+If an approved Ship stage returns `failed` or `cancelled`, report that terminal outcome; do not
+describe the change as merge-ready.
 
 [CONTEXT MANAGEMENT]
 Run /compact when context approaches 170k tokens. After compacting, state your current checkpoint before continuing. Do NOT compact on turn 1.
@@ -428,7 +505,9 @@ The file must contain six sections: `PLANNER_BRIEF`, `MAKER_ROUTING`, `PROVER_BR
 `REDTEAM_BRIEF`, `CHECKER_BRIEF`, `SHIP_BRIEF`, followed by `LOOP_TRACKER`.
 
 Then update the `[HARNESS]` block in the goal candidate so the first line reads:
-`Read <absolute-path>/HARNESS.md before starting.`
+`Read <absolute-path>/HARNESS.md before starting.` Replace the `[ROUTING_GUARD]` placeholder with
+exact stdout from resolver `--emit-shell-guard` mode. Never interpolate or re-quote its paths.
+Any unresolved placeholder blocks emission.
 
 The task working directory is `$PROJECT_ROOT/.harness/goals/<task-slug>/` (resolved in
 Execution Router Step 0). Write HARNESS.md there and use that absolute path.
@@ -489,79 +568,40 @@ Fix any failure before emitting: (1) context verification — subagents confirm 
 
 **In-session harness mode:** Emit as a code fence. Add: **"Paste this into a Sonnet session. `/goal clear` to abort early."** See `EXAMPLES.md` for a complete worked example.
 
-**gnhf mode:** Skip this phase. Output is the gnhf command block (see gnhf Path below).
+All goal execution remains attached to the current Claude Code session. Do not emit or start a detached runner.
 
 ---
 
-## gnhf Path (Overnight Autonomous Mode)
+## Readiness and Worktree Path
 
-Use when execution mode = gnhf (task > 1hr, fully specifiable, can run unattended). The goal condition from Phase 2 becomes the gnhf objective directly — same content, no `/goal` wrapper, no 4000-char limit.
+Run the supported preflight before task execution. It reports repository, branch, dirty-tree, pipeline-layout, and isolation state as one JSON object.
 
-**No hard cap is not license to sprawl.** The brevity discipline still applies: the objective should be the shortest brief that a fresh unattended agent can start from without asking questions. Long spec detail (phase plans, rubrics, briefs) belongs in files the agent reads at runtime (`.harness/goals/<slug>/`), referenced by path — not inlined into the objective. Keep the objective itself tight and push the bulk behind path references.
-
-Skip Phase 2.5 QA. Skip Phase 3.
-
-**Present, do not launch.** Never run `launch-gnhf.ps1`, `gnhf`, or any autonomous command yourself. Emit the command block below, then STOP and wait for the operator's explicit "go". This holds for both modes: a `/goal` prompt is pasted by the operator; a gnhf run is launched by the operator. The skill's deliverable is the reviewed command, not a running process.
-
-**Inline detached launch (no terminal drop, survives this session) — hand this to the operator to run:**
+**Check only - no mutation:**
 
 ```powershell
-pwsh C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\launch-gnhf.ps1 `
-  -RepoPath "$PROJECT_ROOT" `
-  -Objective "<full objective from Phase 2>" `
-  -StopWhen "<done condition from Phase 0 eval loop>" -MaxIterations 30
-```
-(Add `-Parallel` to force an isolated treehouse worktree; the launcher auto-leases one anyway if it detects a live gnhf run in the repo, or if `-RepoPath` is a canonical monorepo-tracked pipeline like `content`/`outbound` — see `references/parallel-execution.md`.)
-(`-RepoPath "$PROJECT_ROOT"` anchors the run to the resolved project, not the workspace root. The launcher's own default is `Get-Location`.)
-
-It pre-flights, starts gnhf detached + hidden, logs to `.gnhf-runs/gnhf-<stamp>.log` (or `%TEMP%\gnhf-runs\<slug>\` for monorepo-tracked pipelines), and writes a handle JSON (PID + log + args). Register the task in tasks-axi first and mark it done after morning review.
-
-**Manual command block (equivalent, if you prefer to run it yourself):**
-
-```bash
-# 1. Register task
-tasks-axi add <slug> "<title>"
-tasks-axi start <slug>
-
-# 2. Worktree (optional — use for parallel streams or dep-heavy runs)
-# path=$(treehouse get --lease --lease-holder "gnhf-<slug>")
-# cd $path  # then run gnhf from there
-
-# 3. Launch — clean working tree required (git stash if dirty)
-gnhf "<full objective from Phase 2>" \
-  --max-iterations 30 \
-  --stop-when "<done condition from Phase 0 eval loop>"
-
-# 4. Morning review — open the published report first (URL is atop HANDOFF.md)
-head -n 8 HANDOFF.md          # published URL
-cat HANDOFF.secret.local      # password + update_key (never committed)
-git log --oneline gnhf/<slug>
-cat .gnhf/runs/*/notes.md
-
-# 5. Mark done
-tasks-axi done <slug>
+powershell -NoProfile -File C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\prepare-harness-run.ps1 `
+  -RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -CheckOnly
 ```
 
-**Model: always Opus/frontier (non-negotiable):**
-gnhf main agent = Opus. Cheaper models miss multi-step reasoning and produce cascading iteration failures.
-Enforced via `~/.gnhf/config.yml`:
+A successful result has `status: "READY"`. A nonzero result includes exact errors and dirty paths. Resolve those errors manually; the preflight never commits, stashes, resets, switches branches, or starts task execution.
 
-```yaml
-agentArgsOverride:
-  claude:
-    - "--model"
-    - "opus"
+**Prepare explicit isolation when required:**
+
+```powershell
+powershell -NoProfile -File C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\prepare-harness-run.ps1 `
+  -RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -PrepareIsolation -Parallel `
+  -LeaseHolder harness-<slug>
 ```
 
-Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--max-iterations` instead.
+Use returned `runPath` for isolated work. Canonical monorepo-tracked pipelines always require this path. Return the lease deliberately after review. Full lifecycle and remediation: `references/parallel-execution.md`.
 
-**Pre-flight checks (the launcher does these; verify manually if using the command block):**
+Rules:
 
-- `git config --global commit.gpgSign` — must be empty or `false` (gnhf commits unsigned)
-- Working tree clean — `git status` shows nothing (gnhf rejects dirty state)
-- `~/.gnhf/config.yml` — agent = `claude`, `agentArgsOverride.claude` = Opus model
-
-**Parallel streams / worktree isolation:** the launcher auto-leases an isolated treehouse worktree when it detects a live gnhf run, on `-Parallel`, or when `-RepoPath` is a canonical monorepo-tracked pipeline (no own `.git`); leases are held until returned by hand after review. Full model, lease lifecycle, and manual commands: `references/parallel-execution.md`.
+- Run readiness for `$PROJECT_ROOT` with `$WORKSPACE_ROOT` passed separately; never target the workspace root or `pipelines/` parent.
+- Work only on a non-default feature branch.
+- Stop on any dirty path; never mutate work to make preflight pass.
+- Keep `scripts/validate-pipeline-layout.ps1` enforcement active.
+- No command in this skill starts detached work.
 
 ---
 
@@ -581,7 +621,7 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 | `references/execution-mode-routing.md` | Decide task shape before authoring: single-run, goal-loop, time-loop, dynamic-workflow. Decision order, interval guidance, mode-nesting patterns. |
 | `references/first-principles-generation.md` | Planner: decompose from observable outcomes. Maker: state reasoning (1-3 sentences) before code. |
 | `EXAMPLES.md`                        | Full worked example with Phase 0 design and output                                                       |
-| gnhf docs                            | `gnhf --help` - autonomous loop CLI; `~/.gnhf/config.yml` for defaults; `scripts/launch-gnhf.ps1` for inline detached launch |
+| readiness CLI                        | `scripts/prepare-harness-run.ps1` - non-launching repository and isolation preflight                                    |
 | treehouse docs                       | `treehouse --help` - worktree pool; `treehouse.toml` in repo root for pool config                        |
 | tasks-axi docs                       | `tasks-axi --help` - persistent backlog; `.tasks.toml` for per-repo config                               |
 
@@ -589,7 +629,7 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 
 ## Execution Mode Routing
 
-Before writing a goal prompt, route the task to the right execution shape using `references/execution-mode-routing.md`. This is about _task shape_ (single-run vs goal-loop vs time-loop vs dynamic-workflow), not about harness infrastructure (in-session vs gnhf — that is separate; see the "Execution Router" section above for infrastructure choice).
+Before writing a goal prompt, route the task to the right execution shape using `references/execution-mode-routing.md`. This is about _task shape_ (single-run vs goal-loop vs time-loop vs dynamic-workflow), not about harness infrastructure (attached session vs explicit treehouse isolation - see the "Execution Router" section above).
 
 **Benchmark detection runs first (ADR-0004).** Before task shape, apply the benchmark-detection key from `references/execution-mode-routing.md` ("Prior axis"): does the goal name a measurable benchmark — a metric plus a direction? If yes, this is a benchmarking goal, not a build goal — **offer to switch** to `/benchmarking-loop` and load `references/benchmark-intake.md` (the lazy branch; a plain build goal never loads it, so this stays lean). `/write-goal-prompt` and `/benchmarking-loop` are two front doors over one shared grill, so detection catches a mis-invoked door from either side. Only if the goal is a plain build goal (artifact + quality bar, no exogenous metric+direction) do you continue with the phases below.
 
@@ -599,4 +639,4 @@ The router decision tree is first-match-wins: walk the four questions top-down a
 
 Planner reads `references/execution-mode-routing.md` as the first step after intake, and emits the chosen shape in PLAN.md's "Execution shape" section.
 
-**Note:** This section (task shape) is orthogonal to the "Execution Router" section near the top of this file (infrastructure choice: in-session harness vs gnhf overnight vs treehouse parallel-gnhf). Both axes inform a full execution plan, but they answer different questions — mode routing (this file) is shape, while the Router is infrastructure.
+**Note:** This section (task shape) is orthogonal to the "Execution Router" section near the top of this file (infrastructure choice: attached session or explicit treehouse isolation). Both axes inform a full execution plan, but they answer different questions - mode routing is shape, while the Router is infrastructure.

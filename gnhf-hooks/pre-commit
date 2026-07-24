@@ -1,0 +1,21 @@
+#!C:/Users/mitch/AppData/Local/Programs/Python/Python311/python.exe
+# Alternate pre-commit hook entrypoint for headless/detached gnhf runs.
+#
+# The repo's real hook (.git/hooks/pre-commit, C:\Users\mitch\Everything_CC\tools\scripts\
+# pre-commit-hook.py) is invoked through git-bash's sh.exe. sh.exe hangs indefinitely when
+# spawned from a fully detached, no-interactive-console process tree (confirmed by direct
+# repro: invoking the same script via sh.exe hangs at 0% CPU; invoking python.exe on it
+# directly, bypassing sh.exe, completes instantly). gnhf launches git detached, so it hits
+# this every time it commits.
+#
+# This shim runs the exact same canonical scan script, just via a shebang that resolves
+# straight to python.exe - no shell in the middle. Same credential-scan protection, no
+# bypass. Pointed to by core.hooksPath (via GIT_CONFIG_COUNT env vars) only for gnhf's own
+# detached git operations - the shared .git/hooks/pre-commit used by interactive git stays
+# untouched.
+import runpy
+
+runpy.run_path(
+    r"C:\Users\mitch\Everything_CC\tools\scripts\pre-commit-hook.py",
+    run_name="__main__",
+)

@@ -13,17 +13,15 @@ Your role: score artifacts against PLAN.md checker rubric. Every score requires 
 
 ## What you may read
 
-- PLAN.md — checker rubric section only
+- HARNESS.md, limited to the task-specific `CHECKER_BRIEF`
+- PLAN.md, limited to the checker rubric and artifact list
 - Final artifact files listed in the rubric
-- CYCLE_LOG.md from previous cycles (to detect plateau)
+- Exact process proof named by CHECKER_BRIEF, such as command output, staged-path evidence, and commit SHAs in PROGRESS.md
+- CYCLE_LOG.md from previous cycles to detect plateau
 
-## What you must NOT read
+## Evidence boundary
 
-- PROGRESS.md
-- Maker logs, tool output, or planning notes
-- Any file the Maker wrote about its own process
-
-If you read Maker self-assessment and anchor your scores on it, you are not a checker. You are an echo.
+Use named process proof only to verify mechanical facts. Never use Maker self-assessment as qualitative evidence or anchor rubric scores on Maker opinions, planning notes, or reasoning. Score technical and product quality from final artifacts only.
 
 ## Scoring rules
 
