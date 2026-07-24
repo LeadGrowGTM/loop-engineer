@@ -2378,6 +2378,29 @@ describe('manage-pi-openai-server-compaction CLI', () => {
     expect(readFileSync(enabledBackupPath, 'utf8')).toBe(collisionBytes);
   });
 
+  test('disable tolerates an enabled-config backup left stale by config mutation between cycles', () => {
+    const setupRun = runHappySetup();
+    expectDisableResult(runDisable(setupRun.projectRoot), 'DISABLED');
+    expectDisableResult(runDisable(setupRun.projectRoot), 'DISABLED');
+
+    const reenableRun = runSetupOnExisting(setupRun.projectRoot);
+    expect(parseSingleLineJson(reenableRun.stdout)).toEqual({ status: 'READY' });
+
+    // The extension mutates its own config while enabled - not a straight
+    // re-enable/disable - so the bytes no longer match the retained backup.
+    const mutatedConfig = {
+      ...(JSON.parse(readFileSync(setupRun.paths.config, 'utf8')) as Record<string, unknown>),
+      lastCompactionAt: '2026-01-01T00:00:00.000Z',
+    };
+    writeFileSync(setupRun.paths.config, `${JSON.stringify(mutatedConfig, null, 2)}\n`);
+
+    const secondDisable = runDisable(setupRun.projectRoot);
+    expectDisableResult(secondDisable, 'DISABLED');
+    expect(
+      (JSON.parse(readFileSync(setupRun.paths.config, 'utf8')) as { enabled: boolean }).enabled,
+    ).toBe(false);
+  });
+
   test('disable reports retained inert state when the settings write is obstructed after config disable', async () => {
     const setupRun = runHappySetup();
     const enabledConfigBytes = readFileSync(setupRun.paths.config);

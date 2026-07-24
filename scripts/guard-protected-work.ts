@@ -450,6 +450,17 @@ function capture(options: CliOptions): CaptureReport {
     ...DEFAULT_PROTECTED_PATHS.map((path) => normalizeProjectPath(roots, path)),
     ...options.protectedPaths.map((path) => normalizeProjectPath(roots, path)),
   ]);
+  // The volatile snapshot path is hard-blocked from staging unconditionally
+  // (VOLATILE_SNAPSHOT_STAGED, independent of the allowed boundary), so allowing
+  // it does not weaken guarding. Any other protected path passed as an allowed
+  // path would otherwise be silently exempted from PROTECTED_PATH_CHANGED.
+  const volatileSnapshotPath = normalizeProjectPath(roots, VOLATILE_SNAPSHOT_PATH);
+  const allowedProtectedOverlap = protectedPaths.filter(
+    (path) => path !== volatileSnapshotPath && allowedPaths.includes(path),
+  );
+  if (allowedProtectedOverlap.length) {
+    throw new Error(`Protected paths cannot also be allowed paths: ${allowedProtectedOverlap.join(', ')}`);
+  }
   const state = repositoryState(roots.gitRoot, protectedPaths);
   return {
     schemaVersion: SCHEMA_VERSION,

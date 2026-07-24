@@ -195,18 +195,6 @@ const SOURCE_GUARD_PATH = join(import.meta.dir, 'guard-protected-work.ts');
 
 type ContainedPathKind = 'directory' | 'regular-file';
 
-type InstallPaths = {
-  targetDir: string;
-  guardPath: string;
-  routingPath: string;
-  goalsDir: string;
-  claudeDir: string;
-  tasksTomlPath: string;
-  treehouseTomlPath: string;
-  gitignorePath: string;
-  claudeMdPath: string;
-};
-
 function lstatIfPresent(path: string): ReturnType<typeof lstatSync> | null {
   try {
     return lstatSync(path);
@@ -301,10 +289,32 @@ function trustedContainedPath(
   return candidate;
 }
 
+function trustedHomeDirectory(): string {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? '';
+  if (!home) throw new Error('Cannot determine home directory for agents install (HOME/USERPROFILE unset)');
+  return trustedTargetDirectory(home);
+}
+
+type InstallPaths = {
+  targetDir: string;
+  agentsDir: string;
+  guardPath: string;
+  routingPath: string;
+  goalsDir: string;
+  claudeDir: string;
+  tasksTomlPath: string;
+  treehouseTomlPath: string;
+  gitignorePath: string;
+  claudeMdPath: string;
+};
+
+// Fail closed with zero side effects when any install destination - including
+// the global agents directory - is untrusted, before any mkdir/copy/write runs.
 function validateInstallPaths(targetDir: string): InstallPaths {
   const trustedTargetDir = trustedTargetDirectory(targetDir);
   return {
     targetDir: trustedTargetDir,
+    agentsDir: trustedContainedPath(trustedHomeDirectory(), '.claude/agents', 'directory'),
     guardPath: trustedContainedPath(trustedTargetDir, GUARD_RELATIVE_PATH, 'regular-file'),
     routingPath: trustedContainedPath(
       trustedTargetDir,
@@ -468,35 +478,48 @@ if (import.meta.main) {
     }
     if (!results.every((r) => r.passed)) process.exit(1);
   } else if (cmd === 'install') {
-    const installPaths = validateInstallPaths(rest[0]);
-    const targetDir = installPaths.targetDir;
-    const agentsDir = join(process.env.HOME ?? process.env.USERPROFILE ?? '', '.claude', 'agents');
+    const targetDirArg = rest[0];
+    // Validate every destination, including the global agents directory, before
+    // any mkdir/copy/write runs - fail closed with zero side effects.
+    validateInstallPaths(targetDirArg);
+
+    // Re-validated immediately before each write below too, so a concurrent
+    // local writer can't swap a validated directory for a symlink between
+    // this initial check and the actual fs call.
+    const revalidated = (relativePath: string, expectedKind: ContainedPathKind) =>
+      trustedContainedPath(trustedTargetDirectory(targetDirArg), relativePath, expectedKind);
+    const trustedAgentsDir = () => trustedContainedPath(trustedHomeDirectory(), '.claude/agents', 'directory');
+
+    const targetDir = trustedTargetDirectory(targetDirArg);
     const sourceAgentsDir = join(import.meta.dir, '../.claude/agents');
 
-    mkdirSync(agentsDir, { recursive: true });
+    mkdirSync(trustedAgentsDir(), { recursive: true });
     for (const f of AGENT_FILES) {
-      copyFileSync(join(sourceAgentsDir, f), join(agentsDir, f));
-      console.log(`Copied ${f} → ${agentsDir}`);
+      const destPath = trustedContainedPath(trustedAgentsDir(), f, 'regular-file');
+      copyFileSync(join(sourceAgentsDir, f), destPath);
+      console.log(`Copied ${f} → ${destPath}`);
     }
 
-    mkdirSync(dirname(installPaths.guardPath), { recursive: true });
-    copyFileSync(SOURCE_GUARD_PATH, installPaths.guardPath);
-    console.log(`Copied ${GUARD_RELATIVE_PATH} → ${installPaths.guardPath}`);
+    const guardPath = revalidated(GUARD_RELATIVE_PATH, 'regular-file');
+    mkdirSync(dirname(guardPath), { recursive: true });
+    copyFileSync(SOURCE_GUARD_PATH, guardPath);
+    console.log(`Copied ${GUARD_RELATIVE_PATH} → ${guardPath}`);
 
     const templatePath = join(import.meta.dir, '../skills/setup-harness/routing-template.md');
     const template = existsSync(templatePath) ? readFileSync(templatePath, 'utf8') : '';
     const skills = scanSkills(targetDir);
     const routing = seedRoutingTable(skills, template);
-    mkdirSync(dirname(installPaths.routingPath), { recursive: true });
-    writeFileSync(installPaths.routingPath, routing);
+    const routingPath = revalidated('.harness/skill-routing.md', 'regular-file');
+    mkdirSync(dirname(routingPath), { recursive: true });
+    writeFileSync(routingPath, routing);
     console.log(`Wrote .harness/skill-routing.md (${skills.length} skills scanned)`);
 
     // Working-dir home for goal runs (BRIEF/PLAN/issues/PROGRESS/CYCLE_LOG/HANDOFF live under here).
-    mkdirSync(installPaths.goalsDir, { recursive: true });
+    mkdirSync(revalidated('.harness/goals', 'directory'), { recursive: true });
 
     // Seed a per-project backlog so tasks-axi scopes to THIS repo, not the monorepo root.
-    mkdirSync(installPaths.claudeDir, { recursive: true });
-    const tasksTomlPath = installPaths.tasksTomlPath;
+    mkdirSync(revalidated('.claude', 'directory'), { recursive: true });
+    const tasksTomlPath = revalidated('.tasks.toml', 'regular-file');
     if (existsSync(tasksTomlPath)) {
       console.log('.tasks.toml already present — left as-is');
     } else {
@@ -510,7 +533,7 @@ if (import.meta.main) {
     // Seed a per-project treehouse pool so parallel worktrees anchor to THIS repo.
     // treehouse resolves the nearest treehouse.toml from cwd; without one, a run from
     // the project would fall through to the monorepo pool.
-    const treehouseTomlPath = installPaths.treehouseTomlPath;
+    const treehouseTomlPath = revalidated('treehouse.toml', 'regular-file');
     if (existsSync(treehouseTomlPath)) {
       console.log('treehouse.toml already present — left as-is');
     } else {
@@ -519,7 +542,7 @@ if (import.meta.main) {
     }
 
     // Keep the project-local worktree pool out of git.
-    const gitignorePath = installPaths.gitignorePath;
+    const gitignorePath = revalidated('.gitignore', 'regular-file');
     const ignoreLines = ['.tmp/treehouse/'];
     const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
     const missing = ignoreLines.filter((l) => !existingIgnore.split(/\r?\n/).includes(l));
@@ -529,7 +552,7 @@ if (import.meta.main) {
       console.log(`Added ${missing.join(', ')} to .gitignore`);
     }
 
-    const claudeMdPath = installPaths.claudeMdPath;
+    const claudeMdPath = revalidated('CLAUDE.md', 'regular-file');
     if (existsSync(claudeMdPath)) {
       const sha = (() => {
         const result = Bun.spawnSync(
@@ -543,7 +566,7 @@ if (import.meta.main) {
       console.log('Updated CLAUDE.md ## Harness block');
     }
 
-    const smoke = smokeTest(targetDir, agentsDir);
+    const smoke = smokeTest(targetDir, trustedAgentsDir());
     console.log('\nSmoke test:');
     for (const r of smoke) console.log(`  ${r.passed ? '✓' : '✗'} ${r.check}`);
     if (!smoke.every((r) => r.passed)) process.exit(1);

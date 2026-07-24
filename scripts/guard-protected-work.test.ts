@@ -235,6 +235,20 @@ describe('guard-protected-work CLI', () => {
     expect(blockerCodes(validated)).toContain('VOLATILE_SNAPSHOT_STAGED');
   });
 
+  test('refuses capture when a non-volatile-snapshot protected path is also passed as an allowed path', () => {
+    const repo = createRepo();
+    const captured = guard([
+      'capture',
+      '--repo', repo,
+      '--active-id', 'C24',
+      '--allowed-path', 'scripts/launch-gnhf.ps1',
+    ]);
+
+    expect(captured.exitCode).toBe(1);
+    expect(captured.stdout).toBe('');
+    expect(captured.stderr).toContain('scripts/launch-gnhf.ps1');
+  });
+
   test('passes when every staged path belongs to the active ID boundary', () => {
     const repo = createRepo();
     const captured = guard([

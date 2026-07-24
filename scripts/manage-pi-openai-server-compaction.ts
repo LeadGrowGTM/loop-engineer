@@ -1072,14 +1072,20 @@ function disable(projectRoot: string): CheckReport {
     if (!managedCreateTargetIsTrusted(projectRoot, active.enabledBackupPath)) {
       return notReady('MANAGED_PATH_UNTRUSTED', 'UNCHANGED');
     }
-    // Reuse an existing enabled-config backup only when it already holds the exact
-    // bytes we would write. A re-enable preserves this backup, so a later disable
-    // must tolerate its own prior snapshot; a differing backup is an operator
-    // conflict and still blocks.
-    const existing = enabledBackupKind === 'file'
-      ? readFileSync(active.enabledBackupPath)
+    // Reuse an existing enabled-config backup whenever it is still a valid
+    // manager-shaped enabled config. The backup is only a presence marker (it is
+    // never restored from), so a stale-but-valid snapshot from an earlier disable
+    // cycle - even one the extension mutated while enabled in between - must not
+    // block. Only an operator-owned backup that is not a valid enabled config
+    // (arbitrary/non-JSON content) is treated as a genuine conflict and blocks.
+    const existingBackup = enabledBackupKind === 'file'
+      ? parseJsonObject(readFileSync(active.enabledBackupPath))
       : null;
-    if (!existing || !existing.equals(enabledConfigBytes)) {
+    const backupIsValidEnabledConfig = existingBackup !== null
+      && existingBackup.schemaVersion === 1
+      && existingBackup.enabled === true
+      && existingBackup.store === true;
+    if (!backupIsValidEnabledConfig) {
       return notReady('ENABLED_CONFIG_BACKUP_ALREADY_EXISTS', 'UNCHANGED');
     }
   } else {
