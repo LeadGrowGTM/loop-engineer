@@ -728,10 +728,10 @@ describe('prepare-harness-run CLI', () => {
     }
   });
 
-  test('clean feature branch returns one machine-readable READY result', () => {
+  test('clean feature branch with -NoIsolation returns one machine-readable READY result', () => {
     const { workspace, repo } = createFeatureRepo();
 
-    const result = invokePrepare(repo, workspace);
+    const result = invokePrepare(repo, workspace, ['-NoIsolation']);
 
     expect(result.exitCode).toBe(0);
     const stdout = result.stdout.toString().trim();
@@ -750,6 +750,49 @@ describe('prepare-harness-run CLI', () => {
       runPath: repo,
       errors: [],
     });
+  }, CLEAN_READY_TEST_TIMEOUT_MS);
+
+  test('isolation is the default: a plain CheckOnly requires isolation and is not READY', () => {
+    const { workspace, repo } = createFeatureRepo();
+    const treehouse = fakeTreehouse(repo);
+
+    const result = invokePrepareCommand(repo, workspace, ['-CheckOnly'], treehouse.env);
+
+    expect(result.exitCode).not.toBe(0);
+    const readiness = JSON.parse(result.stdout.toString());
+    expect(readiness).toMatchObject({
+      status: 'NOT_READY',
+      isolationRequired: true,
+      isolationPrepared: false,
+      treehouseAvailable: true,
+      runPath: null,
+    });
+    expect(readiness.errorCodes).toContain('isolation_not_prepared');
+  }, CLEAN_READY_TEST_TIMEOUT_MS);
+
+  test('default isolation without treehouse fails and points at the -NoIsolation opt-out', () => {
+    const { workspace, repo } = createFeatureRepo();
+
+    const result = invokePrepareCommand(repo, workspace, ['-CheckOnly'], withoutTreehouseEnv());
+
+    expect(result.exitCode).not.toBe(0);
+    const readiness = JSON.parse(result.stdout.toString());
+    expect(readiness.isolationRequired).toBe(true);
+    expect(readiness.treehouseAvailable).toBe(false);
+    expect(readiness.errorCodes).toContain('missing_treehouse');
+    expect(readiness.errors.join(' ')).toContain('-NoIsolation');
+  }, CLEAN_READY_TEST_TIMEOUT_MS);
+
+  test('-NoIsolation cannot be combined with -PrepareIsolation or -Parallel', () => {
+    const { workspace, repo } = createFeatureRepo();
+
+    const withPrepare = invokePrepareCommand(repo, workspace, ['-PrepareIsolation', '-NoIsolation']);
+    expect(withPrepare.exitCode).not.toBe(0);
+    expect(JSON.parse(withPrepare.stdout.toString()).errorCodes).toContain('invalid_mode');
+
+    const withParallel = invokePrepareCommand(repo, workspace, ['-CheckOnly', '-Parallel', '-NoIsolation']);
+    expect(withParallel.exitCode).not.toBe(0);
+    expect(JSON.parse(withParallel.stdout.toString()).errorCodes).toContain('invalid_mode');
   }, CLEAN_READY_TEST_TIMEOUT_MS);
 
   windowsTest('Windows PowerShell preserves a large Git status tail from an inherited daemon', () => {
@@ -881,7 +924,7 @@ describe('prepare-harness-run CLI', () => {
     expect(unknownResult.exitCode).not.toBe(0);
     expect(JSON.parse(unknownResult.stdout.toString()).errors.join(' ')).toContain('default branch');
 
-    const explicitResult = invokePrepare(trunkRepo, workspace, ['-DefaultBranch', 'trunk']);
+    const explicitResult = invokePrepare(trunkRepo, workspace, ['-DefaultBranch', 'trunk', '-NoIsolation']);
     expect(explicitResult.exitCode).toBe(0);
     expect(JSON.parse(explicitResult.stdout.toString()).defaultBranch).toBe('trunk');
   }, DEFAULT_BRANCH_PAIR_TEST_TIMEOUT_MS);
@@ -960,11 +1003,22 @@ describe('prepare-harness-run CLI', () => {
     writeFileSync(hook, `@echo off\r\necho called>>"${marker}"\r\nexit /b 0\r\n`);
     run(['git', 'config', 'core.fsmonitor', hook], repo);
 
-    const result = invokePrepare(repo, workspace);
+    const result = invokePrepare(repo, workspace, ['-NoIsolation']);
 
     expect(result.exitCode).toBe(0);
     expect(existsSync(marker)).toBe(false);
   }, CLEAN_READY_TEST_TIMEOUT_MS);
+
+  test('canonical pipeline rejects -NoIsolation and still requires isolation', () => {
+    const { workspace, pipeline } = createCanonicalPipeline();
+
+    const result = invokePrepareCommand(pipeline, workspace, ['-CheckOnly', '-NoIsolation']);
+
+    expect(result.exitCode).not.toBe(0);
+    const readiness = JSON.parse(result.stdout.toString());
+    expect(readiness.isolationRequired).toBe(true);
+    expect(readiness.errorCodes).toContain('noisolation_forbidden_canonical');
+  }, CANONICAL_ISOLATION_TEST_TIMEOUT_MS);
 
   test('parallel CheckOnly verifies treehouse but refuses an unprepared run path', () => {
     const { workspace, repo } = createFeatureRepo();
