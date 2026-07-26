@@ -22,7 +22,7 @@ agent-harness/
         ├── issue-tracker.md      ← durable phase-slice schema (issues/NN-<slug>.md)
         ├── skill-routing.md      ← task type → skill mapping + chaining patterns
         ├── execution-mode-routing.md
-        ├── parallel-execution.md ← explicit treehouse worktree isolation
+        ├── parallel-execution.md ← default-on treehouse worktree isolation
         ├── first-principles-generation.md
         ├── qa-checklist.md
         ├── morning-report-specs.md
@@ -71,7 +71,7 @@ powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
 
 The `-CheckOnly` mode does not start task execution and does not mutate Git state. It emits one JSON object and fails fast for an invalid repository or pipeline layout, a missing committed `HEAD`, a detached or default branch, hidden index state, or a dirty working tree. Continue in the current session only when `readyForRun` is `true`.
 
-When isolation is desired or required, acquire a treehouse worktree explicitly:
+Treehouse isolation is the default: every run requires an isolated worktree unless the caller opts out with `-NoIsolation` (canonical monorepo pipelines cannot opt out). Acquire the worktree with `-PrepareIsolation`:
 
 ```powershell
 powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
@@ -79,7 +79,7 @@ powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
   -LeaseHolder harness-my-task
 ```
 
-Treehouse is optional for a standalone serial repository. Add `-Parallel` when preparing a parallel stream; parallel streams and canonical monorepo pipelines require isolation. If Treehouse is missing when isolation is required, readiness fails with remediation instead of falling back. The `-PrepareIsolation` mode acquires a Treehouse lease and creates a unique derived `runBranch` at the checked source `HEAD` before returning READY. It keeps `branch` as the source branch and returns `runPath` plus `returnCommand`. Work and commit only on `runBranch`; verify that branch contains the intended commits before deliberately returning the lease.
+Add `-Parallel` when preparing a parallel stream. If Treehouse is missing, readiness fails with remediation instead of falling back — either install treehouse or pass `-NoIsolation` for trivial, read-only, or throwaway work. The `-PrepareIsolation` mode acquires a Treehouse lease and creates a unique derived `runBranch` at the checked source `HEAD` before returning READY. It keeps `branch` as the source branch and returns `runPath` plus `returnCommand`. Work and commit only on `runBranch`; verify that branch contains the intended commits before deliberately returning the lease.
 
 ## Optional Pi OpenAI server compaction
 

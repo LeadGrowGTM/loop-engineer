@@ -583,9 +583,9 @@ powershell -NoProfile -File C:\Users\mitch\Everything_CC\tools\agent\agent-harne
   -RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -CheckOnly
 ```
 
-A successful result has `status: "READY"`. A nonzero result includes exact errors and dirty paths. Resolve those errors manually; the preflight never commits, stashes, resets, switches branches, or starts task execution.
+Isolation is required by default, so a plain `-CheckOnly` reports `isolationRequired: true` and `status: "NOT_READY"` until isolation is prepared (or the run opts out — see below). A nonzero result includes exact errors and dirty paths. Resolve those errors manually; the preflight never commits, stashes, resets, switches branches, or starts task execution.
 
-**Prepare explicit isolation when required:**
+**Prepare the default isolation:**
 
 ```powershell
 powershell -NoProfile -File C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\prepare-harness-run.ps1 `
@@ -593,7 +593,7 @@ powershell -NoProfile -File C:\Users\mitch\Everything_CC\tools\agent\agent-harne
   -LeaseHolder harness-<slug>
 ```
 
-Use returned `runPath` for isolated work. Canonical monorepo-tracked pipelines always require this path. Return the lease deliberately after review. Full lifecycle and remediation: `references/parallel-execution.md`.
+Use returned `runPath` for isolated work. Return the lease deliberately after review. For trivial, read-only, or throwaway work, pass `-NoIsolation` instead to run on the current feature branch with no worktree — canonical monorepo-tracked pipelines always require the isolated path and reject `-NoIsolation`. Full lifecycle and remediation: `references/parallel-execution.md`.
 
 Rules:
 

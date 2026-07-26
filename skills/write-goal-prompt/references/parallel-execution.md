@@ -1,6 +1,6 @@
 # Parallel Execution and Worktree Isolation
 
-Parallel task streams must not share one working tree. Isolation uses **treehouse**, a pool of pre-warmed git worktrees with one leased path per stream.
+Treehouse isolation is on by default for every run, not just parallel streams — parallel task streams additionally must not share one leased worktree. Isolation uses **treehouse**, a pool of pre-warmed git worktrees with one leased path per stream. Pass `-NoIsolation` to opt out for trivial, read-only, or throwaway work; canonical monorepo pipelines cannot opt out.
 
 ## Preflight before preparation
 
@@ -33,7 +33,7 @@ powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
 
 Preparation runs the same safety checks again before calling treehouse. Treehouse may supply a detached worktree; readiness creates a unique derived branch at the checked source HEAD before returning READY. A successful result sets `isolationPrepared: true`, keeps `branch` as the source branch, and returns the isolated `runPath` plus attached `runBranch`. Use that path and branch for task work and commits.
 
-Canonical monorepo-tracked pipelines, declared by `!pipelines/<name>/` entries in the workspace `.gitignore`, always require isolation because they do not have their own git root. Their prepared path is `<leased-worktree>\pipelines\<name>`.
+Canonical monorepo-tracked pipelines, declared by `!pipelines/<name>/` entries in the workspace `.gitignore`, always require isolation because they do not have their own git root, and reject `-NoIsolation` with `noisolation_forbidden_canonical`. Their prepared path is `<leased-worktree>\pipelines\<name>`.
 
 ## Pool config (`treehouse.toml`)
 
