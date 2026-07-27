@@ -281,6 +281,13 @@ it until `checks-passed`, `passed`, `failed`, or `cancelled`. Never infer approv
 ship inline, and never invoke Shipper on ITERATE or PLATEAU. Treat `checks-passed` as "PR prepared
 for human merge," not merged.
 
+ORCHESTRATION NOTE (optional, for goals with concurrent phases):
+If PLAN.md marks any phases as parallel-safe (e.g., red-team's four attack roles), reference the
+provider-aware model resolver at `$PROJECT_ROOT/scripts/resolve-role-model.ts` and the concurrency
+matrix in `docs/adr/0007-provider-aware-model-orchestration.md`. The resolver returns {model,
+provider, tier} — a spawn descriptor consumable by parallel fan-outs without shared mutable state.
+Each concurrent role resolves its model independently via `resolveRoleModel(role, detectedProvider)`.
+
 LOOP_TRACKER:
 A markdown checklist the running agent fills in as the loop progresses.
 Emit exactly this template (fill in phase names from MAKER_ROUTING above;
@@ -597,6 +604,7 @@ Use returned `runPath` for isolated work. Return the lease deliberately after re
 
 Rules:
 
+- Isolation is the default: prepare a treehouse worktree for real runs; reserve `-NoIsolation` for trivial/read-only checks.
 - Run readiness for `$PROJECT_ROOT` with `$WORKSPACE_ROOT` passed separately; never target the workspace root or `pipelines/` parent.
 - Work only on a non-default feature branch.
 - Stop on any dirty path; never mutate work to make preflight pass.

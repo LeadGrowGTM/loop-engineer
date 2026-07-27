@@ -47,4 +47,22 @@ PROOF:
   Model routing contracts verified: all 5 roles × 3 providers exhaustively tested
   Updated subagent-harness.md with model resolution before spawn, provider detection guidance, and concurrent dispatch optimization notes
   No regression in existing 84 tests
+Commit: dec31a9 — Phase 3: Wire loop + agent contracts
+
+## Phase 4: Orchestration + Discovery - COMPLETE
+Slice: C:\Users\mitch\Everything_CC\tools\agent\agent-harness\.harness\goals\harness-provider-model-routing\issues\04-orchestration-discovery.md — Status: done
+Skill invoked: direct implementation
+Artifacts:
+  - C:\Users\mitch\Everything_CC\tools\agent\agent-harness\docs\adr\0007-provider-aware-model-orchestration.md (new)
+  - C:\Users\mitch\Everything_CC\tools\agent\agent-harness\skills\write-goal-prompt\SKILL.md (Phase 1.5 Agent 4 prompt updated)
+Mechanical gate: `test -f docs/adr/0007-provider-aware-model-orchestration.md && grep "scripts/resolve-role-model.ts" && grep "red-team.js"` → exit 0
+PROOF:
+  ADR created: docs/adr/0007-provider-aware-model-orchestration.md exists
+  Resolver reference: 3 occurrences of "scripts/resolve-role-model.ts" in ADR
+  Red-team reference: 3 occurrences of ".claude/workflows/red-team.js" in ADR
+  Role dependency chain documented: Planner → Maker → Prover → Checker → Shipper (sequential by default)
+  Concurrent-safe boundaries identified: red-team parallel 4-role attack, future Checker parallel checks
+  Resolver spawn descriptor {model,provider,tier} documented as exact shape for concurrent fan-out
+  SKILL.md Agent 4 prompt updated with ORCHESTRATION NOTE referencing resolver and ADR
+  This goal's own phases documented as sequential (resolver is capability for future goals)
 Commit: (pending)
