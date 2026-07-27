@@ -27,7 +27,7 @@ Artifacts:
 Mechanical gate: `bun test scripts/detect-provider.test.ts` → exit 0
 PROOF:
   Tests: 8 pass, 0 fail, 11 expect() calls
-  PROVIDER_SIGNAL_ENV_KEY = "ANTHROPIC_PROVIDERS" (exported constant, sourced from docs/DEPENDENCIES.md)
+  PROVIDER_SIGNAL_ENV_KEY = "ANTHROPIC_PROVIDERS" (exported constant, unconfirmed placeholder signal — not sourced from docs/DEPENDENCIES.md, which documents only the model-ID mapping table; verify against the real claudex proxy before relying on it)
   Detection precedence: claudex signal → codex binary → native default
   All I/O through injected env parameter (no bare process.env or Bun.which outside getRealDetectionEnv)
   CLI: bun scripts/detect-provider.ts → {"provider": "codex"} (codex available in environment)

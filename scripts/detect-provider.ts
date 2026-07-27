@@ -3,9 +3,12 @@
 // No bare Bun.which, no bare process.env calls outside of the injected parameter
 
 export const PROVIDER_SIGNAL_ENV_KEY = "ANTHROPIC_PROVIDERS";
-// Comment: signal name from docs/DEPENDENCIES.md §"Running under claudex" — the claudex proxy
-// exposes a session signal to indicate when GPT is running behind a Claude ID alias. This constant
-// is the environment variable key that holds that signal value.
+// Placeholder signal name — unconfirmed. claudex runs the harness on a GPT upstream via a
+// codex subprocess (see docs/DEPENDENCIES.md §"Running under claudex"), but that section
+// documents only the model-ID mapping table, not an env var. No env var for claudex session
+// detection has been confirmed against the real proxy yet. Until confirmed, this key should
+// be treated as a guess: verify it against the actual claudex proxy before relying on it in
+// production, and update this comment once a real signal is confirmed.
 
 export interface Detected {
   provider: "native" | "claudex" | "codex";
@@ -22,8 +25,9 @@ export interface DetectionEnv {
  * Detect the active provider (native Claude, claudex proxy, or codex CLI).
  *
  * Detection precedence:
- * 1. If session providers= signal is present (ANTHROPIC_PROVIDERS env var), claudex takes precedence
- *    (means a live proxied session is in progress)
+ * 1. If the (unconfirmed placeholder) ANTHROPIC_PROVIDERS env var is present, claudex takes
+ *    precedence (means a live proxied session is in progress) — this signal has not been
+ *    verified against the real claudex proxy; see PROVIDER_SIGNAL_ENV_KEY above
  * 2. Else if codex binary is available (injected via env.codexAvailable), return codex
  *    (no Anthropic access; running under real GPT-native CLI)
  * 3. Else return native (Claude Code default, no proxy)

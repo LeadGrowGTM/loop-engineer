@@ -335,14 +335,17 @@ The resolver's `{model, provider, tier}` output is the spawn descriptor — mult
 resolve their models in parallel and pass them to concurrent invocations without shared mutable
 state (the resolver is pure; detection is injected once per run).
 
-Example (future enhancement — not yet implemented in this repo):
+Example (future enhancement — not yet implemented in this repo). `resolveRoleModel` only accepts
+the five harness roles (planner/maker/prover/checker/shipper), not attack-agent `subagent_type`
+names — resolve once for the driving role (`prover`, since red-team runs within a Prover pass)
+and reuse the resolved model for each attack-agent spawn:
 ```typescript
-const roles = ["red-team-hostile", "red-team-careless", "red-team-perf", "red-team-security"];
+const attackAgents = ["red-team-hostile", "red-team-careless", "red-team-perf", "red-team-security"];
+const resolved = resolveRoleModel("prover", detectedProvider);
 const spawns = await Promise.all(
-  roles.map(role => {
-    const resolved = resolveRoleModel(role as any, detectedProvider);
-    return Agent({subagent_type: role, prompt: "...", model: resolved.model});
-  })
+  attackAgents.map(subagentType =>
+    Agent({subagent_type: subagentType, prompt: "...", model: resolved.model})
+  )
 );
 ```
 
