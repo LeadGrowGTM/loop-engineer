@@ -2628,6 +2628,7 @@ describe('manage-pi-openai-server-compaction CLI', () => {
         '-WorkspaceRoot',
         workspace,
         '-CheckOnly',
+        '-NoIsolation',
       ],
       {
         env: {
