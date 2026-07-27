@@ -10,7 +10,11 @@ Write the candidate to a temp file via the Write tool, then measure with the gat
 bun skills/write-goal-prompt/scripts/check-goal-length.ts temp/_goal-candidate.txt
 ```
 
-`/goal` strips one trailing newline before counting — the script replicates that exactly. Target **<3990** (≥10 char margin, exit non-zero at/above it = BLOCKED). The script also prints **WARN** (exit 0, not blocked) once the candidate clears a soft `--brevity` budget (default 2200, `--brevity 2800` for genuinely multi-phase tasks) — that WARN means run the Brevity Pass below before emitting. Include `[Measured: XXXX chars]` before emitting. No count shown = gate not run = failure.
+`/goal` strips one trailing newline before counting — the script replicates that exactly. Target **<3990** (≥10 char margin, exit non-zero at/above it = BLOCKED). The script also prints **WARN** (exit 0, not blocked) once the candidate clears a soft `--brevity` budget (default 1500, `--brevity 2500` for genuinely multi-phase tasks) — that WARN means run the Brevity Pass below before emitting. Include `[Measured: XXXX chars]` before emitting. No count shown = gate not run = failure.
+
+These brevity budgets dropped from 2200/2800 once the ~6000 chars of standing protocol boilerplate moved out of the goal condition into HARNESS.md. A normal lean goal now lands around **1200-2500 chars** — task content + `[PARAMS]` + a one-paragraph `[HARNESS]` pointer. If a goal is much larger than that, protocol text has probably leaked back into the condition (see the invariant below).
+
+**Invariant — protocol lives in HARNESS.md, never inlined in the goal condition.** The goal condition carries task content, `[PARAMS]`, and the lean `[HARNESS]` pointer only. The standing protocol sections (`EXECUTION_PROTOCOL`, `EVAL_LOOP`, `BLOCKERS`, `PROOF_PROTOCOL`, `MORNING_REPORT`, `CONTEXT_MANAGEMENT`, `TURN_LIMIT`) live in HARNESS.md, read first. If you find EXECUTION_PROTOCOL / EVAL_LOOP / PROOF / MORNING_REPORT text (the 5-stage flow, the eval-loop steps, the proof format, the lavish-axi publish spec, the /compact rule, the turn-limit rule) inside the goal condition, move it to HARNESS.md — it does not belong in the measured prompt.
 
 Fallback if Bun is unavailable (note `encoding="utf-8"` — without it Python over-counts on Windows and falsely blocks valid prompts):
 
@@ -70,11 +74,11 @@ Walk through the goal prompt as if you were the receiving agent on turn 1:
 
 1. Can I start working from [TASK] alone without asking questions? If not → add context.
 2. Is every done criterion machine-verifiable (file exists, command exits 0, grep returns)? If not → rewrite.
-3. Does [BLOCKERS] cover the most likely failure mode? If not → add it.
+3. Does HARNESS.md's standing BLOCKERS section (tiered fallbacks) cover the most likely failure mode, and does [TASK] name any task-specific "needs my decision" points? If a real decision point is missing → add it to [TASK].
 4. Are there enough fallbacks that the agent can produce _something_ even if every skill fails?
 5. Is the feature list explicit, or would the agent have to guess what to build? If guessing → add "Must include:" block.
 6. Is the quality bar stated? Without it the agent defaults to "done = exists" — the fastest path, not the best one.
-7. Does the task touch live data, shared infra, or a per-call cost API? If yes → [CONSTRAINTS] block must be present.
+7. Does the task touch live data, shared infra, or a per-call cost API? If yes → the `[PARAMS]` constraint lines (Cost ceiling / Do NOT touch) must be present.
 8. Are stretch goals clearly separated from required work? Mixed-in optionals cause the agent to deprioritize required items.
 9. Is the reward signal single and unambiguous? If it requires human judgment to compute — flag it to the user, offer the three options, do not silently proceed.
 10. Does the mechanical gate run in seconds without LLM involvement? If not, split into separate gates.
@@ -169,7 +173,7 @@ Before emitting, verify the condition:
 **Eval Loop**
 
 - [ ] **Phase 0 ran** — eval loop designed before intake, not after formatting
-- [ ] **[EVAL LOOP] block present** — every goal prompt has one, no exceptions
+- [ ] **[PARAMS] block present** — every goal prompt has one (reward signal, done threshold, max cycles, turn limit); the EVAL_LOOP mechanics live in HARNESS.md and consume these values, no exceptions
 - [ ] **Reward signal is single and programmatic** — no composite scores, no human-judgment required to compute
 - [ ] **Human-judgment flag surfaced if needed** — if any gate requires reading-and-deciding, user was shown the three options before goal was emitted
 - [ ] **Mechanical gate is fast and binary** — runs in seconds, no LLM, fails loudly
@@ -181,17 +185,16 @@ Before emitting, verify the condition:
 
 **Safety & Constraints**
 
-- [ ] **Constraints block present** if task touches live data, shared infra, or per-call cost APIs
-- [ ] **Cost ceiling stated** if any API calls will run in volume overnight
-- [ ] **Disruption risks named** — live tables, running jobs, shared sheets explicitly called out with "read-only" or "do not touch" guards
+- [ ] **[PARAMS] constraint lines present** if task touches live data, shared infra, or per-call cost APIs — the `Cost ceiling` / `Do NOT touch` lines in `[PARAMS]`; the BLOCKERS section in HARNESS.md enforces them
+- [ ] **Cost ceiling stated** in `[PARAMS]` if any API calls will run in volume overnight
+- [ ] **Disruption risks named** — live tables, running jobs, shared sheets called out in the `[PARAMS]` `Do NOT touch` line
 
 **Execution**
 
 - [ ] **Stated check** — how Claude proves done (test exit code, file exists, etc.)
-- [ ] **Context-based compaction** at 170k tokens (not turn-based)
-- [ ] **Turn limit** included — default 80, never omit
-- [ ] **Morning report deliverables** — HANDOFF.md + HANDOFF.html + HANDOFF.excalidraw
-- [ ] **Report published PUBLIC** — `lavish-axi share HANDOFF.html` step present with NO `--password` (the link must open in one click and be pasteable into the no-mistakes PR); URL captured in HANDOFF.md; update_key saved to HANDOFF.secret.local (gitignored, never committed — still update/delete-capable); no credentials or client PII in the report body
+- [ ] **Standing protocol in HARNESS.md, not the goal** — CONTEXT_MANAGEMENT (compact at ~170k, not turn-based), MORNING_REPORT (HANDOFF.md + .html + .excalidraw, published PUBLIC via `lavish-axi share` with NO `--password`, update_key to gitignored HANDOFF.secret.local, no credentials/PII in the body), and TURN_LIMIT are standing sections written verbatim into HARNESS.md — confirm they are present there, NOT inlined in the goal condition
+- [ ] **Turn limit set** — `[PARAMS]` carries the value (default 80); the HARNESS.md TURN_LIMIT section consumes it
+- [ ] **[HARNESS] pointer present** — one paragraph naming the standing sections + the `[ROUTING_GUARD]` snippet; no protocol prose inlined
 - [ ] **Overnight framing** — reads as a handoff, not a command
 - [ ] **Total length** under 4000 characters (Phase 2.5 length gate passed)
 - [ ] **Brevity Pass run** — shortest prompt that passes the dry-run, not the longest that fits; if the gate printed WARN, the subtractive pass above was applied and every remaining block earns its place

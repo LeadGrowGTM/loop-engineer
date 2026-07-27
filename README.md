@@ -56,7 +56,7 @@ Depth budget: goal=0, planner=1, maker=2, prover=3, checker=4, sub-skills max=5.
 
 ## How goals use this
 
-`write-goal-prompt` skill (Phase 1.5) spawns a Harness Architect agent that customizes `HARNESS.md` for the specific task. The goal template's `[HARNESS]` block points to that file. Runtime agents read it for task-specific context; their structural logic is in the agent files.
+`write-goal-prompt` skill (Phase 1.5) spawns a Harness Architect agent that customizes `HARNESS.md` for the specific task; Phase 2.5 also writes the standing protocol (execution stages, eval loop, blockers, proof, morning report) into it verbatim, keeping that boilerplate out of the goal condition. The goal template's `[HARNESS]` block points to that file. Runtime agents read it for both task-specific context and the standing protocol; their structural logic is in the agent files.
 
 ## Operator workflow
 

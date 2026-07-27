@@ -16,13 +16,15 @@
 //   path      defaults to temp/_goal-candidate.txt (relative to cwd)
 //   --cap     hard limit /goal rejects at (default 4000)
 //   --target  safe ceiling with margin (default 3990)
-//   --brevity soft budget: over this warns but does NOT block (default 2200)
+//   --brevity soft budget: over this warns but does NOT block (default 1500)
 //
 // The gate is TWO-SIDED. 4000 is /goal's rejection line, not a budget to fill. A prompt
 // that clears the hard cap can still be needlessly long. The brevity tier surfaces that:
 // over --brevity prints WARN (compress unless every char earns its place) but exits 0, so
 // it never blocks a genuinely complex multi-phase prompt — it just kills the silent drift
-// to the ceiling. Raise --brevity for known-large multi-phase tasks (e.g. --brevity 2800).
+// to the ceiling. Raise --brevity for known-large multi-phase tasks (e.g. --brevity 2500).
+// Budgets dropped from 2200/2800 once the standing protocol boilerplate moved from the goal
+// condition into HARNESS.md — a normal lean goal now lands around 1200-2500 chars.
 //
 // Exit codes: 0 = pass (< target; may WARN if >= brevity) · 1 = blocked (>= target or >= cap) · 2 = file unreadable.
 
@@ -34,7 +36,7 @@ const flag = (name: string, def: number): number => {
 const path = argv.find((a) => !a.startsWith("--")) ?? "temp/_goal-candidate.txt";
 const CAP = flag("--cap", 4000);
 const TARGET = flag("--target", 3990);
-const BREVITY = flag("--brevity", 2200);
+const BREVITY = flag("--brevity", 1500);
 
 let raw: string;
 try {

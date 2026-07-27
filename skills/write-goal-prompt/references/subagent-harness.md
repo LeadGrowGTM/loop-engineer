@@ -53,7 +53,7 @@ call `detectProvider(getRealDetectionEnv())` from `scripts/detect-provider.ts` t
 active session's providers and pass the result to the resolver.
 
 Invoke by name with resolved model: `Agent({subagent_type: "harness-planner", prompt: "...", model: "<resolved-model>"})`. 
-HARNESS.md supplies task-specific context; the agent files contain structural templates.
+HARNESS.md supplies task-specific context plus the standing protocol (execution stages, eval loop, blockers, proof, morning report — moved out of the goal condition to keep it under the length gate); the agent files contain structural templates for each role.
 
 ### Canonical install paths (agents are global; project state is not)
 
