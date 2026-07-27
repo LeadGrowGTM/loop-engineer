@@ -16,19 +16,44 @@ not its self-talk. Fresh eyes or it doesn't count.
 
 The 5 harness agents are defined as proper Claude Code agents in `.claude/agents/`:
 
-| File                                | Role                             | tools                                | model      |
-| ----------------------------------- | -------------------------------- | ------------------------------------ | ---------- |
-| `.claude/agents/harness-planner.md` | Decompose goal → BRIEF.md, PLAN.md | Read, Glob, Write                  | sonnet-4-6 |
-| `.claude/agents/harness-maker.md`   | Execute phases, commit           | Read, Glob, Write, Edit, Bash, Agent | haiku-4-5  |
-| `.claude/agents/harness-prover.md`  | Drive running app → PROOF verdict | Read, Bash                          | sonnet-4-6 |
-| `.claude/agents/harness-checker.md` | Score artifacts, write CYCLE_LOG | Read, Glob, Write                    | sonnet-4-6 |
-| `.claude/agents/harness-shipper.md` | Run `/no-mistakes` once after PASS → PR | Read, Bash                      | sonnet-4-6 |
+| File                                | Role                             | tools                                | model            |
+| ----------------------------------- | -------------------------------- | ------------------------------------ | ---------------- |
+| `.claude/agents/harness-planner.md` | Decompose goal → BRIEF.md, PLAN.md | Read, Glob, Write                  | claude-sonnet-5  |
+| `.claude/agents/harness-maker.md`   | Execute phases, commit           | Read, Glob, Write, Edit, Bash, Agent | claude-haiku-4-5 |
+| `.claude/agents/harness-prover.md`  | Drive running app → PROOF verdict | Read, Bash                          | claude-sonnet-5  |
+| `.claude/agents/harness-checker.md` | Score artifacts, write CYCLE_LOG | Read, Glob, Write                    | claude-sonnet-5  |
+| `.claude/agents/harness-shipper.md` | Run `/no-mistakes` once after PASS → PR | Read, Bash                      | claude-sonnet-5  |
 
 Checker's `tools: Read, Glob, Write` is **mechanical isolation** — it literally cannot run
 Bash, spawn subagents, or access anything the Maker produced via tool calls. Fresh by design.
 
-Invoke by name: `Agent({subagent_type: "harness-planner", prompt: "..."})`. HARNESS.md
-supplies task-specific context; the agent files contain structural templates.
+### Provider-Aware Model Resolution
+
+Before spawning any role subagent, resolve the model for that role using the provider-aware
+resolver. This ensures the harness runs model-agnostically: Claude Code native (default),
+GPT via claudex proxy, or GPT via codex CLI.
+
+```bash
+# Resolve the model for a role under the detected provider
+cd $PROJECT_ROOT
+RESOLVED=$(bun scripts/resolve-role-model.ts <role> --provider <native|claudex|codex>)
+# Extract model, provider, tier from JSON: {"model": "...", "provider": "...", "tier": "..."}
+MODEL=$(echo "$RESOLVED" | jq -r '.model')
+TIER=$(echo "$RESOLVED" | jq -r '.tier')
+```
+
+Then pass the resolved model as an explicit override where the invocation mechanism accepts it
+(e.g., Agent's model parameter if supported). If the invocation mechanism does not support
+per-call model overrides, the agent file's static frontmatter `model:` field (which equals the
+native resolution by construction from PLAN.md's fallback chain) is the enforced value; the
+resolver output is the audited intended value for this run logged in HARNESS.md's LOOP_TRACKER.
+
+The resolver is a pure function (zero I/O); provider detection is injected. For production use,
+call `detectProvider(getRealDetectionEnv())` from `scripts/detect-provider.ts` to probe the
+active session's providers and pass the result to the resolver.
+
+Invoke by name with resolved model: `Agent({subagent_type: "harness-planner", prompt: "...", model: "<resolved-model>"})`. 
+HARNESS.md supplies task-specific context; the agent files contain structural templates.
 
 ### Canonical install paths (agents are global; project state is not)
 
@@ -286,3 +311,44 @@ and defeat isolation. Checker always spawns fresh.
 The single most expensive failure mode: Maker outputs "I scored myself 8/10 on all dimensions"
 and Checker reads that, anchors on it, and confirms. This is not a checker. It's an echo.
 Checkers must derive scores from artifact evidence, not from Maker testimony.
+
+---
+
+## Concurrent Role Dispatch (Optimization, Not Default)
+
+By default, harness phases are sequential: Planner → Maker → (Prover) → Checker → Shipper.
+However, when multiple roles must spawn in parallel (e.g., red-team workflow spawning four
+attack agents concurrently), use the resolver's spawn descriptor to fan out safely.
+
+**Safe-to-parallelize roles (no output/input dependency):**
+- Within a Prover run: red-team's four attack roles (hostile, careless, perf, security) run
+  in parallel via `.claude/workflows/red-team.js`, consuming the same PROOF intent.
+- Within a Checker run: multiple independent verification checks (if designed) can run in parallel.
+
+**Sequential boundaries (must complete before next role starts):**
+- Planner must complete before Maker starts (Maker reads PLAN.md).
+- Maker must complete before Prover starts (Prover reads task artifacts; running-app goals only).
+- Prover must complete before Checker starts (Checker reads PROOF verdict).
+- Checker must complete before Shipper starts (Shipper requires PASS verdict + shipping approval).
+
+The resolver's `{model, provider, tier}` output is the spawn descriptor — multiple roles can
+resolve their models in parallel and pass them to concurrent invocations without shared mutable
+state (the resolver is pure; detection is injected once per run).
+
+Example (future enhancement — not yet implemented in this repo). `resolveRoleModel` only accepts
+the five harness roles (planner/maker/prover/checker/shipper), not attack-agent `subagent_type`
+names — resolve once for the driving role (`prover`, since red-team runs within a Prover pass)
+and reuse the resolved model for each attack-agent spawn:
+```typescript
+const attackAgents = ["red-team-hostile", "red-team-careless", "red-team-perf", "red-team-security"];
+const resolved = resolveRoleModel("prover", detectedProvider);
+const spawns = await Promise.all(
+  attackAgents.map(subagentType =>
+    Agent({subagent_type: subagentType, prompt: "...", model: resolved.model})
+  )
+);
+```
+
+For now, use the existing `.claude/workflows/red-team.js` for adversarial verification.
+Future harness extensions can add explicit fan-out patterns by resolving the role descriptor
+for each parallel invocation and passing it through.

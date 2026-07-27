@@ -6,7 +6,7 @@ All reference files for the write-goal-prompt skill.
 
 | File                                                                            | What it covers                                                          |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| [subagent-harness.md](../references/subagent-harness.md)                       | 5-agent loop design, depth budget, checker independence rules           |
+| [subagent-harness.md](../references/subagent-harness.md)                       | 5-agent loop design, depth budget, checker independence rules, provider-aware model resolution, concurrent role dispatch |
 | [eval-loop-design.md](../references/eval-loop-design.md)                       | Reward signal design, pass thresholds, cycle budget                     |
 | [clarity-gate.md](../references/clarity-gate.md)                               | Phase 0.5 grill vs `/wayfinder` routing; `/grilling` vs `batch-grill-me` |
 | [benchmark-intake.md](../references/benchmark-intake.md)                       | Benchmark spec intake — the four spec sections, sweep vs climb          |

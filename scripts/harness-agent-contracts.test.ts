@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { resolveRoleModel } from "./resolve-role-model";
 
 const repoRoot = join(import.meta.dir, "..");
 const agentPath = (name: string) => join(repoRoot, ".claude", "agents", `${name}.md`);
@@ -262,5 +263,104 @@ describe("approval-aware harness agent contracts", () => {
     const standalone = resolveSkillRoots(repo);
     expect(standalone.projectRoot).toBe(normalizePath(repo));
     expect(standalone.workspaceRoot).toBe(normalizePath(dirname(repo)));
+  });
+});
+
+describe("provider-aware model routing for harness roles", () => {
+  // Policy table from PLAN.md (5 roles × 3 providers = 15 combinations)
+  const POLICY_TABLE = {
+    native: {
+      planner: { model: "claude-sonnet-5", provider: "native", tier: "standard" },
+      maker: { model: "claude-haiku-4-5", provider: "native", tier: "fast" },
+      prover: { model: "claude-sonnet-5", provider: "native", tier: "standard" },
+      checker: { model: "claude-sonnet-5", provider: "native", tier: "standard" },
+      shipper: { model: "claude-sonnet-5", provider: "native", tier: "standard" },
+    },
+    claudex: {
+      planner: { model: "claude-sonnet-5", provider: "claudex", tier: "standard" },
+      maker: { model: "claude-haiku-4-5", provider: "claudex", tier: "fast" },
+      prover: { model: "claude-opus-4-8", provider: "claudex", tier: "flagship" },
+      checker: { model: "claude-opus-4-8", provider: "claudex", tier: "flagship" },
+      shipper: { model: "claude-opus-4-8", provider: "claudex", tier: "flagship" },
+    },
+    codex: {
+      planner: { model: "gpt-5.6-terra", provider: "codex", tier: "standard" },
+      maker: { model: "gpt-5.3-codex-spark", provider: "codex", tier: "fast" },
+      prover: { model: "gpt-5.6-sol", provider: "codex", tier: "flagship" },
+      checker: { model: "gpt-5.6-sol", provider: "codex", tier: "flagship" },
+      shipper: { model: "gpt-5.6-sol", provider: "codex", tier: "flagship" },
+    },
+  };
+
+  test("all 15 role×provider combinations resolve per the policy table", () => {
+    const roleNames = ["planner", "maker", "prover", "checker", "shipper"] as const;
+    const providerNames = ["native", "claudex", "codex"] as const;
+
+    for (const provider of providerNames) {
+      for (const role of roleNames) {
+        const detected = { provider };
+        const resolved = resolveRoleModel(role, detected as any);
+        const expected = POLICY_TABLE[provider][role];
+        expect(resolved).toEqual(expected);
+      }
+    }
+  });
+
+  test("native provider resolves to Claude defaults from agent frontmatter", () => {
+    for (const role of ["planner", "maker", "prover", "checker", "shipper"] as const) {
+      const resolved = resolveRoleModel(role, { provider: "native" });
+      const agentName = `harness-${role}`;
+      const agentSource = readAgent(agentName);
+
+      // Extract model: from frontmatter
+      const modelMatch = agentSource.match(/^model:\s*(.+?)$/m);
+      expect(modelMatch).toBeTruthy();
+      const frontmatterModel = modelMatch![1].trim();
+      expect(resolved.model).toBe(frontmatterModel);
+    }
+  });
+
+  test("claudex provider bumps prover/checker/shipper to flagship tier", () => {
+    const verificationRoles = ["prover", "checker", "shipper"] as const;
+    for (const role of verificationRoles) {
+      const resolved = resolveRoleModel(role, { provider: "claudex" });
+      expect(resolved.tier).toBe("flagship");
+    }
+  });
+
+  test("codex provider bumps prover/checker/shipper to flagship tier (gpt-5.6-sol)", () => {
+    const verificationRoles = ["prover", "checker", "shipper"] as const;
+    for (const role of verificationRoles) {
+      const resolved = resolveRoleModel(role, { provider: "codex" });
+      expect(resolved.tier).toBe("flagship");
+      expect(resolved.model).toBe("gpt-5.6-sol");
+    }
+  });
+
+  test("planner and maker keep native tier across all providers", () => {
+    const plannerTiers = [
+      { provider: "native", expected: "standard" },
+      { provider: "claudex", expected: "standard" },
+      { provider: "codex", expected: "standard" },
+    ];
+    for (const { provider, expected } of plannerTiers) {
+      const resolved = resolveRoleModel("planner", { provider } as any);
+      expect(resolved.tier).toBe(expected);
+    }
+
+    const makerTiers = [
+      { provider: "native", expected: "fast" },
+      { provider: "claudex", expected: "fast" },
+      { provider: "codex", expected: "fast" },
+    ];
+    for (const { provider, expected } of makerTiers) {
+      const resolved = resolveRoleModel("maker", { provider } as any);
+      expect(resolved.tier).toBe(expected);
+    }
+  });
+
+  test("native fallback works when provider is unrecognized (no crash)", () => {
+    const resolved = resolveRoleModel("planner", { provider: "unknown" } as any);
+    expect(resolved).toEqual(POLICY_TABLE.native.planner);
   });
 });
