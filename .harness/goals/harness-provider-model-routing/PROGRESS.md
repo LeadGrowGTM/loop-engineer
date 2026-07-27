@@ -65,4 +65,4 @@ PROOF:
   Resolver spawn descriptor {model,provider,tier} documented as exact shape for concurrent fan-out
   SKILL.md Agent 4 prompt updated with ORCHESTRATION NOTE referencing resolver and ADR
   This goal's own phases documented as sequential (resolver is capability for future goals)
-Commit: (pending)
+Commit: a44cfe4 — Phase 4: Orchestration + discovery
