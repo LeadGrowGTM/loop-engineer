@@ -4,11 +4,12 @@ name: write-goal-prompt
 description: >
   Transforms a task description into a ready-to-paste /goal command for Claude Code.
   Use when handing off overnight or unsupervised work — multi-step implementation,
-  migration, backlog drains, anything with a verifiable end state. Outputs a structured
-  goal condition (up to 4000 chars) with context-based auto-compaction, HTML summary
-  page, Excalidraw diagram, and fallback guardrails baked in. Triggered by: "write a
-  goal prompt", "turn this into a /goal", "overnight task", "run unsupervised",
-  "hand off this task".
+  migration, backlog drains, anything with a verifiable end state. Outputs a lean
+  goal condition (well under 4000 chars) carrying task content, a compact [PARAMS]
+  block, and a HARNESS.md pointer; the standing protocol (execution stages, eval loop,
+  fallbacks, context compaction, morning report) lives in HARNESS.md, read first.
+  Triggered by: "write a goal prompt", "turn this into a /goal", "overnight task",
+  "run unsupervised", "hand off this task".
 version: 3.8.0
 maturity: validated
 triggers:
@@ -33,7 +34,7 @@ feedback:
 
 # Skill: Write Goal Prompt
 
-Converts a free-form task into a `/goal` command ready to paste into Claude Code. Designed for approval-gated in-session work - agent runs against a fixed signal and leaves a structured report. Output: structured goal condition (≤4000 chars) with eval loop, tiered fallbacks, HTML summary, and Excalidraw diagram.
+Converts a free-form task into a `/goal` command ready to paste into Claude Code. Designed for approval-gated in-session work - agent runs against a fixed signal and leaves a structured report. Output: a lean goal condition (well under 4000 chars) carrying task content, a compact `[PARAMS]` block, and a HARNESS.md pointer. The standing protocol - execution stages, eval loop, tiered fallbacks, proof, morning report, context compaction, turn limit - lives in HARNESS.md (read first), not inlined in the goal condition.
 
 ## Execution Router (Run Before Phase 0)
 
@@ -347,7 +348,7 @@ Synthesize Agents 1-3 into `[TOOLS]` block. Agent 4 output becomes `HARNESS.md` 
 
 ## Phase 2: Format the Goal Condition
 
-Template below. Keep total **under 4000 characters**.
+Standing protocol boilerplate does NOT go here. It lives in HARNESS.md (written in Phase 2.5) as standing sections the agent reads first, so it never competes for the 4000-char budget. The goal condition carries only task-specific content, a compact `[PARAMS]` block, and a lean `[HARNESS]` pointer. Keep total well under 4000 characters - aim for the brevity budget in Phase 2.5, not the ceiling.
 
 ```
 [GOAL] <one-sentence verifiable end state — what the evaluator checks>
@@ -383,120 +384,26 @@ Use this context:
 [TOOLS]
 <populated from Phase 1.5 discovery — omit entirely if nothing relevant found>
 
+[PARAMS]
+Reward signal: <single programmatic metric — the qualitative gate produces it>
+Done: <exact threshold — e.g. mechanical gate passes AND mean rubric ≥ 4.0/5.0>
+Max cycles: <N — default 3>
+Turn limit: <max_turns — default 80>
+[Constraints — include the two lines below ONLY if the task touches live data, shared infra, or a per-call cost API; omit entirely otherwise]
+Cost ceiling: <e.g. stay under $5 in API calls total>
+Do NOT touch: <live table / running job / shared sheet>
+
 [HARNESS]
-Read HARNESS.md before starting. Five-stage execution:
+Read <absolute-path>/HARNESS.md before starting and follow it end to end. Its standing sections
+carry the protocol: EXECUTION_PROTOCOL (the 5-stage Planner→Maker→Prover→Checker→Ship flow),
+EVAL_LOOP, BLOCKERS, PROOF_PROTOCOL, MORNING_REPORT, CONTEXT_MANAGEMENT, TURN_LIMIT. Use the
+task-specific values in [PARAMS] above wherever a section references them. The per-task briefs
+(PLANNER_BRIEF, MAKER_ROUTING, PROVER_BRIEF, REDTEAM_BRIEF, CHECKER_BRIEF, SHIP_BRIEF) and
+LOOP_TRACKER live there too.
 Before stage 1, the goal parent runs the exact safe snippet generated in Execution Router Step 0.1:
 [ROUTING_GUARD]
 <exact stdout from resolver --emit-shell-guard mode>
-A nonzero result stops before Planner. On success, pass exact `ROUTING_EVIDENCE` stdout to Planner
-under `[SKILL_ROUTING_RESOLUTION]`; do not parse or reformat it in the parent.
-1. Planner (turns 1-5): consume the routing resolution, decompose task → write PLAN.md (phases,
-   exact routing evidence, selected source/fallback, checker rubric), then mirror each phase to a
-   durable slice in `issues/NN-<slug>.md` (survives /compact, tracks per-phase Status). PLAN.md
-   `## Phases` stays canonical; slices are the durable drive-list. Do not produce task artifacts
-   until PLAN.md is written.
-2. Maker (turns 6-<N>): execute per PLAN.md, invoke skills per phase, commit at each phase boundary.
-3. Prover (running-app goals only): spawn harness-prover with PROVER_BRIEF from HARNESS.md.
-   Pass feature intent + exercise instructions. Get PROOF VERDICT before Checker.
-   Skip this step entirely for static artifact goals (PROVER_BRIEF: N/A).
-3b. Red-team (adversarial-verify goals — running app, user-facing flow, or security-sensitive
-   code): run the red-team Workflow (`.claude/workflows/red-team.js`) with REDTEAM_BRIEF from
-   HARNESS.md (target, paths, entryPoint). Feed its worst-first holes back to the Maker as fix
-   input BEFORE Checker scores. Skip for static/internal artifacts (REDTEAM_BRIEF: N/A).
-4. Checker: spawn fresh harness-checker subagent with CHECKER_BRIEF from HARNESS.md.
-   Pass artifact paths + PROOF VERDICT (if running-app goal).
-   Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
-5. Ship (only after Checker PASS plus separate explicit shipping approval for this invocation):
-   if approval is absent, do not spawn the Shipper and record `N/A - shipping not approved` as the
-   terminal shipping outcome. If approval is present, spawn a fresh `harness-shipper` agent with
-   SHIP_BRIEF.intent, project root, branch, and both approval signals. The shipper invokes
-   `/no-mistakes`; the goal agent must never drive it inline. `checks-passed` means the PR is ready
-   for human review/merge; do not wait for merge. Do not run this stage for ITERATE or PLATEAU.
-
-Work through the task to completion. If you hit a blocker, do not stop. Use mocks, stubs, or documented assumptions. Record each workaround and continue with everything that does not require my decision.
-
-[EVAL LOOP]
-At turn 1, before any other work, write your eval plan in HANDOFF.md under
-"Eval Loop Design". Do not start the task until this is written. Include:
-  - Reward signal: <single metric>
-  - Mechanical gate: <fast binary check — runs in seconds, no LLM judgment>
-  - Qualitative gate: <scored check — produces the reward signal>
-  - Max cycles: <N — default 3>
-  - Done condition: <exact threshold>
-
-Then execute the task using this loop — repeat up to <max_cycles> times:
-  1. Generate output (inputs are fixed — do not change the spec, only the output)
-  2. Run mechanical gate — if it fails, fix and re-run before proceeding to step 3
-  2b. Adversarial-verify goals only: run the red-team Workflow (REDTEAM_BRIEF in HARNESS.md).
-     Fix every critical/high hole it returns before step 3. Skip if REDTEAM_BRIEF: N/A.
-  3. Spawn checker subagent (checker brief in HARNESS.md) — pass artifact paths only,
-     not your context. Checker opens "I did not write this." Writes dimension scores
-     + reward signal to CYCLE_LOG.md.
-  4. If done condition met → commit, proceed to next phase
-  5. If not → read CYCLE_LOG.md, fix only the lowest-scoring dimension, return to step 1
-  6. If 3 consecutive cycles produce the same reward signal → exit loop (plateau),
-     commit current best, note "plateau after N cycles" in HANDOFF.md
-
-Log each cycle to HANDOFF.md: cycle number, mechanical gate result, reward signal score, what changed.
-After each cycle, update the LOOP_TRACKER section in HARNESS.md — check off completed steps, fill in paths, SHAs, and reward signals.
-After the first PASS, exit the eval loop. Run the Ship stage exactly once only when the current
-invocation also contains separate explicit shipping approval. Otherwise do not spawn Shipper,
-record `N/A - shipping not approved` in HANDOFF.md and LOOP_TRACKER, and terminate successfully.
-If an approved Ship stage returns `failed` or `cancelled`, report that terminal outcome; do not
-describe the change as merge-ready.
-
-[CONTEXT MANAGEMENT]
-Run /compact when context approaches 170k tokens. After compacting, state your current checkpoint before continuing. Do NOT compact on turn 1.
-
-[CONSTRAINTS]
-<Include this block whenever any of the following apply — omit entirely if none do>
-Cost ceiling: <e.g., "Stay under $5 in API calls total.">
-Do NOT touch unsupervised:
-- <live table / running job / shared sheet>
-If any constraint would be violated: stop that task, document in HANDOFF.md under
-"Constraint Block", and continue with everything that doesn't violate.
-
-[BLOCKERS]
-If you hit a hard blocker: mock/stub it, document in HANDOFF.md under "Needs My
-Decision", and continue all work that does not depend on the blocked piece.
-Skill/process failures use tiered fallbacks — never silently downgrade substance:
-- Tier 1: Run the same process manually (same depth, same searches)
-- Tier 2: Reduced scope — mark artifact quality: draft in frontmatter
-- Tier 3: Skeleton from trained knowledge — mark quality: placeholder, flag in HANDOFF
-
-[PROOF PROTOCOL]
-Every completed phase needs proof, not assertion. After each phase append to PROGRESS.md:
-  Phase N: <name> — COMPLETE
-  Artifact: <absolute-path>
-  Proof: <actual command output — paste it, don't describe it>
-  e.g. "npm test: 47 passed, 0 failed" not "tests pass"
-  e.g. "wc -l output.md: 312 lines" not "file written"
-  e.g. "grep -c 'https://' research.md: 34 sources" not "well-sourced"
-  Commit: <SHA>
-Never write "Phase N complete" without proof on the line below it.
-
-[MORNING REPORT]
-By morning, leave me the morning report in the task's working directory:
-1. HANDOFF.md — what completed, workarounds, needs my decision, evidence
-2. HANDOFF.html — single-page visual summary (see references/morning-report-specs.md)
-3. HANDOFF.excalidraw — architecture/flow diagram (see references/morning-report-specs.md)
-
-Then PUBLISH the report so I wake up to a link, not a file on disk:
-4. Run `lavish-axi share HANDOFF.html` — publishes to a hosted URL (headless-safe HTTPS
-   POST, no browser needed). Publish PUBLIC: do NOT pass --password. The link must open
-   in one click from anywhere, including a comment on the no-mistakes PR — a password
-   gate makes the report single-player. The trade: anyone with the URL can read it, so
-   keep credentials, tokens, and client PII OUT of the report body — gate the value, not
-   the page. Record the hosted URL in a "## 📋 Published Report" block at the TOP of
-   HANDOFF.md. The update_key is still a secret: write it to HANDOFF.secret.local, add
-   that filename to .gitignore immediately — it is update/delete-capable and MUST NEVER
-   be committed. A public page does not mean a public key
-   to any repo. If ht-ml.app is unreachable, fall back to
-   `lavish-axi export HANDOFF.html --out HANDOFF.export.html` and note why in HANDOFF.md.
-   See references/morning-report-specs.md.
-
-[TURN LIMIT] Stop after <max_turns> turns. If not done, write all three files anyway,
-then publish per step 4.
+A nonzero result stops before Planner.
 ```
 
 ---
@@ -507,20 +414,140 @@ then publish per step 4.
 
 ### Step 0 — Write HARNESS.md (before measuring)
 
-Write `HARNESS.md` to the task working directory using Agent 4 output from Phase 1.5.
-The file must contain six sections: `PLANNER_BRIEF`, `MAKER_ROUTING`, `PROVER_BRIEF`,
+Write `HARNESS.md` to the task working directory using Agent 4 output from Phase 1.5. It holds
+two kinds of content:
+
+**A. Task-customized briefs** (from Agent 4): `PLANNER_BRIEF`, `MAKER_ROUTING`, `PROVER_BRIEF`,
 `REDTEAM_BRIEF`, `CHECKER_BRIEF`, `SHIP_BRIEF`, followed by `LOOP_TRACKER`.
 
-Then update the `[HARNESS]` block in the goal candidate so the first line reads:
-`Read <absolute-path>/HARNESS.md before starting.` Replace the `[ROUTING_GUARD]` placeholder with
-exact stdout from resolver `--emit-shell-guard` mode. Never interpolate or re-quote its paths.
-Any unresolved placeholder blocks emission.
+**B. Standing protocol sections** - the boilerplate moved OUT of the goal condition so it stops
+eating the 4000-char budget. These are GENERIC: write them verbatim into every HARNESS.md exactly
+as printed below. Do NOT bake task-specific values into them - max cycles, done threshold, turn
+count, cost ceiling, and do-not-touch all come from the goal's `[PARAMS]` block, which each section
+references. The seven standing sections are `EXECUTION_PROTOCOL`, `EVAL_LOOP`, `CONTEXT_MANAGEMENT`,
+`BLOCKERS`, `PROOF_PROTOCOL`, `MORNING_REPORT`, `TURN_LIMIT`.
+
+Write these seven sections verbatim:
+
+```text
+EXECUTION_PROTOCOL
+Five-stage execution. Before stage 1, the goal parent runs the [ROUTING_GUARD] snippet from the
+goal condition; a nonzero result stops before Planner. On success, pass exact `ROUTING_EVIDENCE`
+stdout to Planner under `[SKILL_ROUTING_RESOLUTION]`; do not parse or reformat it in the parent.
+1. Planner (turns 1-5): consume the routing resolution, decompose task → write PLAN.md (phases,
+   exact routing evidence, selected source/fallback, checker rubric), then mirror each phase to a
+   durable slice in `issues/NN-<slug>.md` (survives /compact, tracks per-phase Status). PLAN.md
+   `## Phases` stays canonical; slices are the durable drive-list. Do not produce task artifacts
+   until PLAN.md is written.
+2. Maker (turns 6-<N>): execute per PLAN.md, invoke skills per phase, commit at each phase boundary.
+3. Prover (running-app goals only): spawn harness-prover with PROVER_BRIEF. Pass feature intent +
+   exercise instructions. Get PROOF VERDICT before Checker. Skip entirely for static artifact goals
+   (PROVER_BRIEF: N/A).
+3b. Red-team (adversarial-verify goals — running app, user-facing flow, or security-sensitive
+   code): run the red-team Workflow (`.claude/workflows/red-team.js`) with REDTEAM_BRIEF (target,
+   paths, entryPoint). Feed its worst-first holes back to the Maker as fix input BEFORE Checker
+   scores. Skip for static/internal artifacts (REDTEAM_BRIEF: N/A).
+4. Checker: spawn fresh harness-checker subagent with CHECKER_BRIEF. Pass artifact paths + PROOF
+   VERDICT (if running-app goal). Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
+5. Ship (only after Checker PASS plus separate explicit shipping approval for this invocation):
+   if approval is absent, do not spawn the Shipper and record `N/A - shipping not approved` as the
+   terminal shipping outcome. If approval is present, spawn a fresh `harness-shipper` agent with
+   SHIP_BRIEF.intent, project root, branch, and both approval signals. The shipper invokes
+   `/no-mistakes`; the goal agent must never drive it inline. `checks-passed` means the PR is ready
+   for human review/merge; do not wait for merge. Do not run this stage for ITERATE or PLATEAU.
+
+Work through the task to completion. If you hit a blocker, do not stop. Use mocks, stubs, or
+documented assumptions. Record each workaround and continue with everything that does not require
+my decision.
+
+EVAL_LOOP
+At turn 1, before any other work, write your eval plan in HANDOFF.md under "Eval Loop Design". Do
+not start the task until this is written. Pull the reward signal, done condition, and max cycles
+from the goal's [PARAMS] block. Include:
+  - Reward signal: <from [PARAMS]>
+  - Mechanical gate: <fast binary check — runs in seconds, no LLM judgment>
+  - Qualitative gate: <scored check — produces the reward signal>
+  - Max cycles: <from [PARAMS] — default 3>
+  - Done condition: <from [PARAMS]>
+
+Then execute the task using this loop — repeat up to max_cycles times:
+  1. Generate output (inputs are fixed — do not change the spec, only the output)
+  2. Run mechanical gate — if it fails, fix and re-run before proceeding to step 3
+  2b. Adversarial-verify goals only: run the red-team Workflow (REDTEAM_BRIEF). Fix every
+     critical/high hole it returns before step 3. Skip if REDTEAM_BRIEF: N/A.
+  3. Spawn checker subagent (CHECKER_BRIEF) — pass artifact paths only, not your context. Checker
+     opens "I did not write this." Writes dimension scores + reward signal to CYCLE_LOG.md.
+  4. If done condition met → commit, proceed to next phase
+  5. If not → read CYCLE_LOG.md, fix only the lowest-scoring dimension, return to step 1
+  6. If 3 consecutive cycles produce the same reward signal → exit loop (plateau), commit current
+     best, note "plateau after N cycles" in HANDOFF.md
+
+Log each cycle to HANDOFF.md: cycle number, mechanical gate result, reward signal score, what
+changed. After each cycle, update the LOOP_TRACKER section — check off completed steps, fill in
+paths, SHAs, and reward signals. After the first PASS, exit the eval loop. Run the Ship stage
+exactly once only when the current invocation also contains separate explicit shipping approval.
+Otherwise do not spawn Shipper, record `N/A - shipping not approved` in HANDOFF.md and LOOP_TRACKER,
+and terminate successfully. If an approved Ship stage returns `failed` or `cancelled`, report that
+terminal outcome; do not describe the change as merge-ready.
+
+CONTEXT_MANAGEMENT
+Run /compact when context approaches the compact threshold (default 170k tokens). After compacting,
+state your current checkpoint before continuing. Do NOT compact on turn 1.
+
+BLOCKERS
+If you hit a hard blocker: mock/stub it, document in HANDOFF.md under "Needs My Decision", and
+continue all work that does not depend on the blocked piece. Skill/process failures use tiered
+fallbacks — never silently downgrade substance:
+- Tier 1: Run the same process manually (same depth, same searches)
+- Tier 2: Reduced scope — mark artifact quality: draft in frontmatter
+- Tier 3: Skeleton from trained knowledge — mark quality: placeholder, flag in HANDOFF
+If a constraint from [PARAMS] would be violated: stop that task, document in HANDOFF.md under
+"Constraint Block", and continue with everything that doesn't violate.
+
+PROOF_PROTOCOL
+Every completed phase needs proof, not assertion. After each phase append to PROGRESS.md:
+  Phase N: <name> — COMPLETE
+  Artifact: <absolute-path>
+  Proof: <actual command output — paste it, don't describe it>
+  e.g. "npm test: 47 passed, 0 failed" not "tests pass"
+  e.g. "wc -l output.md: 312 lines" not "file written"
+  e.g. "grep -c 'https://' research.md: 34 sources" not "well-sourced"
+  Commit: <SHA>
+Never write "Phase N complete" without proof on the line below it.
+
+MORNING_REPORT
+By morning, leave me the morning report in the task's working directory:
+1. HANDOFF.md — what completed, workarounds, needs my decision, evidence
+2. HANDOFF.html — single-page visual summary (see references/morning-report-specs.md)
+3. HANDOFF.excalidraw — architecture/flow diagram (see references/morning-report-specs.md)
+Then PUBLISH the report so I wake up to a link, not a file on disk:
+4. Run `lavish-axi share HANDOFF.html` — publishes to a hosted URL (headless-safe HTTPS POST, no
+   browser needed). Publish PUBLIC: do NOT pass --password. The link must open in one click from
+   anywhere, including a comment on the no-mistakes PR — a password gate makes the report
+   single-player. The trade: anyone with the URL can read it, so keep credentials, tokens, and
+   client PII OUT of the report body — gate the value, not the page. Record the hosted URL in a
+   "## 📋 Published Report" block at the TOP of HANDOFF.md. The update_key is still a secret: write
+   it to HANDOFF.secret.local, add that filename to .gitignore immediately — it is
+   update/delete-capable and MUST NEVER be committed. If ht-ml.app is unreachable, fall back to
+   `lavish-axi export HANDOFF.html --out HANDOFF.export.html` and note why in HANDOFF.md.
+   See references/morning-report-specs.md.
+
+TURN_LIMIT
+Stop after the turn limit in [PARAMS] (default 80). If not done, write all three morning-report
+files anyway, then publish per MORNING_REPORT step 4.
+```
+
+Then update the `[HARNESS]` block in the goal candidate so the first line names the real path:
+`Read <absolute-path>/HARNESS.md before starting and follow it end to end.` Replace the
+`[ROUTING_GUARD]` placeholder with exact stdout from resolver `--emit-shell-guard` mode. Never
+interpolate or re-quote its paths. Any unresolved placeholder blocks emission.
 
 The task working directory is `$PROJECT_ROOT/.harness/goals/<task-slug>/` (resolved in
 Execution Router Step 0). Write HARNESS.md there and use that absolute path.
 
-This step happens before length measurement — HARNESS.md content is NOT inlined
-into the goal prompt. The goal only carries the path reference.
+This step happens before length measurement — the HARNESS.md content (both the task briefs and the
+standing protocol sections) is NOT inlined into the goal prompt. The goal only carries the path
+reference plus the `[PARAMS]` values the standing sections consume.
 
 ### LENGTH GATE — TWO-SIDED, MEASURED, NO EXCEPTIONS
 
@@ -528,7 +555,7 @@ into the goal prompt. The goal only carries the path reference.
 
 So the gate is two-sided:
 - **Hard cap 4000 / safe target 3990** — over this is BLOCKED, non-negotiable (mechanical, DO NOT eyeball).
-- **Brevity budget ~2200** (single-phase) / **~2800** (multi-phase) — over this is a WARN, not a block. It means: compress unless every block earns its place. Aim for the *shortest* prompt that still passes the dry-run self-check, not the longest that fits.
+- **Brevity budget ~1500** (single-phase) / **~2500** (multi-phase) — over this is a WARN, not a block. It means: compress unless every block earns its place. These budgets dropped once the ~6000 chars of standing protocol moved to HARNESS.md; a normal lean goal now lands around 1200-2500 chars. Aim for the *shortest* prompt that still passes the dry-run self-check, not the longest that fits.
 
 Before emitting, you MUST run this sequence as actual shell commands (not mentally):
 
@@ -552,7 +579,7 @@ Fallback if Bun is unavailable (note the `encoding="utf-8"` — WITHOUT it, Pyth
 python -c "txt=open('temp/_goal-candidate.txt', encoding='utf-8').read().rstrip('\n'); print(len(txt))"
 ```
 
-The script prints `WARN` when the candidate is over the brevity budget but under the cap. Pass `--brevity 2800` for a genuinely multi-phase task; do not raise it just to silence the warning.
+The script prints `WARN` when the candidate is over the brevity budget but under the cap. Pass `--brevity 2500` for a genuinely multi-phase task; do not raise it just to silence the warning.
 
 **Step 3 — gate:**
 

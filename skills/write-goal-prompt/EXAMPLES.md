@@ -25,6 +25,8 @@ Constraints: don't touch src/auth/ — Auth team owns it. Stay out.
 
 ## Output
 
+The goal condition is lean: task content, a compact `[PARAMS]` block, and a one-paragraph `[HARNESS]` pointer. The standing protocol (execution stages, eval loop, blockers, proof, morning report, context management, turn limit) is written verbatim into HARNESS.md in Phase 2.5 and read first — it is NOT inlined here, so it never competes for the 4000-char budget.
+
 ```
 /goal [GOAL] All tests pass and no raw fetch() calls remain in src/api/.
 
@@ -59,91 +61,29 @@ ApiClient is at src/lib/api-client.ts — read it before migrating.
 [TOOLS]
 - TypeScript compiler (tsc) for type checking
 - Node.js test runner (npm test) for validation
-- grep for verification of API calls
+
+[PARAMS]
+Reward signal: npm test pass rate + grep fetch count (target: 100% / 0)
+Done: `npm test && grep -r "fetch(" src/api/ | wc -l` → 0 AND mean rubric ≥ 4.0/5.0
+Max cycles: 3
+Turn limit: 80
+Do NOT touch: src/auth/ — Auth team owns it; skip any fetch() there and note it in HANDOFF.md
 
 [HARNESS]
-Read HARNESS.md before starting. Before stage 1, generate the runtime guard with this argv call
-without a shell:
-["bun", "/home/user/.claude/skills/write-goal-prompt/scripts/resolve-skill-routing.ts",
- "--emit-shell-guard", "--project-root", "/home/user/projects/myapp"]
-Run the generated stdout exactly:
+Read /home/user/projects/myapp/.harness/goals/api-client-migration/HARNESS.md before starting and
+follow it end to end. Its standing sections carry the protocol: EXECUTION_PROTOCOL (the 5-stage
+Planner→Maker→Prover→Checker→Ship flow), EVAL_LOOP, BLOCKERS, PROOF_PROTOCOL, MORNING_REPORT,
+CONTEXT_MANAGEMENT, TURN_LIMIT. Use the [PARAMS] values above wherever a section references them.
+The per-task briefs and LOOP_TRACKER live there too.
+Before stage 1, the goal parent runs the exact safe snippet generated in Execution Router Step 0.1:
+[ROUTING_GUARD]
 ROUTING_EXIT=0
 ROUTING_EVIDENCE=$(bun '/home/user/.claude/skills/write-goal-prompt/scripts/resolve-skill-routing.ts' --project-root '/home/user/projects/myapp' --canonical-path '/home/user/.claude/skills/write-goal-prompt/references/skill-routing.md') || ROUTING_EXIT=$?
 printf '%s\n' "$ROUTING_EVIDENCE"
 if [ "$ROUTING_EXIT" -ne 0 ]; then
   exit "$ROUTING_EXIT"
 fi
-A nonzero status stops the run before Planner. On success, invoke Planner with:
-[SKILL_ROUTING_RESOLUTION]
-<exact ROUTING_EVIDENCE JSON printed above>
-
-Four-stage execution:
-1. Planner (turns 1-5): decompose task and write PLAN.md. PLAN.md must copy the exact routing evidence,
-   record the selected source and fallback, phases, skill routing, and checker rubric.
-   Do not produce task artifacts until PLAN.md is written.
-2. Maker (turns 6-<N>): execute per PLAN.md, invoke skills per phase, commit at each phase boundary.
-3. Checker: spawn fresh subagent per checker brief in HARNESS.md. Pass artifact paths only,
-   not your reasoning context. Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
-4. Ship: only after Checker PASS, spawn a fresh `harness-shipper` with the original task as
-   intent. It invokes `/no-mistakes` and drives it to a terminal outcome. Record the PR URL;
-   `checks-passed` means ready for human merge.
-
-Work through the task to completion. If you hit a blocker, do not stop. Use mocks, stubs, or documented assumptions. Record each workaround and continue with everything that does not require my decision.
-
-[EVAL LOOP]
-At turn 1, before any migration work, write your eval plan in HANDOFF.md under
-"Eval Loop Design". Do not start the task until this is written. Then migrate in batches using this loop (max 3 cycles/batch):
-  - Reward signal: npm test pass rate + grep fetch count (target: 100% / 0)
-  - Mechanical gate: `npm test && grep -r "fetch(" src/api/ | wc -l` → 0
-  - Qualitative gate: checker rubric dimensions: error handling (1-5), scope (1-5), naming (1-5)
-  - Done: mechanical gate passes AND mean rubric score ≥ 4.0
-  1. Generate output (migrate a batch of fetch() calls)
-  2. Run mechanical gate — if it fails, fix and re-run before proceeding to step 3
-  3. Spawn checker subagent (checker brief in HARNESS.md) — pass artifact paths only,
-     not your context. Checker opens "I did not write this." Writes dimension scores
-     + reward signal to CYCLE_LOG.md.
-  4. If done condition met → commit batch, proceed to next files
-  5. If not → read CYCLE_LOG.md, fix only the lowest-scoring dimension, return to step 1
-  6. If 3 consecutive cycles produce the same reward signal → exit loop (plateau),
-     commit current best, note "plateau after N cycles" in HANDOFF.md
-Log each cycle to HANDOFF.md: cycle number, mechanical gate result, reward signal score, what changed.
-
-[CONSTRAINTS]
-Do NOT touch unsupervised:
-- src/auth/ — Auth team owns it. If a fetch() call is in there, document in
-  HANDOFF.md under "Constraint Block" and skip it.
-
-[CONTEXT MANAGEMENT]
-Run /compact when context approaches 170k tokens. After compacting, state
-your current checkpoint before continuing. Do NOT compact on turn 1.
-
-[BLOCKERS]
-If a fetch() call needs an auth pattern not yet on ApiClient: add a TODO
-comment, document in HANDOFF.md under "Needs My Decision", continue.
-
-[PROOF PROTOCOL]
-Every completed phase needs proof, not assertion. After each phase append to PROGRESS.md:
-  Phase N: <name> — COMPLETE
-  Artifact: <absolute-path>
-  Proof: <actual command output — paste it, don't describe it>
-  e.g. "npm test: 47 passed, 0 failed" not "tests pass"
-  e.g. "wc -l src/api/client.ts: 312 lines" not "file written"
-  e.g. "grep -c 'fetch(' src/api/: 0" not "all migrated"
-  Commit: <SHA>
-Never write "Phase N complete" without proof on the line below it.
-
-[MORNING REPORT]
-By morning, leave me the morning report at project root:
-1. HANDOFF.md — what completed, workarounds, needs my decision, evidence
-2. HANDOFF.html — single-page visual summary (status badges per phase, files
-   created with sizes, decisions made, blockers highlighted)
-3. HANDOFF.excalidraw — diagram of migration scope (blue=done, red=blocked)
-4. Publish it PUBLIC: `lavish-axi share HANDOFF.html` — no --password, so the link opens
-   in one click and can be dropped straight into the no-mistakes PR. Keep credentials and
-   client PII out of the report body; anyone with the URL can read it. Record the URL in a
-   "## 📋 Published Report" block atop HANDOFF.md. Write the update_key to
-   HANDOFF.secret.local (+ .gitignore it — still update/delete-capable, never commit it).
-   Export fallback if ht-ml.app unreachable.
-
-[TURN LIMIT] Stop after 80 turns.
+A nonzero result stops before Planner.
 ```
+
+The `HARNESS.md` this goal points at carries the six task briefs + LOOP_TRACKER **and** the seven standing protocol sections (written verbatim, per Phase 2.5 Step 0). None of that text lives in the measured goal condition above.
