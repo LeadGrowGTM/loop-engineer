@@ -16,13 +16,13 @@ not its self-talk. Fresh eyes or it doesn't count.
 
 The 5 harness agents are defined as proper Claude Code agents in `.claude/agents/`:
 
-| File                                | Role                             | tools                                | model      |
-| ----------------------------------- | -------------------------------- | ------------------------------------ | ---------- |
-| `.claude/agents/harness-planner.md` | Decompose goal → BRIEF.md, PLAN.md | Read, Glob, Write                  | sonnet-4-6 |
-| `.claude/agents/harness-maker.md`   | Execute phases, commit           | Read, Glob, Write, Edit, Bash, Agent | haiku-4-5  |
-| `.claude/agents/harness-prover.md`  | Drive running app → PROOF verdict | Read, Bash                          | sonnet-4-6 |
-| `.claude/agents/harness-checker.md` | Score artifacts, write CYCLE_LOG | Read, Glob, Write                    | sonnet-4-6 |
-| `.claude/agents/harness-shipper.md` | Run `/no-mistakes` once after PASS → PR | Read, Bash                      | sonnet-4-6 |
+| File                                | Role                             | tools                                | model            |
+| ----------------------------------- | -------------------------------- | ------------------------------------ | ---------------- |
+| `.claude/agents/harness-planner.md` | Decompose goal → BRIEF.md, PLAN.md | Read, Glob, Write                  | claude-sonnet-5  |
+| `.claude/agents/harness-maker.md`   | Execute phases, commit           | Read, Glob, Write, Edit, Bash, Agent | claude-haiku-4-5 |
+| `.claude/agents/harness-prover.md`  | Drive running app → PROOF verdict | Read, Bash                          | claude-sonnet-5  |
+| `.claude/agents/harness-checker.md` | Score artifacts, write CYCLE_LOG | Read, Glob, Write                    | claude-sonnet-5  |
+| `.claude/agents/harness-shipper.md` | Run `/no-mistakes` once after PASS → PR | Read, Bash                      | claude-sonnet-5  |
 
 Checker's `tools: Read, Glob, Write` is **mechanical isolation** — it literally cannot run
 Bash, spawn subagents, or access anything the Maker produced via tool calls. Fresh by design.
