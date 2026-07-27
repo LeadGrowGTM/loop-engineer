@@ -139,7 +139,7 @@ Slug format: `<domain>-<3-4-word-kebab>` e.g. `outbound-rbs-sequence-v3`, `conte
 
 **No subagents — author decision work. Run before intake.**
 
-A goal without an eval is a task description. Output: completed `[EVAL LOOP]` block. See `references/eval-loop-design.md` for the four design questions, human-judgment flag, and task-type lookup.
+A goal without an eval is a task description. Output: the eval values for the goal's `[PARAMS]` block (reward signal, done threshold, max cycles) — the loop mechanics live in HARNESS.md's `EVAL_LOOP` section. See `references/eval-loop-design.md` for the four design questions, human-judgment flag, and task-type lookup.
 
 Produce: single reward signal (programmatic — flag if human judgment required) · mechanical gate (binary, seconds, no LLM) · qualitative gate (scored) · max_cycles (default 3) · done condition (exact threshold).
 
