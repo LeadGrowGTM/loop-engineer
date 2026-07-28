@@ -1,67 +1,71 @@
-// Provider detection layer: thin, side-effect-isolated probe
-// All I/O (env reads, codex binary detection) is injected through the env parameter
-// No bare Bun.which, no bare process.env calls outside of the injected parameter
+// Provider detection layer: thin, side-effect-isolated probe.
+// The pure detectProvider() takes an injected env; only getRealDetectionEnv() reads process.env.
+//
+// Signals (confirmed, not guessed):
+//   claudex  -> ANTHROPIC_BASE_URL is set. "claudex" runs the harness as ordinary Claude Code
+//               but points it at a local CLIProxyAPI instance by overriding ANTHROPIC_BASE_URL,
+//               so Claude Code believes it is talking to Anthropic while traffic is routed to a
+//               GPT upstream (GPT-5.6 Sol) that presents under Anthropic model IDs. Native Claude
+//               Code never sets this var. Ref: CLIProxyAPI (github.com/router-for-me/CLIProxyAPI)
+//               + claudex setup guides — the whole mechanism IS the ANTHROPIC_BASE_URL override.
+//   codex    -> CODEX_SANDBOX is set. The OpenAI Codex CLI sets CODEX_SANDBOX in the environment
+//               of the shell commands it executes (to signal sandbox state to child processes),
+//               so a script Codex runs — like this detector — sees it. This replaces the previous
+//               Bun.which("codex") check, which was a bug: it fired whenever codex was merely
+//               INSTALLED, misclassifying a native session on a machine that has codex installed.
+//               CODEX_SANDBOX is an internal/runtime marker (not in Codex's list of documented
+//               READ vars), so treat it as best-available: if Codex changes it, update here.
+//   native   -> neither signal present.
+//
+// Caveat: ANTHROPIC_BASE_URL set to some non-CLIProxyAPI Anthropic gateway would still read as
+// "claudex". That is acceptable for the harness's purpose (any proxied/GPT-backed session should
+// take the flagship verification bump); tighten to a host check here if that ever matters.
 
-export const PROVIDER_SIGNAL_ENV_KEY = "ANTHROPIC_PROVIDERS";
-// Placeholder signal name — unconfirmed. claudex runs the harness on a GPT upstream via a
-// codex subprocess (see docs/DEPENDENCIES.md §"Running under claudex"), but that section
-// documents only the model-ID mapping table, not an env var. No env var for claudex session
-// detection has been confirmed against the real proxy yet. Until confirmed, this key should
-// be treated as a guess: verify it against the actual claudex proxy before relying on it in
-// production, and update this comment once a real signal is confirmed.
+export const CLAUDEX_SIGNAL_ENV_KEY = "ANTHROPIC_BASE_URL";
+export const CODEX_SIGNAL_ENV_KEY = "CODEX_SANDBOX";
 
 export interface Detected {
   provider: "native" | "claudex" | "codex";
 }
 
 export interface DetectionEnv {
-  [PROVIDER_SIGNAL_ENV_KEY]?: string;
-  codexAvailable?: boolean;
-  // Additional env vars can be injected here for testing
+  [CLAUDEX_SIGNAL_ENV_KEY]?: string;
+  [CODEX_SIGNAL_ENV_KEY]?: string;
+  // Additional env vars can be injected here for testing.
   [key: string]: any;
 }
 
 /**
- * Detect the active provider (native Claude, claudex proxy, or codex CLI).
+ * Detect the active provider (native Claude, claudex proxy, or codex CLI) from an injected env.
  *
- * Detection precedence:
- * 1. If the (unconfirmed placeholder) ANTHROPIC_PROVIDERS env var is present, claudex takes
- *    precedence (means a live proxied session is in progress) — this signal has not been
- *    verified against the real claudex proxy; see PROVIDER_SIGNAL_ENV_KEY above
- * 2. Else if codex binary is available (injected via env.codexAvailable), return codex
- *    (no Anthropic access; running under real GPT-native CLI)
- * 3. Else return native (Claude Code default, no proxy)
+ * Detection precedence (the two signals are mutually exclusive in practice — claudex is Claude
+ * Code, codex is the OpenAI Codex CLI — so order only matters as a documented tiebreak):
+ * 1. ANTHROPIC_BASE_URL set  -> claudex (Claude Code routed through CLIProxyAPI to a GPT upstream).
+ * 2. CODEX_SANDBOX set       -> codex   (running under the OpenAI Codex CLI, GPT-native).
+ * 3. neither                 -> native  (Claude Code talking to Anthropic directly; the default).
  *
- * @param env - injected detection environment (for tests: pass fake values; for production: pass real env)
- * @returns {provider} - one of 'native', 'claudex', or 'codex'
+ * @param env - injected detection environment (tests pass fake values; production passes real env).
+ * @returns {provider} - one of 'native', 'claudex', or 'codex'.
  */
 export function detectProvider(env: DetectionEnv): Detected {
-  // Check for claudex session signal (takes precedence)
-  if (env[PROVIDER_SIGNAL_ENV_KEY]) {
+  if (env[CLAUDEX_SIGNAL_ENV_KEY]) {
     return { provider: "claudex" };
   }
 
-  // Check for codex binary availability
-  if (env.codexAvailable) {
+  if (env[CODEX_SIGNAL_ENV_KEY]) {
     return { provider: "codex" };
   }
 
-  // Default: native Claude Code
   return { provider: "native" };
 }
 
-// Production helper: returns the real environment for the resolver
+// Production helper: the only place that touches process.env. Reads the two real signal vars —
+// no binary probe, so an installed-but-inactive codex does not misfire.
 export function getRealDetectionEnv(): DetectionEnv {
-  const env: DetectionEnv = {
-    [PROVIDER_SIGNAL_ENV_KEY]: process.env[PROVIDER_SIGNAL_ENV_KEY],
+  return {
+    [CLAUDEX_SIGNAL_ENV_KEY]: process.env[CLAUDEX_SIGNAL_ENV_KEY],
+    [CODEX_SIGNAL_ENV_KEY]: process.env[CODEX_SIGNAL_ENV_KEY],
   };
-
-  // Check if codex binary is available
-  if (Bun.which("codex") !== null) {
-    env.codexAvailable = true;
-  }
-
-  return env;
 }
 
 // CLI wrapper (for manual testing): bun scripts/detect-provider.ts

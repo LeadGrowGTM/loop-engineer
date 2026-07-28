@@ -1,77 +1,83 @@
 import { test, expect } from "bun:test";
-import { detectProvider, PROVIDER_SIGNAL_ENV_KEY } from "./detect-provider";
+import {
+  detectProvider,
+  getRealDetectionEnv,
+  CLAUDEX_SIGNAL_ENV_KEY,
+  CODEX_SIGNAL_ENV_KEY,
+  type DetectionEnv,
+} from "./detect-provider";
 
-interface FakeEnv {
-  [PROVIDER_SIGNAL_ENV_KEY]?: string;
-  codexAvailable?: boolean;
-}
-
-test("returns 'native' when no signal and no codex binary", () => {
-  const env: FakeEnv = {};
-  const result = detectProvider(env);
-  expect(result.provider).toBe("native");
+test("returns 'native' when neither signal is present", () => {
+  expect(detectProvider({}).provider).toBe("native");
 });
 
-test("returns 'claudex' when session providers= signal indicates claudex is active", () => {
-  const env: FakeEnv = {
-    [PROVIDER_SIGNAL_ENV_KEY]: "claudex",
+test("returns 'claudex' when ANTHROPIC_BASE_URL is set (Claude Code routed through CLIProxyAPI)", () => {
+  const env: DetectionEnv = {
+    [CLAUDEX_SIGNAL_ENV_KEY]: "http://127.0.0.1:8317",
   };
-  const result = detectProvider(env);
-  expect(result.provider).toBe("claudex");
+  expect(detectProvider(env).provider).toBe("claudex");
 });
 
-test("returns 'codex' when codex binary is available and no claudex signal", () => {
-  const env: FakeEnv = {
-    codexAvailable: true,
+test("returns 'codex' when CODEX_SANDBOX is set and no claudex signal", () => {
+  const env: DetectionEnv = {
+    [CODEX_SIGNAL_ENV_KEY]: "seatbelt",
   };
-  const result = detectProvider(env);
-  expect(result.provider).toBe("codex");
+  expect(detectProvider(env).provider).toBe("codex");
 });
 
-test("claudex signal takes precedence over codex binary availability", () => {
-  const env: FakeEnv = {
-    [PROVIDER_SIGNAL_ENV_KEY]: "claudex",
-    codexAvailable: true,
+test("claudex (ANTHROPIC_BASE_URL) takes precedence over codex (CODEX_SANDBOX)", () => {
+  const env: DetectionEnv = {
+    [CLAUDEX_SIGNAL_ENV_KEY]: "http://127.0.0.1:8317",
+    [CODEX_SIGNAL_ENV_KEY]: "seatbelt",
   };
-  const result = detectProvider(env);
-  expect(result.provider).toBe("claudex");
+  expect(detectProvider(env).provider).toBe("claudex");
 });
 
-test("returns 'native' as documented default when neither signal is present", () => {
-  const env: FakeEnv = {};
-  const result = detectProvider(env);
-  expect(result.provider).toBe("native");
-  expect(result).toEqual({ provider: "native" });
+test("returns exactly { provider: 'native' } as the documented default", () => {
+  expect(detectProvider({})).toEqual({ provider: "native" });
 });
 
-test("PROVIDER_SIGNAL_ENV_KEY is exported as a documented constant", () => {
-  expect(typeof PROVIDER_SIGNAL_ENV_KEY).toBe("string");
-  expect(PROVIDER_SIGNAL_ENV_KEY.length).toBeGreaterThan(0);
+// Regression for the install-presence bug: a native session on a machine that merely has the
+// codex CLI installed must resolve to 'native'. Detection keys on the CODEX_SANDBOX runtime
+// signal (set only while Codex is executing a command), never on codex being on PATH.
+test("native session on a machine with codex installed -> native (no CODEX_SANDBOX)", () => {
+  const env: DetectionEnv = {}; // codex installed but not the active runtime => no signal
+  expect(detectProvider(env).provider).toBe("native");
 });
 
-test("detects codex from injected env parameter, not from ambient Bun.which", () => {
-  // This test verifies that detection is parameter-driven, not calling Bun.which
-  // It does this implicitly by passing a fake env with codexAvailable boolean
-  // rather than allowing a live filesystem check
-  const env: FakeEnv = {
-    codexAvailable: true,
+test("empty-string signals are falsy and fall through to native", () => {
+  const env: DetectionEnv = {
+    [CLAUDEX_SIGNAL_ENV_KEY]: "",
+    [CODEX_SIGNAL_ENV_KEY]: "",
   };
-  const result = detectProvider(env);
-  expect(result.provider).toBe("codex");
+  expect(detectProvider(env).provider).toBe("native");
 });
 
-test("handles various claudex signal values (case-insensitive or variant spellings)", () => {
-  // Test that the signal is recognized
-  const env1: FakeEnv = {
-    [PROVIDER_SIGNAL_ENV_KEY]: "claudex",
-  };
-  expect(detectProvider(env1).provider).toBe("claudex");
+test("signal keys are exported as non-empty documented constants", () => {
+  expect(CLAUDEX_SIGNAL_ENV_KEY).toBe("ANTHROPIC_BASE_URL");
+  expect(CODEX_SIGNAL_ENV_KEY).toBe("CODEX_SANDBOX");
+});
 
-  // Test fallthrough when signal is absent/falsy
-  const env2: FakeEnv = {
-    [PROVIDER_SIGNAL_ENV_KEY]: "",
+test("getRealDetectionEnv reads only the two real signal vars (no binary probe)", () => {
+  const saved = {
+    base: process.env[CLAUDEX_SIGNAL_ENV_KEY],
+    sandbox: process.env[CODEX_SIGNAL_ENV_KEY],
   };
-  const result2 = detectProvider(env2);
-  // Empty string is falsy, should fall through to codex check
-  expect(result2.provider).toBe("native");
+  try {
+    delete process.env[CLAUDEX_SIGNAL_ENV_KEY];
+    delete process.env[CODEX_SIGNAL_ENV_KEY];
+    // Neither signal set -> native, regardless of whether a codex binary exists on this machine.
+    expect(detectProvider(getRealDetectionEnv()).provider).toBe("native");
+
+    process.env[CODEX_SIGNAL_ENV_KEY] = "seatbelt";
+    expect(detectProvider(getRealDetectionEnv()).provider).toBe("codex");
+
+    process.env[CLAUDEX_SIGNAL_ENV_KEY] = "http://127.0.0.1:8317";
+    expect(detectProvider(getRealDetectionEnv()).provider).toBe("claudex");
+  } finally {
+    if (saved.base === undefined) delete process.env[CLAUDEX_SIGNAL_ENV_KEY];
+    else process.env[CLAUDEX_SIGNAL_ENV_KEY] = saved.base;
+    if (saved.sandbox === undefined) delete process.env[CODEX_SIGNAL_ENV_KEY];
+    else process.env[CODEX_SIGNAL_ENV_KEY] = saved.sandbox;
+  }
 });

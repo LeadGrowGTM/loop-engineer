@@ -62,6 +62,12 @@ Rules for adding or editing an agent:
   (where Checker=sonnet, Maker=haiku are genuinely different models). The role/tool
   isolation still holds; the model-diversity part does not.
 
+**Detection signal.** The harness detects a claudex session by the `ANTHROPIC_BASE_URL`
+environment variable being set — that override (pointing Claude Code at the local CLIProxyAPI)
+*is* the claudex mechanism, and native Claude Code never sets it. A raw OpenAI Codex CLI session
+is detected by `CODEX_SANDBOX` (which Codex sets in the environment of commands it runs). Neither
+present → native. See `scripts/detect-provider.ts`.
+
 ## The one thing to check first
 
 Before any goal work, run the required non-launching readiness preflight. It fails fast with exact
