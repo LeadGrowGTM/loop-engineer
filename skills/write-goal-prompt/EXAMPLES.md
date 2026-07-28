@@ -86,4 +86,20 @@ fi
 A nonzero result stops before Planner.
 ```
 
-The `HARNESS.md` this goal points at carries the six task briefs + LOOP_TRACKER **and** the seven standing protocol sections (written verbatim, per Phase 2.5 Step 0). None of that text lives in the measured goal condition above.
+The `[ROUTING_GUARD]` snippet above is inserted verbatim from the stdout of the routing resolver's
+`--emit-shell-guard` mode (`bun resolve-skill-routing.ts --emit-shell-guard --project-root <root>`);
+never hand-build or re-quote it.
+
+The `HARNESS.md` this goal points at carries the six task briefs + LOOP_TRACKER **and** the seven
+standing protocol sections (written verbatim, per Phase 2.5 Step 0). None of that text lives in the
+measured goal condition above. For reference, the `EXECUTION_PROTOCOL` section HARNESS.md carries
+begins:
+
+```text
+EXECUTION_PROTOCOL
+Five-stage execution. Before stage 1, the goal parent runs the [ROUTING_GUARD] snippet from the
+goal condition; a nonzero result stops before Planner. On success, pass exact `ROUTING_EVIDENCE`
+stdout to Planner under `[SKILL_ROUTING_RESOLUTION]`; do not parse or reformat it in the parent.
+1. Planner: consume the routing resolution, then write PLAN.md (phases, exact routing evidence, selected source/fallback, checker rubric), then mirror each phase to a durable slice.
+2-5. Maker → Prover → (Red-team) → Checker → Ship, per the standing section.
+```

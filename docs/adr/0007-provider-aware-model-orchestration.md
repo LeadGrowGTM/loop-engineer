@@ -20,7 +20,15 @@ A provider-aware model resolver (`scripts/resolve-role-model.ts`) that:
 3. Degrades to native Claude defaults as a last-resort fallback (never crashes)
 
 Detection is separate and isolated (`scripts/detect-provider.ts`), probing for active provider
-signals (claudex session flag, codex CLI availability) and injecting the result into the resolver.
+signals and injecting the result into the resolver. The signals are confirmed, not guessed:
+- **claudex** — `ANTHROPIC_BASE_URL` is set. claudex runs ordinary Claude Code but overrides
+  `ANTHROPIC_BASE_URL` to a local CLIProxyAPI instance, routing to a GPT upstream that presents
+  Anthropic model IDs. Native Claude Code never sets it.
+- **codex** — `CODEX_SANDBOX` is set. The OpenAI Codex CLI sets this in the environment of the
+  shell commands it executes, so the detector (run as such a command) sees it. This replaced an
+  earlier `Bun.which("codex")` check that fired on codex merely being *installed* and thus
+  misclassified native sessions on machines that have codex installed.
+- **native** — neither signal present.
 
 ## Role Dependency Chain (Sequential by Default)
 
