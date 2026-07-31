@@ -23,7 +23,12 @@ $Allowlist = @(
   "content",
   "newsletter-pipeline",
   "outbound",
-  "leadgrow-video-storyboard-clean"
+  "leadgrow-video-storyboard-clean",
+  "auto-prompt-creator",
+  "gtm-orchestrator-funnel-batch",
+  "gtm-orchestrator-leadgrow-delivery",
+  "leadgrow-fulfillment",
+  "leadgrow-video-ship-worktree"
 )
 
 $PipelinesRoot = Join-Path $RepoRoot "pipelines"

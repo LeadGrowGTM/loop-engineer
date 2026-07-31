@@ -1250,7 +1250,12 @@ try {
     'content',
     'newsletter-pipeline',
     'outbound',
-    'leadgrow-video-storyboard-clean'
+    'leadgrow-video-storyboard-clean',
+    'auto-prompt-creator',
+    'gtm-orchestrator-funnel-batch',
+    'gtm-orchestrator-leadgrow-delivery',
+    'leadgrow-fulfillment',
+    'leadgrow-video-ship-worktree'
   )
   if (Test-Path -LiteralPath $pipelinesRoot) {
     $pipelinesItem = Get-Item -LiteralPath $pipelinesRoot -Force -ErrorAction Stop
