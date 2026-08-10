@@ -28,6 +28,12 @@ Fan-out is prohibited when units write the same artifact, mutate shared external
 
 Partial failures do not discard successful units. Failed units may be retried or reassigned, while completed artifacts remain available for integration. The Checker evaluates the integrated result with fresh context after all required Maker work and integration are complete.
 
+## Task-aware model routing
+
+Subagents must not blindly inherit the parent session's model. Default routing is Haiku 4.5 for simple tool calls, exploration, search, extraction, and cheap independent fan-out; Sonnet 5 for copywriting, synthesis, ordinary implementation, and bounded knowledge work; Opus 5 for visual work, frame execution, UI and multimodal judgment, difficult technical work, and visual review; and Fable 5 for creative direction, orchestration, decomposition, integration judgment, and original or high-ambiguity work.
+
+Select the cheapest supported model expected to clear the task-specific quality bar. A Fable parent must not cause Fable inheritance: it should commonly orchestrate Haiku explorers, Sonnet copy agents, and Opus visual Makers. Record model, reason, fallback, and cost tier for every spawn. Respect verified provider aliases; do not emit Opus 5 or Fable 5 through a proxy until its aliases, docs, resolver policy, and tests support them.
+
 ## `no-mistakes` executor fallback
 
 Codex remains the preferred executor for the approved Ship stage. Claude is a fallback only when Codex is unavailable or its invocation fails before a valid `no-mistakes` pipeline run begins.
@@ -61,7 +67,7 @@ Exact files may change after implementation planning if repository inspection id
 - Independent video frames or frame ranges are documented as a canonical parallel example without making the policy video-specific.
 - Every parallel Maker has exclusive artifact ownership and an explicit integration point.
 - Review findings can be routed back to the responsible Maker; cross-cutting findings have an integration owner.
-- Tests cover small versus large workloads, isolated versus competing units, bounded fan-out, partial failure, review routing, and integration barriers.
+- Tests cover small versus large workloads, isolated versus competing units, bounded fan-out, partial failure, review routing, integration barriers, and mixed-model routing without parent-model inheritance.
 - Codex is attempted first for `no-mistakes`; Claude is used only for Codex startup or availability failure.
 - Tests prove that legitimate Codex pipeline outcomes do not trigger a Claude retry.
 - Existing approval gates, provider-aware model resolution, Checker independence, and terminal outcome semantics remain intact.
