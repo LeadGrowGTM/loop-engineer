@@ -125,6 +125,45 @@ describe("validate-pipeline-layout.ps1", () => {
     expect(result.output).not.toContain("lookalike-checkout [misplaced_worktree]");
   });
 
+  test("does not treat a forged worktree backlink below a non-repository owner as misplaced_worktree", () => {
+    const root = fixtureRoot();
+    const owner = join(root, "pipelines", "forged-owner");
+    const candidate = join(root, "pipelines", "forged-checkout");
+    const gitDir = join(owner, ".git", "worktrees", "forged-checkout");
+    mkdirSync(gitDir, { recursive: true });
+    mkdirSync(candidate);
+    writeFileSync(join(candidate, ".git"), `gitdir: ${gitDir}\n`);
+    writeFileSync(join(gitDir, "gitdir"), join(candidate, ".git"));
+
+    const result = runValidator(root);
+
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("  - forged-checkout [unknown_directory]");
+    expect(result.output).not.toContain("forged-checkout [misplaced_worktree]");
+  });
+
+  test("escapes apostrophes in misplaced-worktree audit and cleanup commands", () => {
+    const root = fixtureRoot();
+    const pipelines = join(root, "pipelines");
+    const owner = join(pipelines, "owner's-pipeline");
+    const sibling = join(pipelines, "task's-checkout");
+    mkdirSync(owner);
+    git(owner, ["init"]);
+    git(owner, ["config", "user.email", "fixture@example.test"]);
+    git(owner, ["config", "user.name", "Fixture"]);
+    git(owner, ["config", "core.autocrlf", "false"]);
+    writeFileSync(join(owner, "README.md"), "fixture\n");
+    git(owner, ["add", "README.md"]);
+    git(owner, ["commit", "-m", "fixture"]);
+    git(owner, ["worktree", "add", "--detach", sibling, "HEAD"]);
+
+    const result = runValidator(root);
+
+    expect(result.status).toBe(1);
+    expect(result.output).toContain(`Audit: git -C '${owner.replaceAll("'", "''")}' worktree list --porcelain`);
+    expect(result.output).toContain(`Cleanup (after audit): git -C '${owner.replaceAll("'", "''")}' worktree remove '${sibling.replaceAll("'", "''")}'`);
+  });
+
   test("reports an ordinary unknown directory as unknown_directory", () => {
     const root = fixtureRoot();
     mkdirSync(join(root, "pipelines", "scratch"));

@@ -82,6 +82,19 @@ function Get-DirectoryClassification {
     }
   }
 
+  if ($isRegisteredWorktree) {
+    try {
+      $registeredWorktreePaths = @(
+        & git -C $owner worktree list --porcelain 2>$null |
+          Where-Object { $_ -like "worktree *" } |
+          ForEach-Object { [System.IO.Path]::GetFullPath($_.Substring(("worktree ").Length)) }
+      )
+      $isRegisteredWorktree = $LASTEXITCODE -eq 0 -and ($registeredWorktreePaths -contains $Directory.FullName)
+    } catch {
+      $isRegisteredWorktree = $false
+    }
+  }
+
   if ((Split-Path -Path $worktreesDirectory -Leaf) -eq "worktrees" -and
       (Split-Path -Path $gitDirectory -Leaf) -eq ".git" -and
       $normalizedOwnerParent -ieq $normalizedPipelinesRoot -and
@@ -123,7 +136,7 @@ if ($Invalid.Count -eq 0) {
 [Console]::Error.WriteLine(@"
 pipelines/ layout invalid. Found $($Invalid.Count) non-allowlisted folder(s):
 $($Invalid | ForEach-Object { "  - $($_.Name) [$($_.Classification)]" } | Out-String)
-$($Invalid | Where-Object { $_.Classification -eq "misplaced_worktree" } | ForEach-Object { "Audit: git -C '$($_.Owner)' worktree list --porcelain`nCleanup (after audit): git -C '$($_.Owner)' worktree remove '$($_.Path)'" } | Out-String)
+$($Invalid | Where-Object { $_.Classification -eq "misplaced_worktree" } | ForEach-Object { "Audit: git -C '$($_.Owner.Replace("'", "''"))' worktree list --porcelain`nCleanup (after audit): git -C '$($_.Owner.Replace("'", "''"))' worktree remove '$($_.Path.Replace("'", "''"))'" } | Out-String)
 No cleanup was performed.
 Allowlist: $($Allowlist -join ', ')
 See: C:\Users\mitch\Everything_CC\.claude\reference\pipeline-allowlist.md
