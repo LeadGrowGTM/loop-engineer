@@ -2,6 +2,26 @@
 
 Five agents. Strict roles. No overlap.
 
+## Managed lifecycle boundary
+
+The agent loop runs only inside a validated managed lifecycle. Its five operations are `start`,
+`record-grill`, `validate`, `finish`, and `audit`; there is no direct Git, manual-worktree, or
+`-NoIsolation` route around them. `start` requires project-local `tasks-axi`, Treehouse, and the
+hash-pinned `batch-grill-me` skill, then registers the task, leases a verified worktree from the
+repository-owned `.worktrees/` pool, creates `wt/<task-id>`, and persists `RUN.json`.
+
+Treehouse controls `.worktrees/` and its internal nested layout. Lifecycle consumers use only the
+returned worktree path and never create, choose, repair, or remove nested pool directories. The
+grill is unconditional: `record-grill` persists `GRILL.json` and emits the lean pointer used by the
+goal rather than duplicating durable context. After `/goal clear`, `validate` must succeed against
+the persisted run and grill identity before Planner or Maker starts.
+
+`finish` verifies task, branch, lease, and manifest identity before completing the durable task and
+returning the lease. A blocked or failed run retains its lease and evidence for recovery. `audit` is
+read-only: it may report `misplaced_worktree` evidence, but it never changes an existing checkout.
+`/setup-harness` seeds the repository configuration and verifies installed assets; workspace
+`/onboard` supplies required internal CLIs. Neither is a substitute for lifecycle start.
+
 ---
 
 ## Agents
@@ -34,6 +54,9 @@ $PROJECT_ROOT/.harness/goals/<slug>/
 ├── HARNESS.md       ← Goal loop writes before spawning; all agents read
 └── <task-artifacts> ← Maker writes; Checker scores (reads only)
 ```
+
+Lifecycle adds two durable files before the agent loop: `RUN.json` records the canonical task,
+worktree, lease, branch, and source identity; `GRILL.json` records the required grill receipt.
 
 Anchored to `$PROJECT_ROOT` (the project the goal is about, resolved via `git rev-parse
 --show-toplevel`), never the workspace monorepo root. See `references/issue-tracker.md`

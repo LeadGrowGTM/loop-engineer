@@ -62,24 +62,25 @@ Depth budget: goal=0, planner=1, maker=2, prover=3, checker=4, sub-skills max=5.
 
 Run the supported harness in the current interactive Claude Code session. Approval stays under operator control: Planner and Maker are limited to explicitly approved scope, newly discovered scope waits for a new approval, and shipping requires separate approval after Checker PASS. No detached process is part of this path.
 
-Before starting a goal, run the non-launching readiness check:
+Managed goal work uses the five `goal-lifecycle` operations: `start`, `record-grill`, `validate`, `finish`, and `audit`. They are the only supported lifecycle path. Do not substitute direct Git or Treehouse commands, a manual run, or a `-NoIsolation` fallback.
+
+`start` requires the project-local `tasks-axi` backlog, Treehouse, and the hash-pinned `batch-grill-me` skill. It registers the durable task, leases a verified worktree from the repository-owned `.worktrees/` pool, creates the canonical `wt/<task-id>` branch, and persists the run identity under `.harness/goals/<task-id>/RUN.json`. Treehouse owns the pool's internal nested layout; treat the returned worktree path as opaque rather than creating or selecting directories below `.worktrees/`.
+
+After every start, run the required grill even when the request appears fully specified. `record-grill` persists its receipt as `GRILL.json` beside the run manifest and returns the lean goal/harness pointer; do not inline a second copy of the durable run state into the goal condition. After `/goal clear`, run `validate` against that persisted identity before invoking either Planner or Maker. A failed validation blocks those agents.
+
+`finish` is safe completion: it confirms the task, branch, lease, and persisted run identity before marking the durable task complete and returning the lease. A blocked or failed run retains its lease and durable evidence for recovery; it is never silently returned. `audit` is read-only. It reports lifecycle state and layout evidence, including `misplaced_worktree` checkouts, but never repairs, removes, returns, or otherwise changes an existing misplaced worktree. Audit any reported owner first and perform any later cleanup deliberately outside the lifecycle command.
+
+Before a managed `start`, setup/onboarding must have established its dependencies and repository configuration. `/setup-harness` seeds the project-local `.tasks.toml`, `treehouse.toml`, `.worktrees/` ignore rule, and harness files; workspace `/onboard` provisions the internal CLIs. Setup also installs and verifies the pinned grill. It does not take a task lease or start a goal.
+
+The lifecycle's bounded readiness check remains non-launching and does not mutate Git state:
 
 ```powershell
 powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
   -RepoPath C:\path\to\repo -CheckOnly
 ```
 
-The `-CheckOnly` mode does not start task execution and does not mutate Git state. It emits one JSON object and fails fast for an invalid repository or pipeline layout, a missing committed `HEAD`, a detached or default branch, hidden index state, or a dirty working tree. Continue in the current session only when `readyForRun` is `true`.
+It emits one JSON object and fails fast for an invalid repository or pipeline layout, a missing committed `HEAD`, a detached or default branch, hidden index state, a dirty working tree, or an unsafe pool. Use it only through lifecycle operations; continue only when the lifecycle reports success.
 
-Treehouse isolation is the default: every run requires an isolated worktree unless the caller opts out with `-NoIsolation` (canonical monorepo pipelines cannot opt out). Acquire the worktree with `-PrepareIsolation`:
-
-```powershell
-powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
-  -RepoPath C:\path\to\repo -PrepareIsolation `
-  -LeaseHolder harness-my-task
-```
-
-Add `-Parallel` when preparing a parallel stream. If Treehouse is missing, readiness fails with remediation instead of falling back — either install treehouse or pass `-NoIsolation` for trivial, read-only, or throwaway work. The `-PrepareIsolation` mode acquires a Treehouse lease and creates a unique derived `runBranch` at the checked source `HEAD` before returning READY. It keeps `branch` as the source branch and returns `runPath` plus `returnCommand`. Work and commit only on `runBranch`; verify that branch contains the intended commits before deliberately returning the lease.
 
 ## Optional Pi OpenAI server compaction
 
@@ -185,8 +186,8 @@ Checker cites `file:line` evidence for every dimension score. Scores without cit
 
 **Prerequisites:** see [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) for every external tool the
 loop uses, its tier (Required / Optional / Bundled), a verify command, and what breaks without it.
-Use the Operator workflow above before every goal. `scripts/setup-harness.ts` seeds config and
-installs agent files, but it neither checks repository readiness nor starts task execution.
+Use the managed lifecycle above before every goal. `scripts/setup-harness.ts` seeds repository
+configuration and installs harness assets, but it neither acquires a lease nor starts task execution.
 
 Agent files live at `C:\Users\mitch\Everything_CC\.claude\agents\` (workspace-level discovery).
 Skill lives at `C:\Users\mitch\Everything_CC\tools\agent\agent-harness\skills\write-goal-prompt\` —
