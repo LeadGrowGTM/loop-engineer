@@ -51,6 +51,7 @@ const SUPPORTED_REMEDIATION: Record<string, string[]> = {
   BRANCH_IDENTITY_MISMATCH: ['Leave the lease in place, resolve the canonical task branch mismatch, then retry lifecycle start.'],
   GRILL_RECEIPT_MISSING: ['Resume batch-grill-me and record its completed receipt through goal-lifecycle.'],
   GRILL_RECEIPT_INVALID: ['Resume batch-grill-me and record the completed zero frontier.'],
+  CONTEXT_RESTART_INVALID: ['Restart from the persisted RUN.json in its recorded worktree and retry goal-lifecycle validate.'],
   REPOSITORY_NOT_READY: ['Resolve the reported repository readiness errors, then retry lifecycle start.'],
   INTERNAL_ERROR: ['Review lifecycle diagnostics and retry only after the reported safety condition is resolved.'],
 };

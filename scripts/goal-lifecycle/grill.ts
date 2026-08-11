@@ -198,6 +198,11 @@ function parseCandidate(path: string, allowCanonicalRedaction = false): GrillRec
   return redactReceipt(receipt);
 }
 
+/** Verifies the persisted canonical receipt without re-running or redacting a grill. */
+export function validateCanonicalGrillReceipt(path: string): GrillReceiptV1 {
+  return parseCandidate(path, true);
+}
+
 export function recordGrill(runPath: string, candidateReceiptPath: string): LifecycleResult {
   try {
     const run = readRunManifest(runPath);

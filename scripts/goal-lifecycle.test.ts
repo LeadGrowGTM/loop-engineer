@@ -11,9 +11,10 @@ const CLI_PATH = join(import.meta.dir, "goal-lifecycle.ts");
 setDefaultTimeout(60_000);
 const PINNED_GRILL_BASE64 = 'LS0tCm5hbWU6IGJhdGNoLWdyaWxsLW1lCmRlc2NyaXB0aW9uOiBBIHJlbGVudGxlc3MgaW50ZXJ2aWV3IHRoYXQgYXNrcyBldmVyeSBmcm9udGllciBxdWVzdGlvbiBhdCBvbmNlLCByb3VuZCBieSByb3VuZC4KdXNlci1pbnZvY2FibGU6IHRydWUKLS0tCgo8IS0tIFZlbmRvcmVkIGZyb20gbWF0dHBvY29jay9za2lsbHMuIFNvdXJjZSBvZiB0cnV0aCAoZGlmZiBhZ2FpbnN0IHRoaXMgYmVmb3JlIGVkaXRpbmcpOgogICAgIGh0dHBzOi8vcmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbS9tYXR0cG9jb2NrL3NraWxscy9tYWluL3NraWxscy9pbi1wcm9ncmVzcy9iYXRjaC1ncmlsbC1tZS9TS0lMTC5tZAogICAgIFRoZSBib2R5IGJlbG93IGlzIFZFUkJBVElNIHVwc3RyZWFtIC0tIGFueSBjaGFuZ2UgdG8gaXQgaXMgZHJpZnQsIG5vdCBhIGZpeC4KCiAgICAgU29sZSBkZXZpYXRpb24sIGZyb250bWF0dGVyIG9ubHk6IHVwc3RyZWFtJ3MgZnJvbnRtYXR0ZXIgY2FycmllcyBhIGh1bWFuLW9ubHkgaW52b2NhdGlvbiBsb2NrCiAgICAgKHNlZSB0aGUgVVJMIGFib3ZlKSB3aG9zZSB3aG9sZSBwdXJwb3NlIGlzIHRoYXQgYSBtb2RlbCBjYW4gbmV2ZXIgaW52b2tlIHRoaXMgc2tpbGwgb24gaXRzIG93bi4KICAgICBsb29wLWVuZ2luZWVyJ3MgY2xhcml0eSBnYXRlIG11c3Qgcm91dGUgdG8gaXQgYXV0b21hdGljYWxseSAtLSBzZWUgQnJhbmNoIEEgb2YKICAgICBza2lsbHMvd3JpdGUtZ29hbC1wcm9tcHQvcmVmZXJlbmNlcy9jbGFyaXR5LWdhdGUubWQgLS0gc28gdGhhdCBsb2NrIGlzIGRyb3BwZWQgaGVyZSBhbmQKICAgICBgdXNlci1pbnZvY2FibGU6IHRydWVgIGlzIGFkZGVkIGluIGl0cyBwbGFjZS4gVHJhZGVkIGF3YXkga25vd2luZ2x5LCBub3Qgb3Zlcmxvb2tlZC4KICAgICAoVGhlIGxvY2sncyBsaXRlcmFsIGZsYWcgbmFtZSBpcyBzcGVsbGVkIG91dCBhdCB0aGUgc291cmNlIFVSTDsgaXQgaXMgbGVmdCB1bnNwZWxsZWQgaGVyZSBzbyB0aGUKICAgICBpbnN0YWxsIGdhdGUgYGdyZXAgLWNgIG92ZXIgdGhpcyBmaWxlIHN0YXlzIGNsZWFuLikgLS0+CgpJbnRlcnZpZXcgdGhlIHVzZXIgcmVsZW50bGVzc2x5IHVudGlsIHlvdSByZWFjaCBhIHNoYXJlZCB1bmRlcnN0YW5kaW5nLiBNYXAgdGhpcyBhcyBhICoqZGVzaWduIHRyZWUqKjogZXZlcnkgZGVjaXNpb24gYnJhbmNoZXMgaW50byB0aGUgZGVjaXNpb25zIHRoYXQgaGFuZyBvZmYgaXQuCgpXb3JrIHRoZSB0cmVlIGluICoqcm91bmRzKiouIFRoZSAqKmZyb250aWVyKiogaXMgZXZlcnkgZGVjaXNpb24gd2hvc2UgcHJlcmVxdWlzaXRlcyBhcmUgYWxyZWFkeSBzZXR0bGVkIOKAlCB0aGUgcXVlc3Rpb25zIHlvdSBjYW4gYXNrICpub3cqIHdpdGhvdXQgZ3Vlc3NpbmcgYXQgYW5zd2VycyB5b3UgaGF2ZW4ndCBoZWFyZCB5ZXQuIEFzayB0aGUgd2hvbGUgZnJvbnRpZXIgaW4gb25lIHJvdW5kOiBudW1iZXIgZWFjaCBxdWVzdGlvbiBhbmQgZ2l2ZSB5b3VyIHJlY29tbWVuZGVkIGFuc3dlci4gVGhlbiB3YWl0IGZvciB0aGUgdXNlcidzIGFuc3dlcnMgYmVmb3JlIHRoZSBuZXh0IHJvdW5kLgoKRWFjaCByb3VuZCB0aGUgdXNlciBhbnN3ZXJzIHJlc2hhcGVzIHRoZSB0cmVlIOKAlCBzZXR0bGVkIGRlY2lzaW9ucyBwdXNoIHRoZSBmcm9udGllciBvdXR3YXJkIGFuZCB1bmJsb2NrIHF1ZXN0aW9ucyB0aGF0IGRlcGVuZGVkIG9uIHRoZW0uIFJlY29tcHV0ZSB0aGUgZnJvbnRpZXIgYW5kIGFzayB0aGUgbmV4dCByb3VuZC4gQSBxdWVzdGlvbiB3aG9zZSBhbnN3ZXIgZGVwZW5kcyBvbiBhbm90aGVyIHF1ZXN0aW9uIHN0aWxsIG9wZW4gaW4gdGhpcyByb3VuZCBiZWxvbmdzIHRvIGEgKmxhdGVyKiByb3VuZCwgbm90IHRoaXMgb25lLgoKRmluZGluZyAqZmFjdHMqIGlzIHlvdXIgam9iLCBuZXZlciB0aGUgdXNlcidzLiBXaGVuIGEgZnJvbnRpZXIgcXVlc3Rpb24gbmVlZHMgYSBmYWN0IGZyb20gdGhlIGVudmlyb25tZW50IChmaWxlc3lzdGVtLCB0b29scywgZXRjLiksIGRpc3BhdGNoIGEgc3ViLWFnZW50IHRvIGZpbmQgaXQg4oCUIGRvbid0IGFzayB0aGUgdXNlciBmb3IgYW55dGhpbmcgeW91IGNvdWxkIGxvb2sgdXAgeW91cnNlbGYuIERvbid0IGJsb2NrIG9uIGl0OiBhIHJ1bm5pbmcgZXhwbG9yYXRpb24gaXMgYW4gdW5zZXR0bGVkIHByZXJlcXVpc2l0ZSwgc28gb25seSB0aGUgcXVlc3Rpb25zIGRvd25zdHJlYW0gb2YgaXQgd2FpdCBmb3IgdGhlIHN1Yi1hZ2VudCB0byByZXBvcnQg4oCUIGFzayB0aGUgcmVzdCBvZiB0aGUgZnJvbnRpZXIgbm93LiBUaGUgKmRlY2lzaW9ucyogYXJlIHRoZSB1c2VyJ3Mg4oCUIHB1dCBlYWNoIHRvIHRoZW0gYW5kIHdhaXQuCgpUaGUgc2Vzc2lvbiBpcyBkb25lIHdoZW4gdGhlIGZyb250aWVyIGlzIGVtcHR5OiBldmVyeSBicmFuY2ggb2YgdGhlIGRlc2lnbiB0cmVlIHZpc2l0ZWQsIG5vdGhpbmcgbGVmdCBzaWxlbnRseSBhc3N1bWVkLiBEbyBub3QgYWN0IG9uIGl0IHVudGlsIHRoZSB1c2VyIGNvbmZpcm1zIHlvdSBoYXZlIHJlYWNoZWQgYSBzaGFyZWQgdW5kZXJzdGFuZGluZy4K';
 
-function invokeLifecycle(args: string[], env: Record<string, string | undefined> = process.env) {
+function invokeLifecycle(args: string[], env: Record<string, string | undefined> = process.env, cwd?: string) {
   const result = Bun.spawnSync([process.execPath, CLI_PATH, ...args], {
     env,
+    cwd,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -139,7 +140,10 @@ function createTreehouseFake(
       '  exit 0',
       '}',
       'if ($command -eq "return") { exit 0 }',
-      'if ($command -eq "status") { exit 0 }',
+      'if ($command -eq "status") {',
+      '  if ($env:TREEHOUSE_STATUS_MODE -eq "validate") { [Console]::Out.WriteLine("1 leased $env:TREEHOUSE_LEASE (held by $env:TREEHOUSE_HOLDER)") }',
+      '  exit 0',
+      '}',
       'exit 2',
       '',
     ].join('\r\n'),
@@ -180,6 +184,8 @@ function createLifecycleFixture(options: LifecycleFixtureOptions = {}) {
     TREEHOUSE_CALLS: treehouse.calls,
     TREEHOUSE_LEASE: treehouse.lease,
     TREEHOUSE_MODE: options.treehouseMode ?? 'valid',
+    TREEHOUSE_STATUS_MODE: 'start',
+    TREEHOUSE_HOLDER: taskId,
   };
   return { root, repo, taskId, title, tasks, treehouse, env, grillPath };
 }
@@ -229,6 +235,15 @@ function recordGrillFixture(
     manifestPath,
     result: invokeLifecycle(['record-grill', '--run', manifestPath, '--receipt', candidatePath], fixture.env),
   };
+}
+
+function validateFixture(
+  fixture: ReturnType<typeof createLifecycleFixture>,
+  manifestPath: string,
+  cwd?: string,
+) {
+  fixture.env.TREEHOUSE_STATUS_MODE = 'validate';
+  return invokeLifecycle(['validate', '--run', manifestPath], fixture.env, cwd);
 }
 
 function expectSafeRemediation(result: { remediation?: unknown }): void {
@@ -752,4 +767,112 @@ test('record-grill recursively redacts secret-like content and rejects secret-li
   expect(unsafe.result.exitCode).not.toBe(0);
   expect(unsafe.result.json).toMatchObject({ ok: false, code: 'GRILL_RECEIPT_INVALID' });
   expect(readRunManifest(unsafe.manifestPath).state).toBe('STARTED');
+});
+
+test('validate restarts from only persisted run state in a fresh process and is idempotent', () => {
+  const fixture = createLifecycleFixture();
+  const recorded = recordGrillFixture(fixture, completeGrillReceipt(fixture.taskId));
+  expect(recorded.result.exitCode).toBe(0);
+  const run = readRunManifest(recorded.manifestPath);
+
+  const first = validateFixture(fixture, recorded.manifestPath, run.worktreePath);
+  expect(first.exitCode).toBe(0);
+  expect(first.lines).toHaveLength(1);
+  expect(first.json).toMatchObject({ operation: 'validate', ok: true, code: 'OK', data: {
+    taskId: fixture.taskId,
+    worktreePath: run.worktreePath,
+    runDirectory: run.runDirectory,
+    state: 'VALIDATED',
+  } });
+  expect(JSON.stringify(first.json)).not.toMatch(/planner|maker/i);
+  expect(readRunManifest(recorded.manifestPath).state).toBe('VALIDATED');
+
+  const retry = validateFixture(fixture, recorded.manifestPath, run.worktreePath);
+  expect(retry.exitCode).toBe(0);
+  expect(retry.json).toMatchObject({ operation: 'validate', ok: true, code: 'OK' });
+  expect(readRunManifest(recorded.manifestPath).state).toBe('VALIDATED');
+});
+
+test('validate fails closed for every persisted restart invariant', () => {
+  const cases: Array<{
+    name: string;
+    mutate: (fixture: ReturnType<typeof createLifecycleFixture>, manifestPath: string) => void;
+    cwd: (fixture: ReturnType<typeof createLifecycleFixture>, manifestPath: string) => string;
+    code: string;
+  }> = [
+    { name: 'wrong current directory', mutate: () => {}, cwd: (fixture) => fixture.repo, code: 'CONTEXT_RESTART_INVALID' },
+    {
+      name: 'inactive durable task',
+      mutate: (fixture) => writeFileSync(fixture.tasks.stateFile, 'queued\n'),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'CONTEXT_RESTART_INVALID',
+    },
+    {
+      name: 'wrong canonical branch',
+      mutate: (_fixture, manifestPath) => {
+        const run = readRunManifest(manifestPath);
+        writeRunManifest(manifestPath, { ...run, branch: 'wt/other-goal' });
+      },
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'BRANCH_IDENTITY_MISMATCH',
+    },
+    {
+      name: 'missing canonical grill receipt',
+      mutate: (_fixture, manifestPath) => rmSync(readRunManifest(manifestPath).grillReceiptPath),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'GRILL_RECEIPT_MISSING',
+    },
+    {
+      name: 'wrong Treehouse lease holder',
+      mutate: (fixture) => { fixture.env.TREEHOUSE_HOLDER = 'other-goal'; },
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'LEASE_IDENTITY_MISMATCH',
+    },
+    {
+      name: 'repository common-directory identity drift',
+      mutate: (fixture, manifestPath) => {
+        const run = readRunManifest(manifestPath);
+        writeRunManifest(manifestPath, { ...run, gitCommonDirectory: fixture.repo });
+      },
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'LEASE_IDENTITY_MISMATCH',
+    },
+    {
+      name: 'pool containment drift before registered-worktree use',
+      mutate: (fixture, manifestPath) => {
+        const run = readRunManifest(manifestPath);
+        writeRunManifest(manifestPath, { ...run, poolRoot: join(fixture.repo, '.worktrees', 'wrong-pool') });
+      },
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'LEASE_OUTSIDE_REPOSITORY',
+    },
+    {
+      name: 'invalid canonical grill receipt',
+      mutate: (_fixture, manifestPath) => writeFileSync(readRunManifest(manifestPath).grillReceiptPath, '{"schemaVersion":1}\n'),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'GRILL_RECEIPT_INVALID',
+    },
+  ];
+
+  const fixture = createLifecycleFixture();
+  const recorded = recordGrillFixture(fixture, completeGrillReceipt(fixture.taskId));
+  expect(recorded.result.exitCode).toBe(0);
+  const canonicalManifest = readFileSync(recorded.manifestPath, 'utf8');
+  const canonicalReceipt = readFileSync(readRunManifest(recorded.manifestPath).grillReceiptPath, 'utf8');
+  const canonicalTaskState = readFileSync(fixture.tasks.stateFile, 'utf8');
+
+  for (const scenario of cases) {
+    writeFileSync(recorded.manifestPath, canonicalManifest);
+    writeFileSync(readRunManifest(recorded.manifestPath).grillReceiptPath, canonicalReceipt);
+    writeFileSync(fixture.tasks.stateFile, canonicalTaskState);
+    fixture.env.TREEHOUSE_HOLDER = fixture.taskId;
+    scenario.mutate(fixture, recorded.manifestPath);
+
+    const result = validateFixture(fixture, recorded.manifestPath, scenario.cwd(fixture, recorded.manifestPath));
+    expect(result.exitCode).not.toBe(0);
+    expect(result.json).toMatchObject({ operation: 'validate', ok: false, code: scenario.code });
+    expect(JSON.stringify(result.json)).not.toMatch(/planner|maker/i);
+    expectSafeRemediation(result.json);
+    expect(readRunManifest(recorded.manifestPath).state).toBe('GRILL_COMPLETE');
+  }
 });

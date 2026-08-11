@@ -11,6 +11,7 @@ import {
 
 import { startLifecycle, type StartLifecycleInput } from './goal-lifecycle/start';
 import { recordGrill } from './goal-lifecycle/grill';
+import { validateLifecycle } from './goal-lifecycle/validate';
 
 function parseStartArguments(argv: string[]): StartLifecycleInput {
   const values = new Map<string, string>();
@@ -74,6 +75,17 @@ function parseRecordGrillArguments(argv: string[]): { runPath: string; candidate
   return { runPath: values.get('--run')!, candidateReceiptPath: values.get('--receipt')! };
 }
 
+function parseValidateArguments(argv: string[]): { runPath: string } {
+  if (argv.length !== 2 || argv[0] !== '--run' || argv[1].length === 0) {
+    throw new LifecycleCommandError(
+      'INVALID_ARGUMENT',
+      'validate requires exactly one --run value.',
+      ['Use: goal-lifecycle validate --run <absolute-RUN.json>.'],
+    );
+  }
+  return { runPath: argv[1] };
+}
+
 function unsupportedOperation(operation: string): LifecycleResult {
   return lifecycleFailure(
     operation,
@@ -107,6 +119,9 @@ export async function runGoalLifecycle(
     if (operation === 'record-grill') {
       const input = parseRecordGrillArguments(argv.slice(1));
       return recordGrill(input.runPath, input.candidateReceiptPath);
+    }
+    if (operation === 'validate') {
+      return await validateLifecycle(parseValidateArguments(argv.slice(1)), _context);
     }
     return unsupportedOperation(operation);
   } catch (error) {
