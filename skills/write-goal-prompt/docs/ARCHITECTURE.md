@@ -114,18 +114,22 @@ Goal loop
   → spawn Maker    → executes phases, commits, writes PROGRESS.md
   → spawn Checker  → scores final artifacts, writes CYCLE_LOG.md
        ↓
-  PASS  → /no-mistakes → review/test/lint/push/PR/CI → PR ready for human merge
+  PASS  → await separate explicit shipping approval
+        → fresh Shipper → /no-mistakes → lifecycle finish → PR ready for human merge
+        (PASS alone never authorizes shipping.)
   ITERATE → spawn Maker again (reads CYCLE_LOG.md fix target)
   PLATEAU → commit best, write HANDOFF.md, stop
 ```
 
 Max cycles: 3 (default). Plateau = last 3 reward signals within ±0.1.
 
-`/no-mistakes` is a terminal shipping gate, not an eval cycle. After PASS, the goal agent spawns
-a fresh `harness-shipper`; it never drives the pipeline inline. The shipper runs it exactly once
-with committed task changes on a feature branch and the original objective as its intent, then
-drives decision gates until a terminal outcome. `checks-passed` prepares the merge but does not
-perform it; ITERATE and PLATEAU never enter the shipping gate.
+`/no-mistakes` is a terminal shipping gate, not an eval cycle. A Checker PASS alone never
+authorizes shipping. Only after separate explicit shipping approval may the goal agent spawn a
+fresh `harness-shipper`; it never drives the pipeline inline. The shipper runs `/no-mistakes`
+exactly once with committed task changes on a feature branch and the original objective as its
+intent, then drives decision gates until a terminal outcome. `checks-passed` prepares the merge
+but does not perform it. After that terminal outcome, invoke `goal-lifecycle finish`; ITERATE
+and PLATEAU never enter the shipping gate.
 
 ---
 
