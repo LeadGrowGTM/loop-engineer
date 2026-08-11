@@ -119,6 +119,29 @@ Template = the recipe you re-point. Snapshot = the in-progress game you resume.
 - **Reward signal** — numeric score a cycle earns; drives PASS / ITERATE / PLATEAU.
 - **Mechanical gate** — grep/parse checks that must pass before qualitative eval.
 
+## Goal lifecycle
+
+- **Task** — the durable `tasks-axi` record for one goal lifecycle. Its slug is the
+  identity shared by authoring, execution, isolation, and completion.
+
+- **Goal authoring** — the interactive phase before context is cleared. It settles
+  decisions and persists the restart contract consumed by goal execution.
+
+- **Goal execution** — the autonomous phase after context is cleared. It begins
+  from the persisted restart contract rather than conversational memory.
+
+- **Goal lifecycle** — one task's goal authoring and goal execution joined by a
+  durable restart contract.
+
+- **Managed worktree** — a Treehouse lease contained by the target repository's
+  worktree pool and identified by the task slug.
+
+- **Misplaced worktree** — a registered non-primary worktree outside the target
+  repository's worktree pool. Avoid: pipeline, project copy.
+
+- **Grill receipt** — the durable proof that the shared grill reached an empty
+  decision frontier for a task, including when no questions were required.
+
 ## Artifact map (glossary term -> built artifact + ADR)
 
 Cross-links only; the definitions above stay implementation-free. Every path is real.
