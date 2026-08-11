@@ -1,5 +1,7 @@
 *.db
+.tmp/treehouse/
 .worktrees/
+.superpowers/sdd/
 .gnhf-runs/
 .test-tmp/
 
