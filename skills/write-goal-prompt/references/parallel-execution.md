@@ -1,70 +1,13 @@
-# Parallel Execution and Worktree Isolation
+# Managed Run Contract
 
-Treehouse isolation is on by default for every run, not just parallel streams — parallel task streams additionally must not share one leased worktree. Isolation uses **treehouse**, a pool of pre-warmed git worktrees with one leased path per stream. Pass `-NoIsolation` to opt out for trivial, read-only, or throwaway work; canonical monorepo pipelines cannot opt out.
+`goal-lifecycle start` is the sole supported way to prepare a goal run. Its successful JSON returns
+the authoritative task identity, absolute run path, run directory, and manifest path. Authors and
+agents use those values exactly and never select, create, return, or alter a run location themselves.
 
-## Preflight before preparation
+After the work and required handoff records are complete, the separately approved shipping flow
+invokes `goal-lifecycle finish --run <RUN.json> [--pr <url>]`. A blocked or failed goal retains its
+run for recovery. Use `goal-lifecycle audit --repo <absolute-repository-path>` for read-only
+diagnostics; it does not change state.
 
-Run readiness without mutation first:
-
-```powershell
-powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
-  -RepoPath C:\path\to\repo -CheckOnly -Parallel
-```
-
-The command emits one JSON object. Inspect these fields:
-
-- `status`: `READY` or `NOT_READY`
-- `repoPath`, source `branch`, derived `runBranch`, and `defaultBranch`
-- `dirtyPaths` and `layoutValid`
-- `isolationRequired`, `isolationPrepared`, and `treehouseAvailable`
-- `runPath` and `errors`
-
-Readiness fails before any treehouse action when the target is not a repository, is on its default branch, has a detached HEAD, is dirty, points at the workspace root or `pipelines/` parent, or has an invalid pipeline layout. `-CheckOnly` never leases a worktree.
-
-## Explicit isolation preparation
-
-After a `READY` check, request a lease explicitly:
-
-```powershell
-powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
-  -RepoPath C:\path\to\repo -PrepareIsolation -Parallel `
-  -LeaseHolder harness-my-task
-```
-
-Preparation runs the same safety checks again before calling treehouse. Treehouse may supply a detached worktree; readiness creates a unique derived branch at the checked source HEAD before returning READY. A successful result sets `isolationPrepared: true`, keeps `branch` as the source branch, and returns the isolated `runPath` plus attached `runBranch`. Use that path and branch for task work and commits.
-
-Canonical monorepo-tracked pipelines, declared by `!pipelines/<name>/` entries in the workspace `.gitignore`, always require isolation because they do not have their own git root, and reject `-NoIsolation` with `noisolation_forbidden_canonical`. Their prepared path is `<leased-worktree>\pipelines\<name>`.
-
-## Pool config (`treehouse.toml`)
-
-Treehouse resolves the nearest `treehouse.toml` from the current directory. Every harness repo should carry its own pool config:
-
-```toml
-max_trees = 16
-root = ".tmp/treehouse/"
-```
-
-`/setup-harness` seeds this file and adds `.tmp/treehouse/` to `.gitignore`.
-
-## Lease lifecycle
-
-A prepared lease remains held until the operator returns it after review:
-
-```bash
-treehouse status
-treehouse return '<worktree-path>'
-```
-
-Return only the lease used by the completed stream. Before return, verify the reported `runBranch` contains every intended commit; returning the worktree resets its checkout, while the derived branch preserves referenced commits. If the pool is full, inspect `treehouse status`, identify a stale lease, and return it deliberately. Never prune or return an active stream automatically.
-
-## Manual parallel streams
-
-The readiness script is preferred because it checks repository, branch, dirt, layout, and isolation ordering. For manual operation, preserve the same order:
-
-1. Run `-CheckOnly -Parallel`.
-2. Resolve every reported error.
-3. Run `-PrepareIsolation -Parallel`.
-4. Work and commit only inside returned `runPath` on reported `runBranch`.
-5. Verify `runBranch` contains the intended commits, then return that lease.
-
-Register each stream in tasks-axi from its project root so ownership and completion remain visible.
+The restart pointer always directs the next context to `goal-lifecycle validate --run <RUN.json>`
+before routing, Planner, or Maker. A non-ready result blocks execution.
