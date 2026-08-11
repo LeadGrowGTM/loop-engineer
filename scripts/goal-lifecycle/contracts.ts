@@ -49,6 +49,8 @@ const SUPPORTED_REMEDIATION: Record<string, string[]> = {
   LEASE_OUTSIDE_REPOSITORY: ['Repair the repository-local Treehouse pool through supported setup, then retry lifecycle start.'],
   LEASE_IDENTITY_MISMATCH: ['Leave the lease in place, resolve its Treehouse and Git identity mismatch, then retry lifecycle start.'],
   BRANCH_IDENTITY_MISMATCH: ['Leave the lease in place, resolve the canonical task branch mismatch, then retry lifecycle start.'],
+  GRILL_RECEIPT_MISSING: ['Resume batch-grill-me and record its completed receipt through goal-lifecycle.'],
+  GRILL_RECEIPT_INVALID: ['Resume batch-grill-me and record the completed zero frontier.'],
   REPOSITORY_NOT_READY: ['Resolve the reported repository readiness errors, then retry lifecycle start.'],
   INTERNAL_ERROR: ['Review lifecycle diagnostics and retry only after the reported safety condition is resolved.'],
 };

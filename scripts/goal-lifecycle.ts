@@ -10,6 +10,7 @@ import {
 } from "./goal-lifecycle/contracts";
 
 import { startLifecycle, type StartLifecycleInput } from './goal-lifecycle/start';
+import { recordGrill } from './goal-lifecycle/grill';
 
 function parseStartArguments(argv: string[]): StartLifecycleInput {
   const values = new Map<string, string>();
@@ -48,6 +49,31 @@ function parseStartArguments(argv: string[]): StartLifecycleInput {
   return { repo: values.get('--repo')!, taskId, title };
 }
 
+function parseRecordGrillArguments(argv: string[]): { runPath: string; candidateReceiptPath: string } {
+  const values = new Map<string, string>();
+  const allowed = new Set(['--run', '--receipt']);
+  for (let index = 0; index < argv.length; index += 2) {
+    const flag = argv[index];
+    const value = argv[index + 1];
+    if (!allowed.has(flag) || value === undefined || value.length === 0 || values.has(flag)) {
+      throw new LifecycleCommandError(
+        'INVALID_ARGUMENT',
+        'record-grill requires exactly one --run and --receipt value.',
+        ['Use: goal-lifecycle record-grill --run <RUN.json> --receipt <candidate-GRILL.json>.'],
+      );
+    }
+    values.set(flag, value);
+  }
+  if (values.size !== allowed.size) {
+    throw new LifecycleCommandError(
+      'INVALID_ARGUMENT',
+      'record-grill requires --run and --receipt.',
+      ['Use: goal-lifecycle record-grill --run <RUN.json> --receipt <candidate-GRILL.json>.'],
+    );
+  }
+  return { runPath: values.get('--run')!, candidateReceiptPath: values.get('--receipt')! };
+}
+
 function unsupportedOperation(operation: string): LifecycleResult {
   return lifecycleFailure(
     operation,
@@ -77,6 +103,10 @@ export async function runGoalLifecycle(
     }
     if (operation === 'start') {
       return startLifecycle(parseStartArguments(argv.slice(1)), _context);
+    }
+    if (operation === 'record-grill') {
+      const input = parseRecordGrillArguments(argv.slice(1));
+      return recordGrill(input.runPath, input.candidateReceiptPath);
     }
     return unsupportedOperation(operation);
   } catch (error) {
