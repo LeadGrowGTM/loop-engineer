@@ -37,6 +37,29 @@ export class LifecycleCommandError extends Error {
   }
 }
 
+const SUPPORTED_REMEDIATION: Record<string, string[]> = {
+  INVALID_ARGUMENT: ['Correct the lifecycle command arguments and retry through goal-lifecycle.'],
+  NOT_IMPLEMENTED: ['Use a lifecycle operation only after its required safety checks are available.'],
+  NOT_IMPLEMENTED: ['Use a lifecycle operation only after its required safety checks are available.'],
+  DEPENDENCY_SETUP_REQUIRED: ['Run the supported setup/onboarding flow, verify dependencies, then retry lifecycle start.'],
+  DEPENDENCY_SETUP_FAILED: ['Repair lifecycle dependencies through the supported setup/onboarding flow, then retry.'],
+  TASK_REGISTRATION_FAILED: ['Repair the project-local tasks-axi backlog through supported setup, then retry lifecycle start.'],
+  TASK_STATE_CONFLICT: ['Resolve the conflicting durable task identity or state, then retry lifecycle start.'],
+  TREEHOUSE_CONFIG_UNSAFE: ['Run supported setup to repair the repository-local Treehouse pool, then retry lifecycle start.'],
+  TREEHOUSE_LEASE_FAILED: ['Inspect bounded readiness and Treehouse status, resolve the lease error, then retry lifecycle start.'],
+  LEASE_OUTSIDE_REPOSITORY: ['Repair the repository-local Treehouse pool through supported setup, then retry lifecycle start.'],
+  LEASE_IDENTITY_MISMATCH: ['Leave the lease in place, resolve its Treehouse and Git identity mismatch, then retry lifecycle start.'],
+  BRANCH_IDENTITY_MISMATCH: ['Leave the lease in place, resolve the canonical task branch mismatch, then retry lifecycle start.'],
+  REPOSITORY_NOT_READY: ['Resolve the reported repository readiness errors, then retry lifecycle start.'],
+  INTERNAL_ERROR: ['Review lifecycle diagnostics and retry only after the reported safety condition is resolved.'],
+};
+
+export function supportedRemediationFor(code: string): string[] {
+  return SUPPORTED_REMEDIATION[code] ?? [
+    'Resolve the reported condition through the supported goal-lifecycle or setup flow, then retry.',
+  ];
+}
+
 export function lifecycleFailure(
   operation: string,
   code: string,
@@ -50,7 +73,7 @@ export function lifecycleFailure(
     ok: false,
     code,
     message,
-    remediation,
+    remediation: remediation.length > 0 ? remediation : supportedRemediationFor(code),
     data,
   };
 }
