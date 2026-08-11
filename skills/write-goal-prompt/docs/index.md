@@ -8,12 +8,12 @@ All reference files for the write-goal-prompt skill.
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | [subagent-harness.md](../references/subagent-harness.md)                       | 5-agent loop design, depth budget, checker independence rules, provider-aware model resolution, concurrent role dispatch |
 | [eval-loop-design.md](../references/eval-loop-design.md)                       | Reward signal design, pass thresholds, cycle budget                     |
-| [clarity-gate.md](../references/clarity-gate.md)                               | Phase 0.5 grill vs `/wayfinder` routing; `/grilling` vs `batch-grill-me` |
+| [clarity-gate.md](../references/clarity-gate.md)                               | Historical clarity background; managed lifecycle runs the pinned grill unconditionally |
 | [benchmark-intake.md](../references/benchmark-intake.md)                       | Benchmark spec intake — the four spec sections, sweep vs climb          |
 | [issue-tracker.md](../references/issue-tracker.md)                             | Durable phase-slice schema (`issues/NN-<slug>.md`), Status vocab        |
 | [skill-routing.md](../references/skill-routing.md)                             | Which skill to invoke per task type                                     |
 | [execution-mode-routing.md](../references/execution-mode-routing.md)           | Task-shape routing: single-run, goal-loop, time-loop, dynamic-workflow  |
-| [parallel-execution.md](../references/parallel-execution.md)                   | Legacy background only; managed runs use the lifecycle-owned `.worktrees/` pool and returned lease path |
+| [parallel-execution.md](../references/parallel-execution.md)                   | Historical background; Treehouse/readiness are internal to lifecycle start, not operator routing |
 | [first-principles-generation.md](../references/first-principles-generation.md) | Planner: decompose from observable outcomes; Maker: reason before code  |
 | [context-management.md](../references/context-management.md)                  | Token budget, context compression, fork vs fresh                        |
 | [qa-checklist.md](../references/qa-checklist.md)                               | Pre-ship QA gates for goal prompts                                      |

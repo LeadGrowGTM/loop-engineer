@@ -35,9 +35,9 @@ The model that wrote the code grades its own homework generously. Five-agent loo
 
 Runs stay in the active Claude Code session so approval gates remain visible. Use `goal-lifecycle`, never a direct Git/Treehouse/manual path or `-NoIsolation` fallback. `start` requires `tasks-axi`, Treehouse, and the pinned `batch-grill-me` skill; it registers the task, creates `wt/<task-id>`, and leases a verified worktree only from the repo-owned `.worktrees/` pool. Treehouse owns the pool's nested internal layout; use only the returned worktree path.
 
-The required sequence is: start; unconditional grill; `record-grill` (persisting `GRILL.json` and returning a lean goal pointer); `/goal clear`; `validate`; then Planner and Maker. `RUN.json` and `GRILL.json` are durable lifecycle evidence. Validation failure blocks Planner and Maker. `finish` verifies task/branch/lease identity before completion and lease return. A blocked or failed run retains its lease. `audit` is read-only and reports, but never removes or changes, a pre-existing `misplaced_worktree`.
+The required sequence is: start; unconditional grill; `record-grill`; persist `RUN.json`, `GRILL.json`, `BRIEF.md`, and `HARNESS.md` in the recorded run directory; emit the lean pointer or clear context; `/goal clear`; `validate`; then Planner and Maker. Validation failure blocks Planner and Maker. `finish` verifies task/branch/lease identity before completion and lease return. A blocked or failed run retains its lease. `audit` is read-only and reports, but never removes or changes, a pre-existing `misplaced_worktree`.
 
-`/setup-harness` creates the repository configuration and installs/verifies harness assets, including the pinned grill; workspace `/onboard` provides the internal `tasks-axi` and Treehouse CLIs. Setup does not start a task or acquire a lease. The readiness command is a bounded lifecycle dependency, not an alternate operator path: `-CheckOnly` does not mutate Git state and fails fast on an unsafe repository, branch, tree, layout, or pool.
+`/setup-harness` creates the repository configuration and installs/verifies harness assets, including the pinned grill; workspace `/onboard` provides the internal `tasks-axi` and Treehouse CLIs. Setup does not start a task or acquire a lease. The readiness script is an internal lifecycle implementation/diagnostic seam, not an operator pre-goal command or alternate path.
 
 ## Key commands
 
@@ -46,9 +46,6 @@ The required sequence is: start; unconditional grill; `record-grill` (persisting
 bun scripts/goal-lifecycle.ts start `
   --repo C:\path\to\repo --task-id my-task --title <title>
 
-# Bounded readiness dependency (non-launching; do not use it as a manual lifecycle path).
-powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
-  -RepoPath C:\path\to\repo -CheckOnly
 ```
 
 ```bash
