@@ -86,7 +86,7 @@ function createTasksAxiFake(
       '  const state = fs.readFileSync(process.env.TASKS_STATE_FILE, "utf8").trim();',
       '  const title = JSON.stringify(process.env.TASKS_TITLE);',
       '  const repo = JSON.stringify("C:\\\\work\\\\goal");',
-      '  console.log(`task:\\n  id: ${process.env.TASKS_ID}\\n  title: ${title}\\n  state: ${state}\\n  repo: ${repo}`);',
+      '  console.log(`task:\\n  id: ${process.env.TASKS_ID}\\n  "title": ${title}\\n  state: ${state}\\n  repo: ${repo}`);',
       '  process.exit(0);',
       '}',
       'if (args[0] === "add") { fs.writeFileSync(process.env.TASKS_STATE_FILE, "queued\\n"); process.exit(0); }',
@@ -290,7 +290,22 @@ test('typed tasks-axi adapter decodes TOON escapes and rejects invalid task shap
   );
   expect(() =>
     decodeTaskDetail('task:\n  id: canonical-goal\n  title: first\n  title: second\n  state: in_flight\n'),
-  ).toThrow('title is duplicated');
+  ).toThrow('Duplicate sibling key "title"');
+  expect(() =>
+    decodeTaskDetail('task:\n  id: canonical-goal\n  title: nested\n  state: in_flight\n  labels[1]: lifecycle\n'),
+  ).toThrow('flat scalar fields');
+});
+
+test('typed tasks-axi adapter accepts official TOON quoted-key syntax', () => {
+  const task = decodeTaskDetail(
+    'task:\n  id: canonical-goal\n  "title": Official TOON task\n  state: in_flight\n',
+  );
+
+  expect(task).toEqual({
+    id: 'canonical-goal',
+    title: 'Official TOON task',
+    state: 'in_flight',
+  });
 });
 
 test('all typed public lifecycle errors provide supported non-bypass remediation', () => {

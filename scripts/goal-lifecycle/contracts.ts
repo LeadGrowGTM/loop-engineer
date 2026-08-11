@@ -40,7 +40,6 @@ export class LifecycleCommandError extends Error {
 const SUPPORTED_REMEDIATION: Record<string, string[]> = {
   INVALID_ARGUMENT: ['Correct the lifecycle command arguments and retry through goal-lifecycle.'],
   NOT_IMPLEMENTED: ['Use a lifecycle operation only after its required safety checks are available.'],
-  NOT_IMPLEMENTED: ['Use a lifecycle operation only after its required safety checks are available.'],
   DEPENDENCY_SETUP_REQUIRED: ['Run the supported setup/onboarding flow, verify dependencies, then retry lifecycle start.'],
   DEPENDENCY_SETUP_FAILED: ['Repair lifecycle dependencies through the supported setup/onboarding flow, then retry.'],
   TASK_REGISTRATION_FAILED: ['Repair the project-local tasks-axi backlog through supported setup, then retry lifecycle start.'],

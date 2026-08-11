@@ -1713,6 +1713,42 @@ describe('prepare-harness-run CLI', () => {
     expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['status', 'get']);
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
+  test('final validation rejects but never returns a fully valid pre-existing same-repository lease', () => {
+    const { workspace, repo } = createFeatureRepo();
+    const pool = configureCanonicalPool(repo);
+    const leasePath = join(pool, 'pre-existing', 'repo');
+    const statusBody = [
+      '[Console]::Out.WriteLine("1     leased       $env:TREEHOUSE_LEASE  (held by prior-task)")',
+      'exit 0',
+    ];
+    const treehouse = fakeTreehouse(repo, statusBody, undefined, 'HEAD', leasePath);
+
+    const result = invokePrepareCommand(
+      repo,
+      workspace,
+      [
+        '-PrepareIsolation',
+        '-LeaseHolder',
+        'canonical-task',
+        '-RunBranch',
+        'wt/canonical-task',
+        '-RequiredPoolRoot',
+        pool,
+      ],
+      treehouse.env,
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const readiness = JSON.parse(result.stdout.toString());
+    expect(readiness.errorCodes).toEqual(['invalid_lease']);
+    expect(readiness.runBranch).toBe('wt/canonical-task');
+    expect(readiness.runPath).toBe(leasePath);
+    expect(readiness.errors.join(' ')).toContain('already leased before this invocation');
+    expect(readiness.errors.join(' ')).toContain('Lease return was not attempted');
+    expect(run(['git', 'branch', '--show-current'], leasePath)).toBe('wt/canonical-task');
+    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['status', 'get']);
+  }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
+
   test('canonical monorepo pipeline requires isolation and maps prepared run path', () => {
     const { workspace, pipeline } = createCanonicalPipeline();
     const treehouse = fakeTreehouse(workspace);
