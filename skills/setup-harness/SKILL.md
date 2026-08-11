@@ -1,6 +1,6 @@
 ---
 name: setup-harness
-description: Installs the loop-engineer harness (planner/maker/prover/checker/shipper agents, protected-work guard, and tuned skill-routing.md) into any repo. Run before first use of /write-goal-prompt in a new repo, or to update an existing install. Copies harness agents to ~/.claude/agents/ (global), installs the guard in the target repo, and seeds .harness/skill-routing.md from the target repo's available skills.
+description: Installs the loop-engineer harness and its required lifecycle dependencies into any repo. Run before first use of /write-goal-prompt in a new repo, or to update an existing install. Copies harness agents and the pinned batch-grill-me skill into the supported global locations, installs the guard in the target repo, and seeds .harness/skill-routing.md from the target repo's available skills.
 disable-model-invocation: true
 ---
 
@@ -41,10 +41,11 @@ This does atomically:
 2. Copies `guard-protected-work.ts` → `<repo-root>/scripts/guard-protected-work.ts`
 3. Scans `<repo-root>` for SKILL.md files
 4. Seeds `.harness/skill-routing.md` from `routing-template.md` + repo-specific skills, and `.harness/goals/` (working dir for goal runs)
-5. Seeds a per-project `.tasks.toml` (tasks-axi backlog → `.claude/backlog.md`) and `treehouse.toml` (worktree pool), if not already present
-6. Adds `.tmp/treehouse/` to `.gitignore`
-7. Patches `CLAUDE.md` with `## Harness` block (install date, source SHA, readiness command, and explicit worktree preparation guidance)
-8. Runs smoke test - prints ✓/✗ per check (8 checks: 5 agent files, executable protected-work guard, skill-routing.md, `## Harness` block)
+5. Seeds a per-project `.tasks.toml` (tasks-axi backlog → `.claude/backlog.md`) and `treehouse.toml` (worktree pool at `.worktrees/`), if not already present
+6. Installs the bundled pinned `batch-grill-me` skill to `~/.claude/skills/batch-grill-me/SKILL.md`, repairing drift byte-for-byte
+7. Adds `.worktrees/` to `.gitignore`; an old `.tmp/treehouse/` pool is repaired only after a read-only Treehouse status proves no active lease
+8. Patches `CLAUDE.md` with `## Harness` block (install date, source SHA, readiness command, and explicit worktree preparation guidance)
+9. Runs smoke test, then verifies `tasks-axi`, Treehouse, and the installed pinned grill. Missing or broken CLIs require workspace onboarding; bundled grill drift is repaired by setup.
 
 ### 4. Present smoke test results
 
