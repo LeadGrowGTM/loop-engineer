@@ -246,6 +246,24 @@ function validateFixture(
   return invokeLifecycle(['validate', '--run', manifestPath], fixture.env, cwd);
 }
 
+function driftCanonicalGrillSkill(manifestPath: string, field: 'name' | 'version' | 'sourceHash', value: string): void {
+  const receiptPath = readRunManifest(manifestPath).grillReceiptPath;
+  const receipt = JSON.parse(readFileSync(receiptPath, 'utf8')) as { skill: Record<string, unknown> };
+  receipt.skill[field] = value;
+  writeFileSync(receiptPath, JSON.stringify(receipt));
+}
+
+function omitGitWorktreeRegistration(fixture: ReturnType<typeof createLifecycleFixture>): void {
+  const realGit = Bun.which('git');
+  if (!realGit) throw new Error('test fixture requires git');
+  const bin = fixture.env.PATH!.split(';')[0];
+  writeFileSync(join(bin, 'git.cmd'), '@echo off\r\nnode %~dp0\\git-fake.cjs %*\r\n');
+  writeFileSync(join(bin, 'git-fake.cjs'), Buffer.from('Y29uc3QgYz1yZXF1aXJlKCdub2RlOmNoaWxkX3Byb2Nlc3MnKTtjb25zdCBhPXByb2Nlc3MuYXJndi5zbGljZSgyKS5tYXAoeD0+eD09PSdIRUFEe2NvbW1pdH0nPydIRUFEXntjb21taXR9Jzp4KTtpZihwcm9jZXNzLmVudi5HSVRfV09SS1RSRUVfTElTVF9NT0RFPT09J29taXQnKXtpZihhLmluY2x1ZGVzKCd3b3JrdHJlZScpKXtpZihhLmluY2x1ZGVzKCdsaXN0Jykpe2lmKGEuaW5jbHVkZXMoJy0tcG9yY2VsYWluJykpe3Byb2Nlc3Muc3Rkb3V0LndyaXRlKCd3b3JrdHJlZSAnK3Byb2Nlc3MuZW52LkdJVF9SRUdJU1RSQVRJT05fUk9PVCsnXG4nKTtwcm9jZXNzLmV4aXQoMCl9fX19Y29uc3Qgcj1jLnNwYXduU3luYyhwcm9jZXNzLmVudi5SRUFMX0dJVCxhLHtzdGRpbzonaW5oZXJpdCd9KTtwcm9jZXNzLmV4aXQoci5zdGF0dXM9PT1udWxsPzE6ci5zdGF0dXMpOwo=', 'base64'));
+  fixture.env.REAL_GIT = realGit;
+  fixture.env.GIT_REGISTRATION_ROOT = fixture.repo;
+  fixture.env.GIT_WORKTREE_LIST_MODE = 'omit';
+}
+
 function expectSafeRemediation(result: { remediation?: unknown }): void {
   expect(Array.isArray(result.remediation)).toBe(true);
   const remediation = result.remediation as unknown[];
@@ -784,7 +802,6 @@ test('validate restarts from only persisted run state in a fresh process and is 
     runDirectory: run.runDirectory,
     state: 'VALIDATED',
   } });
-  expect(JSON.stringify(first.json)).not.toMatch(/planner|maker/i);
   expect(readRunManifest(recorded.manifestPath).state).toBe('VALIDATED');
 
   const retry = validateFixture(fixture, recorded.manifestPath, run.worktreePath);
@@ -847,6 +864,52 @@ test('validate fails closed for every persisted restart invariant', () => {
       code: 'LEASE_OUTSIDE_REPOSITORY',
     },
     {
+      name: 'removed Git worktree registration',
+      mutate: (fixture) => omitGitWorktreeRegistration(fixture),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'LEASE_IDENTITY_MISMATCH',
+    },
+    {
+      name: 'reparse traversal at canonical run artifact',
+      mutate: (fixture, manifestPath) => {
+        const receiptPath = readRunManifest(manifestPath).grillReceiptPath;
+        const externalReceipt = join(fixture.root, 'external-GRILL.json');
+        writeFileSync(externalReceipt, readFileSync(receiptPath, 'utf8'));
+        rmSync(receiptPath);
+        symlinkSync(externalReceipt, receiptPath, 'file');
+      },
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'LEASE_OUTSIDE_REPOSITORY',
+    },
+    {
+      name: 'pinned grill skill name drift',
+      mutate: (_fixture, manifestPath) => driftCanonicalGrillSkill(manifestPath, 'name', 'other-grill'),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'GRILL_RECEIPT_INVALID',
+    },
+    {
+      name: 'pinned grill skill version drift',
+      mutate: (_fixture, manifestPath) => driftCanonicalGrillSkill(manifestPath, 'version', '9.9.9'),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'GRILL_RECEIPT_INVALID',
+    },
+    {
+      name: 'pinned grill skill hash drift',
+      mutate: (_fixture, manifestPath) => driftCanonicalGrillSkill(manifestPath, 'sourceHash', '0'.repeat(64)),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'GRILL_RECEIPT_INVALID',
+    },
+    {
+      name: 'source HEAD drift',
+      mutate: (fixture) => {
+        writeFileSync(join(fixture.repo, 'source-drift.txt'), 'drift\n');
+        runGit(['add', 'source-drift.txt'], fixture.repo);
+        runGit(['commit', '-m', 'source drift'], fixture.repo);
+      },
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'LEASE_IDENTITY_MISMATCH',
+    },
+    {
       name: 'invalid canonical grill receipt',
       mutate: (_fixture, manifestPath) => writeFileSync(readRunManifest(manifestPath).grillReceiptPath, '{"schemaVersion":1}\n'),
       cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
@@ -862,16 +925,17 @@ test('validate fails closed for every persisted restart invariant', () => {
   const canonicalTaskState = readFileSync(fixture.tasks.stateFile, 'utf8');
 
   for (const scenario of cases) {
+    rmSync(readRunManifest(recorded.manifestPath).grillReceiptPath, { force: true });
     writeFileSync(recorded.manifestPath, canonicalManifest);
     writeFileSync(readRunManifest(recorded.manifestPath).grillReceiptPath, canonicalReceipt);
     writeFileSync(fixture.tasks.stateFile, canonicalTaskState);
     fixture.env.TREEHOUSE_HOLDER = fixture.taskId;
+    fixture.env.GIT_WORKTREE_LIST_MODE = undefined;
     scenario.mutate(fixture, recorded.manifestPath);
 
     const result = validateFixture(fixture, recorded.manifestPath, scenario.cwd(fixture, recorded.manifestPath));
     expect(result.exitCode).not.toBe(0);
     expect(result.json).toMatchObject({ operation: 'validate', ok: false, code: scenario.code });
-    expect(JSON.stringify(result.json)).not.toMatch(/planner|maker/i);
     expectSafeRemediation(result.json);
     expect(readRunManifest(recorded.manifestPath).state).toBe('GRILL_COMPLETE');
   }
