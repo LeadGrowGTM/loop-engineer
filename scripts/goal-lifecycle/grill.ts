@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   LifecycleCommandError,
   lifecycleFailure,
@@ -13,7 +14,7 @@ import {
   type GrillReceiptV1,
   type GrillRoundV1,
 } from './manifest';
-import { PINNED_BATCH_GRILL_SHA256 } from './start';
+import { PINNED_BATCH_GRILL_SHA256, PINNED_BATCH_GRILL_VERSION } from './start';
 
 const OPERATION = 'record-grill';
 const SECRET_KEY = /(?:password|secret|token|api[_-]?key|update[_-]?key|authorization)/i;
@@ -54,6 +55,12 @@ function requireStrings(value: unknown, path: string): string[] {
   return value.map((entry, index) => requireString(entry, `${path}[${index}]`));
 }
 
+function rejectSecretContent(value: string, path: string): void {
+  if (value === REDACTED || SECRET_CONTENT.test(value)) {
+    throw invalid(`The grill receipt contains unredacted secret-like content at ${path}.`);
+  }
+}
+
 function parseRound(value: unknown, index: number): GrillRoundV1 {
   const path = `rounds[${index}]`;
   if (!isObject(value)) throw invalid(`The grill receipt field ${path} must be an object.`);
@@ -88,7 +95,38 @@ function redactReceipt(receipt: GrillReceiptV1): GrillReceiptV1 {
   };
 }
 
-function parseCandidate(path: string): GrillReceiptV1 {
+function receiptStrings(receipt: GrillReceiptV1): Array<[string, string]> {
+  const strings: Array<[string, string]> = [];
+  const collect = (values: string[], path: string) => {
+    values.forEach((value, index) => strings.push([`${path}[${index}]`, value]));
+  };
+  receipt.rounds.forEach((round, index) => {
+    collect(round.questions, `rounds[${index}].questions`);
+    collect(round.recommendations, `rounds[${index}].recommendations`);
+    collect(round.settledDecisions, `rounds[${index}].settledDecisions`);
+  });
+  collect(receipt.recommendations, 'recommendations');
+  collect(receipt.settledDecisions, 'settledDecisions');
+  return strings;
+}
+
+function assertCanonicalRedaction(receipt: GrillReceiptV1): void {
+  const redactedFields: string[] = [];
+  for (const [path, value] of receiptStrings(receipt)) {
+    if (SECRET_CONTENT.test(value)) {
+      throw invalid(`The canonical grill receipt contains unredacted secret-like content at ${path}.`);
+    }
+    if (value === REDACTED) redactedFields.push(path);
+  }
+  if (
+    receipt.redaction.redacted !== (redactedFields.length > 0)
+    || JSON.stringify(receipt.redaction.fields) !== JSON.stringify(redactedFields)
+  ) {
+    throw invalid('The canonical grill receipt redaction metadata is invalid.');
+  }
+}
+
+function parseCandidate(path: string, allowCanonicalRedaction = false): GrillReceiptV1 {
   if (!existsSync(path)) {
     throw new LifecycleCommandError(
       'GRILL_RECEIPT_MISSING',
@@ -109,12 +147,20 @@ function parseCandidate(path: string): GrillReceiptV1 {
   ], 'receipt');
   if (value.schemaVersion !== 1) throw invalid('The candidate grill receipt schema version is unsupported.');
   const taskId = requireString(value.taskId, 'taskId');
+  rejectSecretContent(taskId, 'taskId');
   if (!isObject(value.skill)) throw invalid('The grill receipt skill must be an object.');
   requireOnlyKeys(value.skill, ['name', 'version', 'sourceHash'], 'skill');
   const name = requireString(value.skill.name, 'skill.name');
   const version = requireString(value.skill.version, 'skill.version');
   const sourceHash = requireString(value.skill.sourceHash, 'skill.sourceHash');
-  if (name !== 'batch-grill-me' || sourceHash !== PINNED_BATCH_GRILL_SHA256) {
+  rejectSecretContent(name, 'skill.name');
+  rejectSecretContent(version, 'skill.version');
+  rejectSecretContent(sourceHash, 'skill.sourceHash');
+  if (
+    name !== 'batch-grill-me'
+    || version !== PINNED_BATCH_GRILL_VERSION
+    || sourceHash !== PINNED_BATCH_GRILL_SHA256
+  ) {
     throw invalid('The grill receipt does not identify the pinned batch-grill-me skill.');
   }
   if (!Array.isArray(value.rounds)) throw invalid('The grill receipt field rounds must be an array.');
@@ -125,8 +171,8 @@ function parseCandidate(path: string): GrillReceiptV1 {
     throw invalid('The grill receipt redaction metadata is invalid.');
   }
   requireOnlyKeys(value.redaction, ['redacted', 'fields'], 'redaction');
-  requireStrings(value.redaction.fields, 'redaction.fields');
-  return redactReceipt({
+  const redactionFields = requireStrings(value.redaction.fields, 'redaction.fields');
+  const receipt: GrillReceiptV1 = {
     schemaVersion: 1,
     taskId,
     skill: { name, version, sourceHash },
@@ -135,8 +181,21 @@ function parseCandidate(path: string): GrillReceiptV1 {
     settledDecisions: requireStrings(value.settledDecisions, 'settledDecisions'),
     finalFrontierCount: 0,
     status: 'complete',
-    redaction: { redacted: false, fields: [] },
-  });
+    redaction: { redacted: value.redaction.redacted, fields: redactionFields },
+  };
+  if (allowCanonicalRedaction) {
+    assertCanonicalRedaction(receipt);
+    return receipt;
+  }
+  if (receipt.redaction.redacted || receipt.redaction.fields.length > 0) {
+    throw invalid('Fresh grill receipt redaction metadata cannot be verified before canonical persistence.');
+  }
+  for (const [path, string] of receiptStrings(receipt)) {
+    if (string === REDACTED) {
+      throw invalid(`Fresh grill receipt contains an unverifiable redaction marker at ${path}.`);
+    }
+  }
+  return redactReceipt(receipt);
 }
 
 export function recordGrill(runPath: string, candidateReceiptPath: string): LifecycleResult {
@@ -145,7 +204,9 @@ export function recordGrill(runPath: string, candidateReceiptPath: string): Life
     if (run.state !== 'STARTED' && run.state !== 'GRILL_COMPLETE') {
       throw invalid(`Run ${run.taskId} cannot record a grill receipt from state ${run.state}.`);
     }
-    const receipt = parseCandidate(candidateReceiptPath);
+    const canonicalRetry = run.state === 'GRILL_COMPLETE'
+      && resolve(candidateReceiptPath) === resolve(run.grillReceiptPath);
+    const receipt = parseCandidate(candidateReceiptPath, canonicalRetry);
     if (receipt.taskId !== run.taskId) throw invalid('The grill receipt taskId does not match RUN.json.');
 
     if (run.state === 'GRILL_COMPLETE') {
