@@ -191,6 +191,46 @@ function startFixture(fixture: ReturnType<typeof createLifecycleFixture>) {
   );
 }
 
+const PINNED_GRILL_HASH = '92a426f9ed319ca6f54ecf8fabe8c57f82e42dd71e7e5a2d11415fb6f903557f';
+
+function completeGrillReceipt(taskId: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    taskId,
+    skill: {
+      name: 'batch-grill-me',
+      version: '1.0.0',
+      sourceHash: PINNED_GRILL_HASH,
+    },
+    rounds: [],
+    recommendations: [],
+    settledDecisions: [],
+    finalFrontierCount: 0,
+    status: 'complete',
+    redaction: {
+      redacted: false,
+      fields: [],
+    },
+    ...overrides,
+  };
+}
+
+function recordGrillFixture(
+  fixture: ReturnType<typeof createLifecycleFixture>,
+  receipt: Record<string, unknown>,
+) {
+  const start = startFixture(fixture);
+  expect(start.exitCode).toBe(0);
+  const manifestPath = start.json.data.manifestPath as string;
+  const candidatePath = join(dirname(manifestPath), 'candidate-GRILL.json');
+  writeFileSync(candidatePath, JSON.stringify(receipt, null, 2));
+  return {
+    candidatePath,
+    manifestPath,
+    result: invokeLifecycle(['record-grill', '--run', manifestPath, '--receipt', candidatePath], fixture.env),
+  };
+}
+
 function expectSafeRemediation(result: { remediation?: unknown }): void {
   expect(Array.isArray(result.remediation)).toBe(true);
   const remediation = result.remediation as unknown[];
@@ -516,4 +556,131 @@ test('lifecycle start rejects malformed Treehouse output and returns its one ide
     `get --lease --lease-holder ${fixture.taskId}`,
     `return ${fixture.treehouse.lease}`,
   ]);
+});
+
+// Catches accepting a no-op grill as missing proof instead of persisting its completed zero frontier.
+test('record-grill persists a completed zero-question receipt and advances the run', () => {
+  const fixture = createLifecycleFixture();
+  const recorded = recordGrillFixture(fixture, completeGrillReceipt(fixture.taskId));
+
+  expect(recorded.result.exitCode).toBe(0);
+  expect(recorded.result.lines).toHaveLength(1);
+  expect(recorded.result.json).toMatchObject({ operation: 'record-grill', ok: true, code: 'OK' });
+  expect(readRunManifest(recorded.manifestPath).state).toBe('GRILL_COMPLETE');
+  expect(JSON.parse(readFileSync(join(dirname(recorded.manifestPath), 'GRILL.json'), 'utf8'))).toEqual(
+    completeGrillReceipt(fixture.taskId),
+  );
+});
+
+// Catches round normalization that loses the interview order or omits required per-round arrays.
+test('record-grill preserves ordered completed multi-round receipts', () => {
+  const fixture = createLifecycleFixture();
+  const rounds = [
+    {
+      questions: ['Which users are in scope?'],
+      recommendations: ['Start with active accounts.'],
+      settledDecisions: ['Active accounts are in scope.'],
+    },
+    {
+      questions: ['Which timezone applies?'],
+      recommendations: ['Use America/Toronto.'],
+      settledDecisions: ['America/Toronto is the canonical timezone.'],
+    },
+  ];
+  const recorded = recordGrillFixture(fixture, completeGrillReceipt(fixture.taskId, { rounds }));
+
+  expect(recorded.result.exitCode).toBe(0);
+  expect(JSON.parse(readFileSync(join(dirname(recorded.manifestPath), 'GRILL.json'), 'utf8')).rounds).toEqual(rounds);
+});
+
+// Catches writing a receipt from another durable task into this run directory.
+test('record-grill rejects a task-mismatched receipt without changing the started run', () => {
+  const fixture = createLifecycleFixture();
+  const recorded = recordGrillFixture(fixture, completeGrillReceipt('other-goal'));
+
+  expect(recorded.result.exitCode).not.toBe(0);
+  expect(recorded.result.json).toMatchObject({ operation: 'record-grill', ok: false, code: 'GRILL_RECEIPT_INVALID' });
+  expectSafeRemediation(recorded.result.json);
+  expect(readRunManifest(recorded.manifestPath).state).toBe('STARTED');
+  expect(existsSync(join(dirname(recorded.manifestPath), 'GRILL.json'))).toBe(false);
+});
+
+// Catches an accepted invalid receipt leaving an invalid or advanced durable run behind.
+for (const invalidReceipt of [
+  ['an incomplete receipt', completeGrillReceipt('canonical-goal', { status: 'in_progress' })],
+  ['a receipt with a nonzero frontier', completeGrillReceipt('canonical-goal', { finalFrontierCount: 1 })],
+  ['a structurally malformed receipt', completeGrillReceipt('canonical-goal', { rounds: [{ questions: ['Question'], recommendations: [], settledDecisions: 'not-an-array' }] })],
+  ['an unpinned receipt', completeGrillReceipt('canonical-goal', { skill: { name: 'batch-grill-me', version: '1.0.0', sourceHash: 'drifted' } })],
+] as const) {
+  test(`record-grill fails closed for ${invalidReceipt[0]}`, () => {
+    const fixture = createLifecycleFixture();
+    const recorded = recordGrillFixture(fixture, invalidReceipt[1]);
+
+    expect(recorded.result.exitCode).not.toBe(0);
+    expect(recorded.result.json).toMatchObject({ operation: 'record-grill', ok: false, code: 'GRILL_RECEIPT_INVALID' });
+    expectSafeRemediation(recorded.result.json);
+    expect(readRunManifest(recorded.manifestPath).state).toBe('STARTED');
+  });
+}
+
+// Catches retrying an already persisted proof as an illegal state transition.
+test('record-grill is idempotent for an already completed matching receipt', () => {
+  const fixture = createLifecycleFixture();
+  const first = recordGrillFixture(fixture, completeGrillReceipt(fixture.taskId));
+  expect(first.result.exitCode).toBe(0);
+  const canonical = readFileSync(join(dirname(first.manifestPath), 'GRILL.json'), 'utf8');
+  const retry = invokeLifecycle(['record-grill', '--run', first.manifestPath, '--receipt', first.candidatePath], fixture.env);
+
+  expect(retry.exitCode).toBe(0);
+  expect(retry.json).toMatchObject({ operation: 'record-grill', ok: true, code: 'OK' });
+  expect(readRunManifest(first.manifestPath).state).toBe('GRILL_COMPLETE');
+  expect(readFileSync(join(dirname(first.manifestPath), 'GRILL.json'), 'utf8')).toBe(canonical);
+});
+
+// Catches a retry rejecting the canonical receipt solely because its first write redacted prose.
+test('record-grill is idempotent after canonical redaction', () => {
+  const fixture = createLifecycleFixture();
+  const receipt = completeGrillReceipt(fixture.taskId, {
+    recommendations: ['Set api_key=abc123 before continuing.'],
+  });
+  const first = recordGrillFixture(fixture, receipt);
+  expect(first.result.exitCode).toBe(0);
+  const retry = invokeLifecycle(['record-grill', '--run', first.manifestPath, '--receipt', first.candidatePath], fixture.env);
+
+  expect(retry.exitCode).toBe(0);
+  expect(retry.json).toMatchObject({ operation: 'record-grill', ok: true, code: 'OK' });
+});
+
+// Catches persisting credentials hidden in receipt prose or under a secret-like unknown key.
+test('record-grill recursively redacts secret-like content and rejects secret-like receipt keys', () => {
+  const fixture = createLifecycleFixture();
+  const recorded = recordGrillFixture(
+    fixture,
+    completeGrillReceipt(fixture.taskId, {
+      rounds: [{
+        questions: ['Should authorization: Bearer hunter2 be used?'],
+        recommendations: ['Set api_key=abc123 before continuing.'],
+        settledDecisions: ['Credentials are supplied out of band.'],
+      }],
+    }),
+  );
+
+  expect(recorded.result.exitCode).toBe(0);
+  const canonical = JSON.parse(readFileSync(join(dirname(recorded.manifestPath), 'GRILL.json'), 'utf8'));
+  expect(JSON.stringify(canonical)).not.toContain('hunter2');
+  expect(JSON.stringify(canonical)).not.toContain('abc123');
+  expect(canonical.redaction).toMatchObject({ redacted: true });
+  expect(canonical.redaction.fields).toEqual([
+    'rounds[0].questions[0]',
+    'rounds[0].recommendations[0]',
+  ]);
+
+  const unsafeFixture = createLifecycleFixture();
+  const unsafe = recordGrillFixture(
+    unsafeFixture,
+    completeGrillReceipt(unsafeFixture.taskId, { api_key: 'abc123' }),
+  );
+  expect(unsafe.result.exitCode).not.toBe(0);
+  expect(unsafe.result.json).toMatchObject({ ok: false, code: 'GRILL_RECEIPT_INVALID' });
+  expect(readRunManifest(unsafe.manifestPath).state).toBe('STARTED');
 });
