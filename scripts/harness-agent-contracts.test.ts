@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { resolveRoleModel } from "./resolve-role-model";
 
 const repoRoot = join(import.meta.dir, "..");
@@ -9,8 +8,10 @@ const agentPath = (name: string) => join(repoRoot, ".claude", "agents", `${name}
 const readAgent = (name: string) => readFileSync(agentPath(name), "utf8");
 const goalSkillPath = join(repoRoot, "skills", "write-goal-prompt", "SKILL.md");
 const goalExamplesPath = join(repoRoot, "skills", "write-goal-prompt", "EXAMPLES.md");
+const issueTrackerPath = join(repoRoot, "skills", "write-goal-prompt", "references", "issue-tracker.md");
 const readGoalSkill = () => readFileSync(goalSkillPath, "utf8");
 const readGoalExamples = () => readFileSync(goalExamplesPath, "utf8");
+const readIssueTracker = () => readFileSync(issueTrackerPath, "utf8");
 const lifecycleReferencePaths = [
   goalSkillPath,
   goalExamplesPath,
@@ -25,35 +26,6 @@ const lifecycleReferencePaths = [
 function readLifecycleContracts(): string {
   return lifecycleReferencePaths.map((path) => readFileSync(path, "utf8")).join("\n");
 }
-const gitExecutable = Bun.which("git");
-if (!gitExecutable) throw new Error("Git executable not found");
-const gitBash = resolve(dirname(gitExecutable), "..", "bin", "bash.exe");
-const BASH = existsSync(gitBash) ? gitBash : Bun.which("bash");
-if (!BASH) throw new Error("Bash executable not found");
-
-function run(command: string[], cwd: string): string {
-  const result = Bun.spawnSync(command, { cwd, stdout: "pipe", stderr: "pipe" });
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `Command failed (${result.exitCode}): ${command.join(" ")}\nstdout: ${result.stdout.toString()}\nstderr: ${result.stderr.toString()}`,
-    );
-  }
-  return result.stdout.toString().trim();
-}
-
-function normalizePath(value: string): string {
-  return resolve(value).replaceAll("\\", "/");
-}
-
-function resolveSkillRoots(cwd: string): { projectRoot: string; workspaceRoot: string } {
-  const match = readGoalSkill().match(/## Execution Router[\s\S]*?```bash\r?\n([\s\S]*?)\r?\n```/);
-  if (!match) throw new Error("Execution Router Step 0 shell snippet not found");
-  const snippet = match[1].replaceAll("\r\n", "\n");
-  const output = run([BASH, "-c", `${snippet}\nprintf '%s\\n' "$PROJECT_ROOT" "$WORKSPACE_ROOT"`], cwd).split(/\r?\n/);
-  if (output.length !== 2) throw new Error(`Expected two routing paths, received ${output.length}`);
-  return { projectRoot: output[0], workspaceRoot: output[1] };
-}
-
 const roles = [
   "harness-planner",
   "harness-maker",
@@ -154,7 +126,7 @@ describe("approval-aware harness agent contracts", () => {
 
   test("maker invokes the installed protected-work guard before edits and every commit", () => {
     const source = readAgent("harness-maker");
-    const guardPath = "$PROJECT_ROOT/scripts/guard-protected-work.ts";
+    const guardPath = "$RUN_WORKTREE_PATH/scripts/guard-protected-work.ts";
     const captureCommand = `bun "${guardPath}" capture`;
     const validateCommand = `bun "${guardPath}" validate`;
     const captureIndex = source.indexOf(captureCommand);
@@ -258,6 +230,50 @@ describe("approval-aware harness agent contracts", () => {
       expect(source).toMatch(/stop.*LIFECYCLE_VALIDATION|LIFECYCLE_VALIDATION.*stop/is);
       expect(source).toMatch(/goal-lifecycle validate --run <RUN\.json>/);
     }
+  });
+
+  test("maker uses explicit manifest roots for task work, artifacts, and ownership", () => {
+    const source = readAgent("harness-maker");
+
+    expect(source).toContain("worktreePath");
+    expect(source).toContain("runDirectory");
+    expect(source).toContain("repositoryRoot");
+    expect(source).toContain("gitCommonDirectory");
+    expect(source).toContain("RUN_WORKTREE_PATH");
+    expect(source).toContain("RUN_DIRECTORY");
+    expect(source).toContain("REPOSITORY_ROOT");
+    expect(source).toContain("GIT_COMMON_DIRECTORY");
+    expect(source).not.toContain("$PROJECT_ROOT");
+    expect(source).toMatch(/worktreePath.*guard.*commit root/is);
+    expect(source).toMatch(/runDirectory.*artifacts/is);
+    expect(source).toMatch(/workspace root.*never.*task work.*commit target/is);
+  });
+
+  test("each restart pointer names its persisted routing action after validation", () => {
+    for (const source of [readGoalSkill(), readGoalExamples()]) {
+      expect(source).toMatch(/First action: goal-lifecycle validate --run <RUN\.json>/);
+      expect(source).toMatch(/exact \[ROUTING_GUARD\] block persisted in HARNESS\.md/i);
+      expect(source).toMatch(/Validate before routing, Planner, or Maker/i);
+    }
+  });
+
+  test("authoring resolves the nested target repository root before lifecycle start", () => {
+    const source = readGoalSkill();
+
+    expect(source).toContain("git -C <candidate-target> rev-parse --show-toplevel");
+    expect(source).toMatch(/exact absolute output.*--repo/is);
+    expect(source).toMatch(/nested repository.*not.*workspace.*monorepo/i);
+  });
+
+  test("issue slices consume the manifest run directory instead of deleted router roots", () => {
+    const source = readIssueTracker();
+
+    expect(source).toContain("worktreePath");
+    expect(source).toContain("runDirectory");
+    expect(source).toMatch(/runDirectory.*artifacts/is);
+    expect(source).toMatch(/worktreePath.*task work.*commit root/is);
+    expect(source).not.toContain("$PROJECT_ROOT");
+    expect(source).not.toContain("Execution Router");
   });
 
   test("supported contracts never offer direct task, worktree, bypass, or conditional-grill paths", () => {

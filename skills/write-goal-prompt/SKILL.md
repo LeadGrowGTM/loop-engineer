@@ -41,7 +41,16 @@ Perform these steps in order. A failure is terminal for this attempt: preserve t
 follow its remediation, and retry the same lifecycle operation only after the reported condition is
 resolved.
 
-1. Run `goal-lifecycle start --repo <absolute-repository-path> --task-id <slug> --title <one-line-title>`.
+Before step 1, resolve the target project's actual repository root:
+
+```text
+git -C <candidate-target> rev-parse --show-toplevel
+```
+
+Use that exact absolute output as the `--repo` value. When the candidate is a nested repository,
+its own root is the target; the nested repository must not use a workspace or monorepo root.
+
+1. Run `goal-lifecycle start --repo <exact-target-repository-root> --task-id <slug> --title <one-line-title>`.
    Read its successful JSON and take `taskId`, `worktreePath`, `runDirectory`, and `manifestPath` as
    authoritative. The author must not select or derive a run path.
 2. Change into the returned absolute `worktreePath`. Unconditionally invoke `batch-grill-me`, even
@@ -49,7 +58,9 @@ resolved.
    `<runDirectory>/candidate-GRILL.json`; a zero-question completed frontier is valid.
 3. Run `goal-lifecycle record-grill --run <RUN.json> --receipt <candidate-GRILL.json>`, using the
    absolute manifest path returned by `start`. Do not continue unless its JSON result is successful.
-4. Persist `RUN.json + GRILL.json + BRIEF.md + HARNESS.md` in the returned run directory before any
+4. Resolve routing from the manifest's `repositoryRoot` only after grill recording succeeds. Persist
+   the exact emitted `[ROUTING_GUARD]` block verbatim in `HARNESS.md`; it is the restart-time routing
+   action and must not be regenerated from memory. Then persist `RUN.json + GRILL.json + BRIEF.md + HARNESS.md` in the returned run directory before any
    context clear. `BRIEF.md` records the bounded task, success criteria, constraints, and exclusions.
    `HARNESS.md` records task briefs, execution protocol, proof, blocking, context, and shipping rules.
 5. Emit the measured restart pointer below. It must name the task ID, absolute run path, and absolute
@@ -85,15 +96,17 @@ the lifecycle sequence remains unchanged.
 Skill routing is not run while authoring and never precedes restart validation. After validation
 succeeds, resolve the planner routing with the existing executable resolver using the recorded
 repository root from `RUN.json`. Pass its exact JSON to Planner as `[SKILL_ROUTING_RESOLUTION]`.
-If it returns nonzero, stop before Planner. For `project-local` or `canonical`, Planner reads only
+If it returns nonzero, stop before Planner. Persist the exact emitted `[ROUTING_GUARD]` block in
+HARNESS.md before emitting the pointer. For `project-local` or `canonical`, Planner reads only
 `normalizedPath`; for `direct`, Planner uses the confirmed HARNESS routing or a documented direct
 quality bar. Do not hand-build or re-quote resolver paths.
 
-The generated pointer may carry this post-validation guard:
+HARNESS.md carries this exact post-validation guard, with its emitted command body rather than a
+placeholder:
 
 ```text
 [ROUTING_GUARD]
-<exact resolver --emit-shell-guard stdout>
+<exact emitted resolver guard block>
 ```
 
 ## HARNESS.md standing protocol
@@ -104,7 +117,7 @@ Write these contracts into `HARNESS.md` before emitting the pointer:
 EXECUTION_PROTOCOL
 The restart pointer's first action is goal-lifecycle validate --run <RUN.json>. Stop on any
 non-ready result. Validation succeeds before routing, Planner, or Maker is reachable. The parent
-then resolves routing, passes exact routing evidence plus LIFECYCLE_VALIDATION: OK to Planner, and
+then executes the exact [ROUTING_GUARD] block persisted in HARNESS.md, passes exact routing evidence plus LIFECYCLE_VALIDATION: OK to Planner, and
 runs Planner → Maker → Prover (when applicable) → Checker.
 
 Planner writes PLAN.md and durable phase slices before task artifacts. Maker works only from the
@@ -138,7 +151,8 @@ Artifacts: <absolute-path-to-GRILL.json>, <absolute-path-to-BRIEF.md>, <absolute
 First action: goal-lifecycle validate --run <RUN.json>.
 Change execution to the absolute run path, read RUN.json and HARNESS.md, then run that first action.
 Stop on any non-ready result. Validate before routing, Planner, or Maker. Only after successful
-validation, run the emitted routing guard and invoke Planner with LIFECYCLE_VALIDATION: OK.
+validation, execute the exact [ROUTING_GUARD] block persisted in HARNESS.md and invoke Planner with
+LIFECYCLE_VALIDATION: OK.
 ```
 
 ## Runtime boundaries
