@@ -1,5 +1,5 @@
 *.db
-.tmp/treehouse/
+.worktrees/
 .gnhf-runs/
 .test-tmp/
 
