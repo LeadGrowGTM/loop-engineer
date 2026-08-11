@@ -17,3 +17,25 @@
 
 - Changes are confined to the Task 6 files and this report.
 - The no-active-lease parser is intentionally strict (`NO_ACTIVE_LEASES`, `no active leases`, or `no leases`) so unfamiliar Treehouse output fails closed instead of risking a stranded lease.
+
+## Review fix round 1 evidence
+
+RED command and output:
+
+```text
+> bun test scripts/setup-harness.test.ts
+41 tests: 39 pass, 2 fail
+(fail) lifecycle dependency setup > reports tasks-axi absent from the hermetic PATH as workspace onboarding required
+(fail) lifecycle dependency setup > reports Treehouse absent from the hermetic PATH as workspace onboarding required
+```
+
+GREEN command and output:
+
+```text
+> bun test scripts/setup-harness.test.ts
+41 pass
+0 fail
+77 expect() calls
+```
+
+The review change creates each global grill parent (`.claude`, `.claude/skills`, and `batch-grill-me`) through a trusted pre- and post-create check. The coverage includes a hostile `.claude/skills` junction, genuinely absent `tasks-axi` and Treehouse commands under a hermetic `PATH`, and a legacy Treehouse pool sentinel that remains untouched during safe configuration repair.
