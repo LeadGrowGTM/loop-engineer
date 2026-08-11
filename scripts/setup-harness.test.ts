@@ -629,6 +629,63 @@ describe('install CLI', () => {
 });
 
 describe('lifecycle dependency setup', () => {
+  test('fails closed before writes when the global grill skills directory links outside HOME', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-linked-global-skills-'));
+    const target = join(root, 'target');
+    const home = join(root, 'home');
+    const outsideSkills = join(root, 'outside-skills');
+    mkdirSync(target, { recursive: true });
+    mkdirSync(join(home, '.claude'), { recursive: true });
+    mkdirSync(outsideSkills, { recursive: true });
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+    try {
+      symlinkSync(outsideSkills, join(home, '.claude', 'skills'), process.platform === 'win32' ? 'junction' : 'dir');
+    } catch (error) {
+      if (process.platform === 'win32' && error !== null && typeof error === 'object' && 'code' in error && (error.code === 'EPERM' || error.code === 'EACCES')) return;
+      throw error;
+    }
+
+    const result = runInstall(target, lifecycleTestEnvironment(root));
+
+    expect(result.exitCode).toBe(1);
+    expect(existsSync(join(outsideSkills, 'batch-grill-me', 'SKILL.md'))).toBe(false);
+    expect(existsSync(join(home, '.claude', 'agents'))).toBe(false);
+  });
+
+  test('reports tasks-axi absent from the hermetic PATH as workspace onboarding required', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-missing-tasks-axi-'));
+    const target = join(root, 'target');
+    const home = join(root, 'home');
+    const bin = join(root, 'empty-bin');
+    mkdirSync(target, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, 'git.cmd'), '@echo off\r\nexit /b 1\r\n');
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+
+    const result = runInstall(target, { ...process.env, HOME: home, USERPROFILE: home, PATH: bin });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout.toString()).toContain('tasks-axi: workspace onboarding required');
+  });
+
+  test('reports Treehouse absent from the hermetic PATH as workspace onboarding required', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-missing-treehouse-'));
+    const target = join(root, 'target');
+    const home = join(root, 'home');
+    const bin = join(root, 'empty-bin');
+    mkdirSync(target, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, 'git.cmd'), '@echo off\r\nexit /b 1\r\n');
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+
+    const result = runInstall(target, { ...process.env, HOME: home, USERPROFILE: home, PATH: bin });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout.toString()).toContain('treehouse: workspace onboarding required');
+  });
+
   test('clean install owns the lifecycle pool and pinned grill skill', () => {
     const root = mkdtempSync(join(tmpdir(), 'setup-harness-lifecycle-clean-'));
     const target = join(root, 'target');
@@ -681,8 +738,12 @@ describe('lifecycle dependency setup', () => {
     mkdirSync(target, { recursive: true });
     writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
     writeFileSync(join(target, 'treehouse.toml'), 'max_trees = 16\nroot = ".tmp/treehouse/"\n');
+    const legacyLease = join(target, '.tmp', 'treehouse', 'active-lease', 'WORKTREE_SENTINEL');
+    mkdirSync(join(target, '.tmp', 'treehouse', 'active-lease'), { recursive: true });
+    writeFileSync(legacyLease, 'lease remains owned by treehouse');
     expect(runInstall(target, lifecycleTestEnvironment(root)).exitCode).toBe(0);
     expect(readFileSync(join(target, 'treehouse.toml'), 'utf8')).toBe('max_trees = 16\nroot = ".worktrees/"\n');
+    expect(readFileSync(legacyLease, 'utf8')).toBe('lease remains owned by treehouse');
   });
 
   test('refuses legacy pool repair when Treehouse reports active leases', () => {

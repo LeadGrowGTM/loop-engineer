@@ -311,6 +311,13 @@ function trustedHomeDirectory(): string {
   return trustedTargetDirectory(home);
 }
 
+function mkdirTrustedHomePath(relativePath: string): string {
+  const home = trustedHomeDirectory();
+  const destination = trustedContainedPath(home, relativePath, 'directory');
+  mkdirSync(destination, { recursive: true });
+  return trustedContainedPath(home, relativePath, 'directory');
+}
+
 type InstallPaths = {
   targetDir: string;
   agentsDir: string;
@@ -594,8 +601,10 @@ if (import.meta.main) {
       console.log(`Copied ${f} → ${destPath}`);
     }
 
+    mkdirTrustedHomePath('.claude');
+    mkdirTrustedHomePath('.claude/skills');
+    mkdirTrustedHomePath('.claude/skills/batch-grill-me');
     const grillSkillPath = trustedGrillSkillPath();
-    mkdirSync(dirname(grillSkillPath), { recursive: true });
     copyFileSync(SOURCE_GRILL_PATH, trustedGrillSkillPath());
     console.log(`Installed bundled batch-grill-me → ${grillSkillPath}`);
 
