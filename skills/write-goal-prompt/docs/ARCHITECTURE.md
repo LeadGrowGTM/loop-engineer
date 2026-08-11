@@ -12,9 +12,9 @@ repository-owned `.worktrees/` pool, creates `wt/<task-id>`, and persists `RUN.j
 
 Treehouse controls `.worktrees/` and its internal nested layout. Lifecycle consumers use only the
 returned worktree path and never create, choose, repair, or remove nested pool directories. The
-grill is unconditional: `record-grill` persists `GRILL.json` and emits the lean pointer used by the
-goal rather than duplicating durable context. After `/goal clear`, `validate` must succeed against
-the persisted run and grill identity before Planner or Maker starts.
+grill is unconditional. After `record-grill`, persist `RUN.json`, `GRILL.json`, `BRIEF.md`, and
+`HARNESS.md` in `runDirectory` before emitting the lean pointer or clearing context. After `/goal
+clear`, `validate` must succeed against that persisted identity before Planner or Maker starts.
 
 `finish` verifies task, branch, lease, and manifest identity before completing the durable task and
 returning the lease. A blocked or failed run retains its lease and evidence for recovery. `audit` is
@@ -45,22 +45,22 @@ run Bash, spawn subagents, or see anything Maker produced via tool calls. Indepe
 ## File Paths Each Agent Reads / Writes
 
 ```
-$PROJECT_ROOT/.harness/goals/<slug>/
-├── PLAN.md          ← Planner writes; Maker + Checker read
-├── issues/NN-<slug>.md ← Planner mirrors each PLAN.md phase 1:1; Maker drives off these
-│                        when present (Status: ready-for-agent → in-progress → done|blocked)
-├── PROGRESS.md      ← Maker writes after each phase; Checker must NOT read
-├── CYCLE_LOG.md     ← Checker writes (appends); Planner reads on re-plan
-├── HARNESS.md       ← Goal loop writes before spawning; all agents read
-└── <task-artifacts> ← Maker writes; Checker scores (reads only)
+<runDirectory>/
+  RUN.json             lifecycle manifest; persist before pointer/clear
+  GRILL.json           completed mandatory grill receipt
+  BRIEF.md             bounded task and settled decisions
+  HARNESS.md           persisted routing guard and standing protocol
+  PLAN.md              Planner writes; Maker and Checker read
+  issues/NN-<slug>.md  Planner mirrors each PLAN.md phase 1:1
+  PROGRESS.md          Maker writes after each phase; Checker must not read
+  CYCLE_LOG.md         Checker writes; Planner reads on re-plan
+  <task-artifacts>     Maker writes; Checker scores
 ```
 
-Lifecycle adds two durable files before the agent loop: `RUN.json` records the canonical task,
-worktree, lease, branch, and source identity; `GRILL.json` records the required grill receipt.
-
-Anchored to `$PROJECT_ROOT` (the project the goal is about, resolved via `git rev-parse
---show-toplevel`), never the workspace monorepo root. See `references/issue-tracker.md`
-for the slice schema and `references/parallel-execution.md` for worktree isolation.
+Read manifest `worktreePath` for all task work, Git, guard, and commit operations. `runDirectory`
+is artifacts-only. `repositoryRoot` and `gitCommonDirectory` are ownership identities, never work
+or artifact locations. Treehouse and readiness are internal to lifecycle `start`; they do not
+provide a second operator routing path.
 
 **Hard rule:** Checker reads PLAN.md + final artifact files only. It never reads PROGRESS.md
 or any file the Maker wrote about its own process. Reading Maker self-assessment = echo chamber.
@@ -86,7 +86,27 @@ That verifier cannot spawn further.
 
 ---
 
-## Loop Flow
+## Managed lifecycle flow
+
+```
+start
+  -> unconditional pinned grill
+  -> record-grill
+  -> persist RUN.json, GRILL.json, BRIEF.md, HARNESS.md
+  -> emit lean pointer or clear context
+  -> /goal clear -> validate
+  -> Planner -> Maker -> Prover (when applicable) -> Checker
+       -> ITERATE: Maker again
+       -> PLATEAU: handoff and retain lease
+       -> PASS: separate explicit shipping approval
+          -> fresh Shipper -> /no-mistakes
+          -> finish
+```
+
+## Agent evaluation subloop
+
+The managed lifecycle flow above is authoritative. This subloop begins only after validation has
+allowed Planner and does not itself authorize shipping.
 
 ```
 Goal loop

@@ -18,11 +18,11 @@ agent-harness/
     └── references/
         ├── eval-loop-design.md
         ├── subagent-harness.md   ← patterns, depth budget, fork mode, independence rules
-        ├── clarity-gate.md       ← Phase 0.5 grill vs /wayfinder routing
+        ├── clarity-gate.md       ← historical background; managed runs always use the pinned grill
         ├── issue-tracker.md      ← durable phase-slice schema (issues/NN-<slug>.md)
         ├── skill-routing.md      ← task type → skill mapping + chaining patterns
         ├── execution-mode-routing.md
-        ├── parallel-execution.md ← default-on treehouse worktree isolation
+        ├── parallel-execution.md ← historical worktree background; lifecycle start owns isolation
         ├── first-principles-generation.md
         ├── qa-checklist.md
         ├── morning-report-specs.md
@@ -66,20 +66,13 @@ Managed goal work uses the five `goal-lifecycle` operations: `start`, `record-gr
 
 `start` requires the project-local `tasks-axi` backlog, Treehouse, and the hash-pinned `batch-grill-me` skill. It registers the durable task, leases a verified worktree from the repository-owned `.worktrees/` pool, creates the canonical `wt/<task-id>` branch, and persists the run identity under `.harness/goals/<task-id>/RUN.json`. Treehouse owns the pool's internal nested layout; treat the returned worktree path as opaque rather than creating or selecting directories below `.worktrees/`.
 
-After every start, run the required grill even when the request appears fully specified. `record-grill` persists its receipt as `GRILL.json` beside the run manifest and returns the lean goal/harness pointer; do not inline a second copy of the durable run state into the goal condition. After `/goal clear`, run `validate` against that persisted identity before invoking either Planner or Maker. A failed validation blocks those agents.
+After every start, run the required grill even when the request appears fully specified. `record-grill` persists its receipt as `GRILL.json` beside the run manifest. Before emitting the lean goal/harness pointer or clearing context, persist `RUN.json`, `GRILL.json`, `BRIEF.md`, and `HARNESS.md` in the recorded run directory; do not inline a second copy of that durable state into the goal condition. After `/goal clear`, run `validate` against that persisted identity before invoking either Planner or Maker. A failed validation blocks those agents.
 
 `finish` is safe completion: it confirms the task, branch, lease, and persisted run identity before marking the durable task complete and returning the lease. A blocked or failed run retains its lease and durable evidence for recovery; it is never silently returned. `audit` is read-only. It reports lifecycle state and layout evidence, including `misplaced_worktree` checkouts, but never repairs, removes, returns, or otherwise changes an existing misplaced worktree. Audit any reported owner first and perform any later cleanup deliberately outside the lifecycle command.
 
 Before a managed `start`, setup/onboarding must have established its dependencies and repository configuration. `/setup-harness` seeds the project-local `.tasks.toml`, `treehouse.toml`, `.worktrees/` ignore rule, and harness files; workspace `/onboard` provisions the internal CLIs. Setup also installs and verifies the pinned grill. It does not take a task lease or start a goal.
 
-The lifecycle's bounded readiness check remains non-launching and does not mutate Git state:
-
-```powershell
-powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
-  -RepoPath C:\path\to\repo -CheckOnly
-```
-
-It emits one JSON object and fails fast for an invalid repository or pipeline layout, a missing committed `HEAD`, a detached or default branch, hidden index state, a dirty working tree, or an unsafe pool. Use it only through lifecycle operations; continue only when the lifecycle reports success.
+`scripts/prepare-harness-run.ps1` is an internal bounded readiness implementation and diagnostic seam for lifecycle `start`, not an operator pre-goal command or lifecycle bypass. Lifecycle `start` invokes it to fail safely for an invalid repository or pipeline layout, missing committed `HEAD`, detached or default branch, hidden index state, dirty working tree, or unsafe pool; only the lifecycle result authorizes continuation.
 
 
 ## Optional Pi OpenAI server compaction
