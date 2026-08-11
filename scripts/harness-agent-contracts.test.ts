@@ -44,6 +44,19 @@ function expectRestartPointerValidationGate(source: string): void {
   expect(source.slice(validate)).toMatch(/Validate before routing, Planner, or Maker/i);
 }
 
+function expectRestartPointerPayload(source: string): void {
+  const start = source.indexOf("/goal [LIFECYCLE_RESTART]");
+  const end = source.indexOf("```", start);
+  const pointer = source.slice(start, end);
+
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  expect(pointer).toMatch(/^Task ID:\s+\S+/m);
+  expect(pointer).toMatch(/^Absolute run path:\s+\S+/m);
+  expect(pointer).toMatch(/^Manifest path:\s+\S*RUN\.json/m);
+  expect(pointer).toMatch(/execute the exact \[ROUTING_GUARD\] block persisted in HARNESS\.md/i);
+}
+
 describe("approval-aware harness agent contracts", () => {
   test("every role reads its task-specific HARNESS brief", () => {
     const expectedBrief = {
@@ -206,6 +219,7 @@ describe("approval-aware harness agent contracts", () => {
 
     expectAuthoringLifecycleSequence(source);
     expectRestartPointerValidationGate(source);
+    expectRestartPointerPayload(source);
   });
 
   test("complete example independently orders lifecycle authoring through its validation-gated pointer", () => {
@@ -213,6 +227,7 @@ describe("approval-aware harness agent contracts", () => {
 
     expectAuthoringLifecycleSequence(source);
     expectRestartPointerValidationGate(source);
+    expectRestartPointerPayload(source);
   });
 
   test("clarity-gate independently requires start, an unconditional grill, and recorded receipt", () => {
