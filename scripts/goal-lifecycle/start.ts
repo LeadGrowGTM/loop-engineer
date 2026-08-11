@@ -22,6 +22,7 @@ import {
 
 export const TASKS_AXI_VERSION = '0.1.1';
 export const TREEHOUSE_VERSION = 'v1.8.0';
+export const PINNED_BATCH_GRILL_VERSION = '1.0.0';
 export const PINNED_BATCH_GRILL_SHA256 = '92a426f9ed319ca6f54ecf8fabe8c57f82e42dd71e7e5a2d11415fb6f903557f';
 
 export interface StartLifecycleInput {

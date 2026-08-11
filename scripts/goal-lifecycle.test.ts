@@ -623,6 +623,39 @@ for (const invalidReceipt of [
   });
 }
 
+// Catches identity metadata that can persist secret-like content or drift from the approved pinned skill.
+for (const invalidIdentity of [
+  ['a wrong skill name', { name: 'other-grill', version: '1.0.0', sourceHash: PINNED_GRILL_HASH }],
+  ['a wrong skill version', { name: 'batch-grill-me', version: '1.0.1', sourceHash: PINNED_GRILL_HASH }],
+  ['secret-like skill version content', { name: 'batch-grill-me', version: 'authorization: Bearer hunter2', sourceHash: PINNED_GRILL_HASH }],
+  ['secret-like source hash content', { name: 'batch-grill-me', version: '1.0.0', sourceHash: 'api_key=abc123' }],
+] as const) {
+  test(`record-grill rejects ${invalidIdentity[0]} before persistence`, () => {
+    const fixture = createLifecycleFixture();
+    const recorded = recordGrillFixture(
+      fixture,
+      completeGrillReceipt(fixture.taskId, { skill: invalidIdentity[1] }),
+    );
+
+    expect(recorded.result.exitCode).not.toBe(0);
+    expect(recorded.result.json).toMatchObject({ operation: 'record-grill', ok: false, code: 'GRILL_RECEIPT_INVALID' });
+    expect(readRunManifest(recorded.manifestPath).state).toBe('STARTED');
+    expect(existsSync(join(dirname(recorded.manifestPath), 'GRILL.json'))).toBe(false);
+  });
+}
+
+// Catches root task identity being treated as non-sensitive because it is checked only after parsing.
+test('record-grill rejects secret-like root task identity before persistence', () => {
+  const fixture = createLifecycleFixture();
+  const recorded = recordGrillFixture(fixture, completeGrillReceipt('api_key=abc123'));
+
+  expect(recorded.result.exitCode).not.toBe(0);
+  expect(recorded.result.json).toMatchObject({ operation: 'record-grill', ok: false, code: 'GRILL_RECEIPT_INVALID' });
+  expect(recorded.result.json.message).toContain('unredacted secret-like content at taskId');
+  expect(readRunManifest(recorded.manifestPath).state).toBe('STARTED');
+  expect(existsSync(join(dirname(recorded.manifestPath), 'GRILL.json'))).toBe(false);
+});
+
 // Catches retrying an already persisted proof as an illegal state transition.
 test('record-grill is idempotent for an already completed matching receipt', () => {
   const fixture = createLifecycleFixture();
@@ -649,6 +682,42 @@ test('record-grill is idempotent after canonical redaction', () => {
 
   expect(retry.exitCode).toBe(0);
   expect(retry.json).toMatchObject({ operation: 'record-grill', ok: true, code: 'OK' });
+});
+
+// Catches canonical proof retries being treated as fresh unredacted candidates.
+test('record-grill accepts its canonical redacted GRILL.json on retry without changing it', () => {
+  const fixture = createLifecycleFixture();
+  const first = recordGrillFixture(fixture, completeGrillReceipt(fixture.taskId, {
+    recommendations: ['Set api_key=abc123 before continuing.'],
+  }));
+  expect(first.result.exitCode).toBe(0);
+  const canonicalPath = join(dirname(first.manifestPath), 'GRILL.json');
+  const canonical = readFileSync(canonicalPath, 'utf8');
+  const retry = invokeLifecycle(['record-grill', '--run', first.manifestPath, '--receipt', canonicalPath], fixture.env);
+
+  expect(retry.exitCode).toBe(0);
+  expect(retry.json).toMatchObject({ operation: 'record-grill', ok: true, code: 'OK' });
+  expect(readFileSync(canonicalPath, 'utf8')).toBe(canonical);
+  expect(JSON.parse(canonical).redaction).toEqual({ redacted: true, fields: ['recommendations[0]'] });
+});
+
+// Catches a fresh run accepting forged redaction markers merely because they resemble canonical proof.
+test('record-grill rejects forged redaction metadata at the canonical path before its first transition', () => {
+  const fixture = createLifecycleFixture();
+  const start = startFixture(fixture);
+  expect(start.exitCode).toBe(0);
+  const manifestPath = start.json.data.manifestPath as string;
+  const manifest = readRunManifest(manifestPath);
+  writeFileSync(manifest.grillReceiptPath, JSON.stringify(completeGrillReceipt(fixture.taskId, {
+    recommendations: ['[REDACTED]'],
+    redaction: { redacted: true, fields: ['recommendations[0]'] },
+  }), null, 2));
+
+  const result = invokeLifecycle(['record-grill', '--run', manifestPath, '--receipt', manifest.grillReceiptPath], fixture.env);
+
+  expect(result.exitCode).not.toBe(0);
+  expect(result.json).toMatchObject({ operation: 'record-grill', ok: false, code: 'GRILL_RECEIPT_INVALID' });
+  expect(readRunManifest(manifestPath).state).toBe('STARTED');
 });
 
 // Catches persisting credentials hidden in receipt prose or under a secret-like unknown key.
