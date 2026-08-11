@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { readRunManifest, writeRunManifest } from "./goal-lifecycle/manifest";
 import { runProcess } from "./goal-lifecycle/process";
+import { lifecycleFailure } from './goal-lifecycle/contracts';
+import { decodeTaskDetail } from './goal-lifecycle/tasks-axi';
 
 const CLI_PATH = join(import.meta.dir, "goal-lifecycle.ts");
 setDefaultTimeout(60_000);
@@ -82,7 +84,9 @@ function createTasksAxiFake(
       'if (args[0] === "show") {',
       '  if (!fs.existsSync(process.env.TASKS_STATE_FILE)) { console.error("code: NOT_FOUND"); process.exit(1); }',
       '  const state = fs.readFileSync(process.env.TASKS_STATE_FILE, "utf8").trim();',
-      '  console.log(`task:\\n  id: ${process.env.TASKS_ID}\\n  title: ${process.env.TASKS_TITLE}\\n  state: ${state}`);',
+      '  const title = JSON.stringify(process.env.TASKS_TITLE);',
+      '  const repo = JSON.stringify("C:\\\\work\\\\goal");',
+      '  console.log(`task:\\n  id: ${process.env.TASKS_ID}\\n  title: ${title}\\n  state: ${state}\\n  repo: ${repo}`);',
       '  process.exit(0);',
       '}',
       'if (args[0] === "add") { fs.writeFileSync(process.env.TASKS_STATE_FILE, "queued\\n"); process.exit(0); }',
@@ -187,6 +191,16 @@ function startFixture(fixture: ReturnType<typeof createLifecycleFixture>) {
   );
 }
 
+function expectSafeRemediation(result: { remediation?: unknown }): void {
+  expect(Array.isArray(result.remediation)).toBe(true);
+  const remediation = result.remediation as unknown[];
+  expect(remediation.length).toBeGreaterThan(0);
+  expect(remediation.every((entry) => typeof entry === 'string' && entry.trim().length > 0)).toBe(true);
+  expect(remediation.join(' ')).not.toMatch(
+    /primary[- ]checkout|direct[- ]git|git worktree|-NoIsolation|skip(?:ping)?(?: the)? grill/i,
+  );
+}
+
 // Catches a dispatcher that emits a non-JSON result, multiple results, or treats invalid input as success.
 test("unknown operation emits exactly one typed JSON result", () => {
   const result = invokeLifecycle(["unknown"]);
@@ -200,6 +214,7 @@ test("unknown operation emits exactly one typed JSON result", () => {
     code: "INVALID_ARGUMENT",
   });
   expect(result.stderr).toBe("");
+  expectSafeRemediation(result.json);
 });
 
 // Catches a manifest reader accepting a future format, and a writer leaving temporary files visible.
@@ -256,6 +271,49 @@ test("process runner executes an argv-only command with bounded captured output"
   });
 });
 
+test('typed tasks-axi adapter decodes TOON escapes and rejects invalid task shapes', () => {
+  const toon = [
+    'task:\n  id: canonical-goal\n  title: "Open \"quoted\" file C:\\\\work\\\\goal"\n  state: in_flight\n  repo: "C:\\\\work\\\\goal"\n',
+  ].join('').replace(
+    'Open "quoted"',
+    `Open ${String.fromCharCode(92)}"quoted${String.fromCharCode(92)}"`,
+  );
+  const task = decodeTaskDetail(toon);
+
+  expect(task).toEqual({
+    id: 'canonical-goal',
+    title: 'Open "quoted" file C:\\work\\goal',
+    state: 'in_flight',
+  });
+  expect(() => decodeTaskDetail('task:\n  id: canonical-goal\n  title: 42\n  state: in_flight\n')).toThrow(
+    'title must be a non-empty string',
+  );
+  expect(() =>
+    decodeTaskDetail('task:\n  id: canonical-goal\n  title: first\n  title: second\n  state: in_flight\n'),
+  ).toThrow('title is duplicated');
+});
+
+test('all typed public lifecycle errors provide supported non-bypass remediation', () => {
+  for (const code of [
+    'INVALID_ARGUMENT',
+    'NOT_IMPLEMENTED',
+    'DEPENDENCY_SETUP_REQUIRED',
+    'DEPENDENCY_SETUP_FAILED',
+    'TASK_REGISTRATION_FAILED',
+    'TASK_STATE_CONFLICT',
+    'TREEHOUSE_CONFIG_UNSAFE',
+    'TREEHOUSE_LEASE_FAILED',
+    'LEASE_OUTSIDE_REPOSITORY',
+    'LEASE_IDENTITY_MISMATCH',
+    'BRANCH_IDENTITY_MISMATCH',
+    'REPOSITORY_NOT_READY',
+    'INTERNAL_ERROR',
+  ]) {
+    const result = lifecycleFailure('start', code, 'fixture failure');
+    expectSafeRemediation(result);
+  }
+});
+
 test('lifecycle start fails closed when a present tasks-axi launcher is broken', () => {
   const fixture = createLifecycleFixture({ tasksBroken: true });
 
@@ -263,6 +321,7 @@ test('lifecycle start fails closed when a present tasks-axi launcher is broken',
 
   expect(start.exitCode).not.toBe(0);
   expect(start.json).toMatchObject({ operation: 'start', ok: false, code: 'DEPENDENCY_SETUP_REQUIRED' });
+  expectSafeRemediation(start.json);
   expect(readFileSync(fixture.tasks.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version']);
   expect(existsSync(fixture.treehouse.calls)).toBe(false);
 });
@@ -275,6 +334,7 @@ test('lifecycle start requires the byte-exact pinned batch-grill-me installation
 
   expect(start.exitCode).not.toBe(0);
   expect(start.json).toMatchObject({ ok: false, code: 'DEPENDENCY_SETUP_REQUIRED' });
+  expectSafeRemediation(start.json);
   expect(start.json.message).toContain('batch-grill-me');
   expect(existsSync(fixture.treehouse.calls)).toBe(true);
   expect(readFileSync(fixture.treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version']);
@@ -319,6 +379,7 @@ test('lifecycle start creates and starts one canonical task then persists the ex
   const treehouseCalls = readFileSync(fixture.treehouse.calls, 'utf8').trim().split(/\r?\n/);
   expect(treehouseCalls).toEqual([
     '--version',
+    'status',
     `get --lease --lease-holder ${fixture.taskId}`,
   ]);
 });
@@ -333,6 +394,21 @@ test('lifecycle start reuses a compatible active tasks-axi identity without muta
   expect(calls).toEqual(['--version', `show ${fixture.taskId} --full`]);
 });
 
+test('lifecycle start decodes escaped quotes and Windows paths from tasks-axi TOON', () => {
+  const title = 'Open "quoted" file C:\\work\\goal';
+  const fixture = createLifecycleFixture({ taskState: 'in_flight', taskTitle: title });
+
+  const start = startFixture(fixture);
+
+  expect(start.exitCode).toBe(0);
+  expect(start.json.data).toMatchObject({ taskId: fixture.taskId });
+  expect(readRunManifest(start.json.data.manifestPath as string).title).toBe(title);
+  expect(readFileSync(fixture.tasks.calls, 'utf8').trim().split(/\r?\n/)).toEqual([
+    '--version',
+    `show ${fixture.taskId} --full`,
+  ]);
+});
+
 test('lifecycle start rejects conflicting tasks-axi title or terminal state before acquisition', () => {
   for (const conflict of ['title', 'state'] as const) {
     const fixture = createLifecycleFixture({ taskState: conflict === 'state' ? 'done' : 'in_flight' });
@@ -342,6 +418,7 @@ test('lifecycle start rejects conflicting tasks-axi title or terminal state befo
 
     expect(start.exitCode).not.toBe(0);
     expect(start.json).toMatchObject({ ok: false, code: 'TASK_STATE_CONFLICT' });
+    expectSafeRemediation(start.json);
     expect(readFileSync(fixture.treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version']);
   }
 });
@@ -369,6 +446,7 @@ test('lifecycle start rejects unsafe Treehouse config before lease acquisition',
 
   expect(start.exitCode).not.toBe(0);
   expect(start.json).toMatchObject({ ok: false, code: 'TREEHOUSE_CONFIG_UNSAFE' });
+  expectSafeRemediation(start.json);
   expect(readFileSync(fixture.treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version']);
 });
 
@@ -379,9 +457,11 @@ test('lifecycle start rejects the original sibling worktree regression and retur
 
   expect(start.exitCode).not.toBe(0);
   expect(start.json.code).toBe('LEASE_OUTSIDE_REPOSITORY');
+  expectSafeRemediation(start.json);
   const calls = readFileSync(fixture.treehouse.calls, 'utf8');
   expect(calls.trim().split(/\r?\n/)).toEqual([
     '--version',
+    'status',
     `get --lease --lease-holder ${fixture.taskId}`,
     `return ${fixture.treehouse.lease}`,
   ]);
@@ -393,13 +473,16 @@ test('lifecycle start rejects reparse escapes and foreign Git common directories
   const escaped = startFixture(reparse);
   expect(escaped.exitCode).not.toBe(0);
   expect(escaped.json.code).toBe('LEASE_OUTSIDE_REPOSITORY');
+  expectSafeRemediation(escaped.json);
 
   const foreign = createLifecycleFixture({ treehouseMode: 'foreign' });
   const wrongIdentity = startFixture(foreign);
   expect(wrongIdentity.exitCode).not.toBe(0);
   expect(wrongIdentity.json.code).toBe('LEASE_IDENTITY_MISMATCH');
+  expectSafeRemediation(wrongIdentity.json);
   expect(readFileSync(foreign.treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual([
     '--version',
+    'status',
     `get --lease --lease-holder ${foreign.taskId}`,
   ]);
 });
@@ -411,8 +494,10 @@ test('lifecycle start rejects malformed Treehouse output and returns its one ide
 
   expect(start.exitCode).not.toBe(0);
   expect(start.json.code).toBe('TREEHOUSE_LEASE_FAILED');
+  expectSafeRemediation(start.json);
   expect(readFileSync(fixture.treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual([
     '--version',
+    'status',
     `get --lease --lease-holder ${fixture.taskId}`,
     `return ${fixture.treehouse.lease}`,
   ]);

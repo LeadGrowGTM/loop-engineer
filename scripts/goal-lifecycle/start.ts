@@ -11,6 +11,7 @@ import {
 } from './contracts';
 import { writeRunManifest, type RunManifestV1 } from './manifest';
 import { runProcess, type ProcessResult } from './process';
+import { decodeTaskDetail, type TaskRecord } from './tasks-axi';
 import {
   assertNoReparsePath,
   resolveRepository,
@@ -27,12 +28,6 @@ export interface StartLifecycleInput {
   repo: string;
   taskId: string;
   title: string;
-}
-
-interface TaskRecord {
-  id: string;
-  title: string;
-  state: string;
 }
 
 interface ReadinessResult {
@@ -101,21 +96,6 @@ async function doctorDependencies(repositoryRoot: string): Promise<void> {
   }
 }
 
-function toonField(output: string, field: string): string | undefined {
-  const match = output.match(new RegExp(`^\\s*${field}:\\s*(.+?)\\s*$`, 'm'));
-  if (!match) return undefined;
-  const value = match[1];
-  if (value.startsWith('"') && value.endsWith('"')) return value.slice(1, -1).replace(/\"/g, '"');
-  return value;
-}
-
-function parseTask(output: string): TaskRecord | undefined {
-  const id = toonField(output, 'id');
-  const title = toonField(output, 'title');
-  const state = toonField(output, 'state');
-  return id && title && state ? { id, title, state } : undefined;
-}
-
 async function inspectTask(repositoryRoot: string, taskId: string): Promise<TaskRecord | undefined> {
   const result = await runProcess('tasks-axi', ['show', taskId, '--full'], { cwd: repositoryRoot });
   if (!processSucceeded(result)) {
@@ -127,8 +107,13 @@ async function inspectTask(repositoryRoot: string, taskId: string): Promise<Task
       ['Repair the project-local tasks-axi backlog, then retry lifecycle start.'],
     );
   }
-  const task = parseTask(result.stdout);
-  if (!task || task.id !== taskId) {
+  let task: TaskRecord;
+  try {
+    task = decodeTaskDetail(result.stdout);
+  } catch {
+    throw new LifecycleCommandError('TASK_REGISTRATION_FAILED', 'tasks-axi returned a malformed or mismatched task record.');
+  }
+  if (task.id !== taskId) {
     throw new LifecycleCommandError('TASK_REGISTRATION_FAILED', 'tasks-axi returned a malformed or mismatched task record.');
   }
   return task;

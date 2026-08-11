@@ -1165,6 +1165,28 @@ function Get-OutputLines([string]$Text) {
   return @($Text -split '\r?\n' | Where-Object { $_ -ne '' })
 }
 
+function Get-TreehouseLeasedPaths([string]$StatusText) {
+  $leases = @{}
+  foreach ($line in (Get-OutputLines $StatusText)) {
+    if ($line -match '^\s*\d+\s+leased\s+(.+)\s+\(held by ([^)]+)\)\s*$') {
+      $reportedPath = $Matches[1].Trim()
+      if ($reportedPath.StartsWith('~\') -or $reportedPath.StartsWith('~/')) {
+        $reportedPath = Join-Path $HOME $reportedPath.Substring(2)
+      }
+      if (-not [System.IO.Path]::IsPathRooted($reportedPath) -or $reportedPath.StartsWith('\\')) {
+        throw "Treehouse status reported a non-local leased path: $reportedPath"
+      }
+      $fullPath = [System.IO.Path]::GetFullPath($reportedPath)
+      $leases[$fullPath.ToLowerInvariant()] = $Matches[2].Trim()
+      continue
+    }
+    if ($line -match '\bleased\b') {
+      throw "Treehouse status contained an unparseable leased entry: $line"
+    }
+  }
+  return $leases
+}
+
 function Resolve-GitPath([string]$WorkingDirectory, [string]$Value) {
   if ([System.IO.Path]::IsPathRooted($Value)) { return (Resolve-Path -LiteralPath $Value).Path }
   return (Resolve-Path -LiteralPath (Join-Path $WorkingDirectory $Value)).Path
@@ -1503,6 +1525,19 @@ try {
       Complete-Readiness 1
     }
 
+    $preAcquisitionStatus = Invoke-BoundedProcess $treehouse @('status') $gitInspectionRoot $false $InternalTreehouseStatusTimeoutMilliseconds
+    if ($preAcquisitionStatus.TimedOut -or $preAcquisitionStatus.OutputLimitExceeded -or $preAcquisitionStatus.ExitCode -ne 0) {
+      Add-ReadinessError 'treehouse_not_ready' ("Treehouse pre-acquisition status failed from '$gitInspectionRoot': " + (($preAcquisitionStatus.Stderr + ' ' + $preAcquisitionStatus.Stdout).Trim()))
+      Complete-Readiness 1
+    }
+    try {
+      $preexistingLeasePaths = Get-TreehouseLeasedPaths $preAcquisitionStatus.Stdout
+    }
+    catch {
+      Add-ReadinessError 'invalid_treehouse_status' $_.Exception.Message
+      Complete-Readiness 1
+    }
+
     $lease = Invoke-BoundedProcess $treehouse @('get', '--lease', '--lease-holder', $LeaseHolder) $gitInspectionRoot $false 60000
     if ($lease.TimedOut -or $lease.OutputLimitExceeded -or $lease.ExitCode -ne 0) {
       Add-ReadinessError 'treehouse_lease_failed' ("Treehouse lease failed: " + (($lease.Stderr + ' ' + $lease.Stdout).Trim()))
@@ -1511,20 +1546,30 @@ try {
     $leaseLines = @(Get-OutputLines $lease.Stdout | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     if ($leaseLines.Count -ne 1) {
       $cleanupCandidates = @()
+      $preexistingCandidate = $false
       foreach ($line in $leaseLines) {
         if (-not [System.IO.Path]::IsPathRooted($line) -or $line.StartsWith('\\')) { continue }
         try {
           $candidatePath = [System.IO.Path]::GetFullPath($line)
           if (-not (Test-Path -LiteralPath $candidatePath -PathType Container)) { continue }
           if (Test-IdentityProvenLease $candidatePath $sourceCommonDir $requiredPool) {
-            $cleanupCandidates += $candidatePath
+            if ($preexistingLeasePaths.ContainsKey($candidatePath.ToLowerInvariant())) {
+              $preexistingCandidate = $true
+            }
+            else {
+              $cleanupCandidates += $candidatePath
+            }
           }
         }
         catch { }
       }
 
-      $cleanup = 'Lease path could not be safely identified for automatic return. Inspect treehouse status.'
-      if ($cleanupCandidates.Count -eq 1) {
+      $cleanup = if ($preexistingCandidate) {
+        'Lease return was not attempted because an identity-proven candidate was already leased before this invocation.'
+      } else {
+        'Lease path could not be safely identified for automatic return. Inspect treehouse status.'
+      }
+      if (-not $preexistingCandidate -and $cleanupCandidates.Count -eq 1) {
         $returnResult = Invoke-BoundedProcess $treehouse @('return', $cleanupCandidates[0]) $gitInspectionRoot $false 30000
         $cleanup = if ($returnResult.ExitCode -eq 0) { 'Lease was returned.' } else { "Lease return failed: $($returnResult.Stderr.Trim())" }
       }
@@ -1539,6 +1584,7 @@ try {
     }
     $leasePath = [System.IO.Path]::GetFullPath($leaseCandidate)
     $leaseAcquired = $true
+    $leaseWasPreexisting = $preexistingLeasePaths.ContainsKey($leasePath.ToLowerInvariant())
     $leaseValid = $false
     $leaseIdentityProven = $false
     $leaseFailureCode = 'invalid_lease'
@@ -1634,13 +1680,19 @@ try {
       if (-not (Confirm-SourceState $gitInspectionRoot $result.checkedHead $result.branch)) {
         throw 'Source repository changed during isolation preparation. Rerun readiness.'
       }
+      if ($leaseWasPreexisting) {
+        throw 'Treehouse returned a path that was already leased before this invocation.'
+      }
       $leaseValid = $true
     }
     catch {
       $cleanup = 'Lease return was not attempted.'
-      if ($leaseAcquired -and $leaseIdentityProven) {
+      if ($leaseAcquired -and $leaseIdentityProven -and -not $leaseWasPreexisting) {
         $returnResult = Invoke-BoundedProcess $treehouse @('return', $leasePath) $gitInspectionRoot $false 30000
         $cleanup = if ($returnResult.ExitCode -eq 0) { 'Lease was returned.' } else { "Lease return failed: $($returnResult.Stderr.Trim())" }
+      }
+      elseif ($leaseWasPreexisting) {
+        $cleanup = 'Lease return was not attempted because the path was already leased before this invocation.'
       }
       Add-ReadinessError $leaseFailureCode "$($_.Exception.Message) $cleanup"
       Complete-Readiness 1
