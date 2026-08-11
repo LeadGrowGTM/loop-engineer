@@ -12,20 +12,6 @@ const issueTrackerPath = join(repoRoot, "skills", "write-goal-prompt", "referenc
 const readGoalSkill = () => readFileSync(goalSkillPath, "utf8");
 const readGoalExamples = () => readFileSync(goalExamplesPath, "utf8");
 const readIssueTracker = () => readFileSync(issueTrackerPath, "utf8");
-const lifecycleReferencePaths = [
-  goalSkillPath,
-  goalExamplesPath,
-  join(repoRoot, "skills", "write-goal-prompt", "references", "clarity-gate.md"),
-  join(repoRoot, "skills", "write-goal-prompt", "references", "parallel-execution.md"),
-  join(repoRoot, "skills", "write-goal-prompt", "references", "context-management.md"),
-  agentPath("harness-planner"),
-  agentPath("harness-maker"),
-  agentPath("harness-shipper"),
-];
-
-function readLifecycleContracts(): string {
-  return lifecycleReferencePaths.map((path) => readFileSync(path, "utf8")).join("\n");
-}
 const roles = [
   "harness-planner",
   "harness-maker",
@@ -33,6 +19,30 @@ const roles = [
   "harness-checker",
   "harness-shipper",
 ] as const;
+
+function expectAuthoringLifecycleSequence(source: string): void {
+  const durableArtifacts = source.indexOf("RUN.json + GRILL.json + BRIEF.md + HARNESS.md");
+  const pointer = source.indexOf("restart pointer", durableArtifacts);
+  const validate = source.indexOf("First action: goal-lifecycle validate --run <RUN.json>", pointer);
+
+  expect(source).toMatch(/authoring (?:order|sequence) is `start\s*->\s*unconditional batch-grill-me\s*->\s*record-grill\s*->\s*durable\s+artifacts\s*->\s*emit restart pointer`/i);
+  expect(durableArtifacts).toBeGreaterThan(-1);
+  expect(pointer).toBeGreaterThan(durableArtifacts);
+  expect(validate).toBeGreaterThan(pointer);
+}
+
+function expectRestartPointerValidationGate(source: string): void {
+  const validate = source.indexOf("First action: goal-lifecycle validate --run <RUN.json>");
+  const routing = source.indexOf("[ROUTING_GUARD]", validate);
+  const planner = source.indexOf("Planner", validate);
+  const maker = source.indexOf("Maker", validate);
+
+  expect(validate).toBeGreaterThan(-1);
+  expect(routing).toBeGreaterThan(validate);
+  expect(planner).toBeGreaterThan(validate);
+  expect(maker).toBeGreaterThan(validate);
+  expect(source.slice(validate)).toMatch(/Validate before routing, Planner, or Maker/i);
+}
 
 describe("approval-aware harness agent contracts", () => {
   test("every role reads its task-specific HARNESS brief", () => {
@@ -93,13 +103,6 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).toContain("[SKILL_ROUTING_RESOLUTION]");
     expect(source).toMatch(/validation.*before.*routing.*Planner/is);
     expect(source).toMatch(/nonzero.*stop.*Planner|stop.*Planner.*nonzero/is);
-  });
-
-  test("complete example validates before routing or Planner", () => {
-    const source = readGoalExamples();
-
-    expect(source).toMatch(/First action: goal-lifecycle validate --run <RUN\.json>/);
-    expect(source).toMatch(/Validate before routing, Planner, or Maker/i);
   });
 
   test("planner consumes exact routing evidence without gaining Bash", () => {
@@ -198,29 +201,49 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).not.toContain("After the first PASS, exit the eval loop and run the Ship stage exactly once");
   });
 
-  test("authoring follows the mandatory managed lifecycle order before emitting a restart pointer", () => {
-    const source = readLifecycleContracts();
-    const start = source.indexOf("goal-lifecycle start");
-    const grill = source.indexOf("batch-grill-me");
-    const record = source.indexOf("goal-lifecycle record-grill", grill);
-    const durableArtifacts = source.indexOf("RUN.json + GRILL.json + BRIEF.md + HARNESS.md", record);
-    const pointer = source.indexOf("restart pointer", durableArtifacts);
+  test("write-goal skill independently orders lifecycle authoring through its validation-gated pointer", () => {
+    const source = readGoalSkill();
 
-    expect(start).toBeGreaterThan(-1);
-    expect(grill).toBeGreaterThan(start);
-    expect(source).toMatch(/unconditionally invoke batch-grill-me|batch-grill-me.*unconditionally/is);
-    expect(record).toBeGreaterThan(grill);
-    expect(durableArtifacts).toBeGreaterThan(record);
-    expect(pointer).toBeGreaterThan(durableArtifacts);
+    expectAuthoringLifecycleSequence(source);
+    expectRestartPointerValidationGate(source);
   });
 
-  test("restart pointers carry only persisted run identity and validate before routing or execution", () => {
-    const source = `${readGoalSkill()}\n${readGoalExamples()}`;
+  test("complete example independently orders lifecycle authoring through its validation-gated pointer", () => {
+    const source = readGoalExamples();
 
-    expect(source).toMatch(/task ID.*absolute run path.*manifest path/is);
-    expect(source).toMatch(/goal-lifecycle validate --run <RUN\.json>.*first action/is);
-    expect(source).toMatch(/validate.*before.*routing.*Planner/is);
-    expect(source).toMatch(/validate.*before.*Planner.*Maker/is);
+    expectAuthoringLifecycleSequence(source);
+    expectRestartPointerValidationGate(source);
+  });
+
+  test("clarity-gate independently requires start, an unconditional grill, and recorded receipt", () => {
+    const source = readFileSync(join(repoRoot, "skills", "write-goal-prompt", "references", "clarity-gate.md"), "utf8");
+
+    expect(source).toMatch(/batch-grill-me.*after\s+`goal-lifecycle start`.*before\s+`goal-lifecycle record-grill`/is);
+    expect(source).toMatch(/no alternate interview route.*no omission/is);
+  });
+
+  test("context-management independently persists the durable artifacts before its restart validation gate", () => {
+    const source = readFileSync(join(repoRoot, "skills", "write-goal-prompt", "references", "context-management.md"), "utf8");
+    const artifacts = source.indexOf("RUN.json`, `GRILL.json`, `BRIEF.md`, and `HARNESS.md");
+    const pointer = source.indexOf("restart pointer", artifacts);
+    const validate = source.indexOf("goal-lifecycle validate --run <RUN.json>", pointer);
+
+    expect(artifacts).toBeGreaterThan(-1);
+    expect(pointer).toBeGreaterThan(artifacts);
+    expect(validate).toBeGreaterThan(pointer);
+    expect(source.slice(validate)).toMatch(/stops routing and execution; Planner and Maker remain unreachable/i);
+  });
+
+  test("managed-run reference independently gates its restart pointer before routing or execution", () => {
+    const source = readFileSync(join(repoRoot, "skills", "write-goal-prompt", "references", "parallel-execution.md"), "utf8");
+    const start = source.indexOf("goal-lifecycle start");
+    const pointer = source.indexOf("restart pointer", start);
+    const validate = source.indexOf("goal-lifecycle validate --run <RUN.json>", pointer);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(pointer).toBeGreaterThan(start);
+    expect(validate).toBeGreaterThan(pointer);
+    expect(source.slice(validate)).toMatch(/before routing, Planner, or Maker/i);
   });
 
   test("planner and maker reject an invocation without successful lifecycle validation", () => {
@@ -249,14 +272,6 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).toMatch(/workspace root.*never.*task work.*commit target/is);
   });
 
-  test("each restart pointer names its persisted routing action after validation", () => {
-    for (const source of [readGoalSkill(), readGoalExamples()]) {
-      expect(source).toMatch(/First action: goal-lifecycle validate --run <RUN\.json>/);
-      expect(source).toMatch(/exact \[ROUTING_GUARD\] block persisted in HARNESS\.md/i);
-      expect(source).toMatch(/Validate before routing, Planner, or Maker/i);
-    }
-  });
-
   test("authoring resolves the nested target repository root before lifecycle start", () => {
     const source = readGoalSkill();
 
@@ -277,15 +292,26 @@ describe("approval-aware harness agent contracts", () => {
   });
 
   test("supported contracts never offer direct task, worktree, bypass, or conditional-grill paths", () => {
-    const source = readLifecycleContracts();
+    const contracts = [
+      ["write-goal skill", readGoalSkill()],
+      ["complete example", readGoalExamples()],
+      ["clarity gate", readFileSync(join(repoRoot, "skills", "write-goal-prompt", "references", "clarity-gate.md"), "utf8")],
+      ["managed-run reference", readFileSync(join(repoRoot, "skills", "write-goal-prompt", "references", "parallel-execution.md"), "utf8")],
+      ["context-management reference", readFileSync(join(repoRoot, "skills", "write-goal-prompt", "references", "context-management.md"), "utf8")],
+      ["planner", readAgent("harness-planner")],
+      ["maker", readAgent("harness-maker")],
+      ["shipper", readAgent("harness-shipper")],
+    ] as const;
 
-    expect(source).not.toMatch(/tasks-axi/i);
-    expect(source).not.toMatch(/treehouse/i);
-    expect(source).not.toMatch(/git worktree/i);
-    expect(source).not.toMatch(/-NoIsolation/i);
-    expect(source).not.toMatch(/primary checkout/i);
-    expect(source).not.toMatch(/model[- ]chosen.*worktree|choose.*worktree path/i);
-    expect(source).not.toMatch(/skip.*grill|\bconditional\b.*grill|grill.*only when/i);
+    for (const [name, source] of contracts) {
+      expect(source, name).not.toMatch(/tasks-axi/i);
+      expect(source, name).not.toMatch(/treehouse/i);
+      expect(source, name).not.toMatch(/git worktree/i);
+      expect(source, name).not.toMatch(/-NoIsolation/i);
+      expect(source, name).not.toMatch(/primary checkout/i);
+      expect(source, name).not.toMatch(/model[- ]chosen.*worktree|choose.*worktree path/i);
+      expect(source, name).not.toMatch(/skip.*grill|\bconditional\b.*grill|grill.*only when/i);
+    }
   });
 });
 
