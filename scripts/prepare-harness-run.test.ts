@@ -620,6 +620,8 @@ function fakeTreehouse(
   statusBody: string[] = ['exit 0'],
   getBody: string[] = ['[Console]::Out.WriteLine($env:TREEHOUSE_LEASE)', 'exit 0'],
   startRef = 'HEAD',
+  leasePath?: string,
+  outputLeasePath?: string,
 ): {
   env: Record<string, string | undefined>;
   calls: string;
@@ -628,10 +630,11 @@ function fakeTreehouse(
 } {
   const root = mkdtempSync(join(tmpdir(), 'prepare-harness-treehouse-'));
   const bin = join(root, 'bin');
-  const lease = join(root, 'leased worktree');
+  const lease = leasePath ?? join(root, 'leased worktree');
   const calls = join(root, 'treehouse-calls.txt');
   const cwdLog = join(root, 'treehouse-cwd.txt');
   mkdirSync(bin, { recursive: true });
+  mkdirSync(dirname(lease), { recursive: true });
   run(['git', 'worktree', 'add', '--detach', lease, startRef], repo);
   writeFileSync(
     join(bin, 'treehouse.ps1'),
@@ -659,9 +662,19 @@ function fakeTreehouse(
       PATH: `${bin};${process.env.PATH ?? ''}`,
       TREEHOUSE_CALLS: calls,
       TREEHOUSE_CWD: cwdLog,
-      TREEHOUSE_LEASE: lease,
+      TREEHOUSE_LEASE: outputLeasePath ?? lease,
     },
   };
+}
+
+function configureCanonicalPool(repo: string): string {
+  const pool = join(repo, '.worktrees');
+  writeFileSync(join(repo, '.gitignore'), '.worktrees/\n');
+  writeFileSync(join(repo, 'treehouse.toml'), 'max_trees = 16\nroot = ".worktrees/"\n');
+  run(['git', 'add', '.gitignore', 'treehouse.toml'], repo);
+  run(['git', 'commit', '-m', 'configure canonical treehouse pool'], repo);
+  mkdirSync(pool, { recursive: true });
+  return pool;
 }
 
 function fakeGnhf(): { env: Record<string, string | undefined>; marker: string } {
@@ -770,7 +783,7 @@ describe('prepare-harness-run CLI', () => {
     expect(readiness.errorCodes).toContain('isolation_not_prepared');
   }, CLEAN_READY_TEST_TIMEOUT_MS);
 
-  test('default isolation without treehouse fails and points at the -NoIsolation opt-out', () => {
+  test('default isolation without treehouse fails without suggesting an isolation bypass', () => {
     const { workspace, repo } = createFeatureRepo();
 
     const result = invokePrepareCommand(repo, workspace, ['-CheckOnly'], withoutTreehouseEnv());
@@ -780,7 +793,8 @@ describe('prepare-harness-run CLI', () => {
     expect(readiness.isolationRequired).toBe(true);
     expect(readiness.treehouseAvailable).toBe(false);
     expect(readiness.errorCodes).toContain('missing_treehouse');
-    expect(readiness.errors.join(' ')).toContain('-NoIsolation');
+    expect(readiness.errors.join(' ')).toContain('Install treehouse');
+    expect(readiness.errors.join(' ')).not.toContain('-NoIsolation');
   }, CLEAN_READY_TEST_TIMEOUT_MS);
 
   test('-NoIsolation cannot be combined with -PrepareIsolation or -Parallel', () => {
@@ -1493,6 +1507,157 @@ describe('prepare-harness-run CLI', () => {
     expect(readFileSync(treehouse.cwdLog, 'utf8').trim()).toBe(repo);
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
+  test('canonical preparation attaches the exact requested task branch beneath the required pool', () => {
+    const { workspace, repo } = createFeatureRepo();
+    const pool = configureCanonicalPool(repo);
+    const sourceHead = run(['git', 'rev-parse', 'HEAD'], repo);
+    const leasePath = join(pool, 'slot-1', 'repo');
+    const treehouse = fakeTreehouse(repo, ['exit 0'], undefined, 'main', leasePath);
+
+    const result = invokePrepareCommand(
+      repo,
+      workspace,
+      [
+        '-PrepareIsolation',
+        '-LeaseHolder',
+        'canonical-task',
+        '-RunBranch',
+        'wt/canonical-task',
+        '-RequiredPoolRoot',
+        pool,
+      ],
+      treehouse.env,
+    );
+
+    expect(result.exitCode).toBe(0);
+    const readiness = JSON.parse(result.stdout.toString());
+    expect(readiness).toMatchObject({
+      status: 'READY',
+      leasePath,
+      leaseHolder: 'canonical-task',
+      runBranch: 'wt/canonical-task',
+      checkedHead: sourceHead,
+    });
+    expect(run(['git', 'branch', '--show-current'], leasePath)).toBe('wt/canonical-task');
+    expect(run(['git', 'rev-parse', 'HEAD'], leasePath)).toBe(sourceHead);
+  }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
+
+  test('required pool rejects a sibling lease and returns only that identity-proven acquisition', () => {
+    const { workspace, repo } = createFeatureRepo();
+    const pool = configureCanonicalPool(repo);
+    const siblingLease = join(dirname(repo), 'gtm-orchestrator-funnel-batch');
+    const treehouse = fakeTreehouse(repo, ['exit 0'], undefined, 'HEAD', siblingLease);
+
+    const result = invokePrepareCommand(
+      repo,
+      workspace,
+      [
+        '-PrepareIsolation',
+        '-LeaseHolder',
+        'funnel-batch',
+        '-RunBranch',
+        'wt/funnel-batch',
+        '-RequiredPoolRoot',
+        pool,
+      ],
+      treehouse.env,
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const readiness = JSON.parse(result.stdout.toString());
+    expect(readiness.errorCodes).toContain('lease_outside_pool');
+    expect(readiness.errors.join(' ')).toContain('Lease was returned');
+    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['get', 'return']);
+    expect(readFileSync(treehouse.calls, 'utf8')).not.toContain('git worktree');
+  }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
+
+  test('required pool rejects traversal before invoking Treehouse', () => {
+    const { workspace, repo } = createFeatureRepo();
+    const pool = configureCanonicalPool(repo);
+    const treehouse = fakeTreehouse(repo, ['exit 0'], undefined, 'HEAD', join(pool, 'unused'));
+    const traversedPool = join(pool, '..', 'sibling-pool');
+
+    const result = invokePrepareCommand(
+      repo,
+      workspace,
+      [
+        '-PrepareIsolation',
+        '-LeaseHolder',
+        'traversal-task',
+        '-RunBranch',
+        'wt/traversal-task',
+        '-RequiredPoolRoot',
+        traversedPool,
+      ],
+      treehouse.env,
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const readiness = JSON.parse(result.stdout.toString());
+    expect(readiness.errorCodes).toContain('invalid_pool_root');
+    expect(existsSync(treehouse.calls)).toBe(false);
+  }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
+
+  test('required pool rejects a lease path that crosses a reparse point', () => {
+    const { workspace, repo } = createFeatureRepo();
+    const pool = configureCanonicalPool(repo);
+    const external = mkdtempSync(join(tmpdir(), 'prepare-harness-pool-escape-'));
+    const actualLease = join(external, 'leased');
+    const aliasRoot = join(pool, 'escape');
+    symlinkSync(external, aliasRoot, 'junction');
+    const aliasLease = join(aliasRoot, 'leased');
+    const treehouse = fakeTreehouse(repo, ['exit 0'], undefined, 'HEAD', actualLease, aliasLease);
+
+    const result = invokePrepareCommand(
+      repo,
+      workspace,
+      [
+        '-PrepareIsolation',
+        '-LeaseHolder',
+        'escape-task',
+        '-RunBranch',
+        'wt/escape-task',
+        '-RequiredPoolRoot',
+        pool,
+      ],
+      treehouse.env,
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const readiness = JSON.parse(result.stdout.toString());
+    expect(readiness.errorCodes).toContain('invalid_lease');
+    expect(readiness.errors.join(' ').toLowerCase()).toContain('reparse');
+  }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
+
+  test('required pool does not return a lease owned by another Git common directory', () => {
+    const { workspace, repo } = createFeatureRepo();
+    const pool = configureCanonicalPool(repo);
+    const foreignRepo = createRootRepo();
+    const foreignLease = join(pool, 'foreign', 'repo');
+    const treehouse = fakeTreehouse(foreignRepo, ['exit 0'], undefined, 'HEAD', foreignLease);
+
+    const result = invokePrepareCommand(
+      repo,
+      workspace,
+      [
+        '-PrepareIsolation',
+        '-LeaseHolder',
+        'foreign-task',
+        '-RunBranch',
+        'wt/foreign-task',
+        '-RequiredPoolRoot',
+        pool,
+      ],
+      treehouse.env,
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    const readiness = JSON.parse(result.stdout.toString());
+    expect(readiness.errorCodes).toContain('invalid_lease');
+    expect(readiness.errors.join(' ')).toContain('different repository');
+    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['get']);
+  }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
+
   test('derived branch creation failure returns the acquired lease', () => {
     const { workspace, repo } = createFeatureRepo();
     run(['git', 'branch', 'harness'], repo);
@@ -1504,7 +1669,7 @@ describe('prepare-harness-run CLI', () => {
     const readiness = JSON.parse(result.stdout.toString());
     expect(readiness.errorCodes).toContain('invalid_lease');
     expect(readiness.runBranch).toBeNull();
-    expect(readiness.errors.join(' ')).toContain('Unable to create derived run branch');
+    expect(readiness.errors.join(' ')).toContain('Unable to attach run branch');
     expect(readiness.errors.join(' ')).toContain('Lease was returned');
     expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['get', 'return']);
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
