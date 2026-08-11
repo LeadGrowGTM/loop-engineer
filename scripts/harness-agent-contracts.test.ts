@@ -11,6 +11,20 @@ const goalSkillPath = join(repoRoot, "skills", "write-goal-prompt", "SKILL.md");
 const goalExamplesPath = join(repoRoot, "skills", "write-goal-prompt", "EXAMPLES.md");
 const readGoalSkill = () => readFileSync(goalSkillPath, "utf8");
 const readGoalExamples = () => readFileSync(goalExamplesPath, "utf8");
+const lifecycleReferencePaths = [
+  goalSkillPath,
+  goalExamplesPath,
+  join(repoRoot, "skills", "write-goal-prompt", "references", "clarity-gate.md"),
+  join(repoRoot, "skills", "write-goal-prompt", "references", "parallel-execution.md"),
+  join(repoRoot, "skills", "write-goal-prompt", "references", "context-management.md"),
+  agentPath("harness-planner"),
+  agentPath("harness-maker"),
+  agentPath("harness-shipper"),
+];
+
+function readLifecycleContracts(): string {
+  return lifecycleReferencePaths.map((path) => readFileSync(path, "utf8")).join("\n");
+}
 const gitExecutable = Bun.which("git");
 if (!gitExecutable) throw new Error("Git executable not found");
 const gitBash = resolve(dirname(gitExecutable), "..", "bin", "bash.exe");
@@ -100,50 +114,20 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).toMatch(/never merge/i);
   });
 
-  test("write-goal parent runs the skill-routing resolver before Planner", () => {
+  test("write-goal routes only after lifecycle validation", () => {
     const source = readGoalSkill();
 
-    expect(source).toContain("scripts/resolve-skill-routing.ts");
-    expect(source).toContain("--project-root");
-    expect(source).toContain("--emit-shell-guard");
-    expect(source).toContain("ROUTING_EVIDENCE");
     expect(source).toContain("[ROUTING_GUARD]");
     expect(source).toContain("[SKILL_ROUTING_RESOLUTION]");
-    expect(source).not.toContain("<ABSOLUTE_ROUTING_RESOLVER>");
-    expect(source).toMatch(/nonzero.*do not invoke (the )?Planner|do not invoke (the )?Planner.*nonzero/is);
+    expect(source).toMatch(/validation.*before.*routing.*Planner/is);
+    expect(source).toMatch(/nonzero.*stop.*Planner|stop.*Planner.*nonzero/is);
   });
 
-  test("complete example runs the routing guard before Planner", () => {
+  test("complete example validates before routing or Planner", () => {
     const source = readGoalExamples();
 
-    expect(source).toContain("resolve-skill-routing.ts");
-    expect(source).toContain("--emit-shell-guard");
-    expect(source).toContain("ROUTING_EVIDENCE");
-    expect(source).toContain("[SKILL_ROUTING_RESOLUTION]");
-    expect(source).toMatch(/nonzero.*stop.*Planner|stop.*Planner.*nonzero/is);
-    expect(source).toMatch(/PLAN\.md.*exact routing evidence.*selected source.*fallback/is);
-  });
-
-  test("Harness Architect supports direct routing without reading a routing file", () => {
-    const source = readGoalSkill();
-    const match = source.match(
-      /\*\*Agent 4[^\n]*Harness Architect[^\n]*\*\*\r?\n\r?\n```\r?\n([\s\S]*?)\r?\n```\r?\n\r?\nSynthesize/,
-    );
-    expect(match).not.toBeNull();
-    const contract = match![1];
-
-    expect(contract).toMatch(
-      /selectedSource is project-local or canonical, read only normalizedPath/i,
-    );
-    expect(contract).toMatch(
-      /selectedSource\s+is direct, do not read a routing file/i,
-    );
-    expect(contract).toMatch(/documented\s+direct quality bar/i);
-    expect(contract).toContain("- [ ] routing resolution consumed");
-    expect(contract).toMatch(
-      /selected routing file read.*project-local or canonical only.*omit for direct/i,
-    );
-    expect(contract).not.toContain("- [ ] skill-routing.md read");
+    expect(source).toMatch(/First action: goal-lifecycle validate --run <RUN\.json>/);
+    expect(source).toMatch(/Validate before routing, Planner, or Maker/i);
   });
 
   test("planner consumes exact routing evidence without gaining Bash", () => {
@@ -221,17 +205,14 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).toMatch(/overlap|not.*isolate|cannot be isolated/i);
   });
 
-  test("write-goal skill keeps canonical pipeline target separate from workspace root", () => {
+  test("write-goal skill exposes the complete lifecycle interface", () => {
     const source = readGoalSkill();
 
-    expect(source).toContain('INVOCATION_ROOT=$(normalize_path "$(pwd -P)")');
-    expect(source).toContain("GIT_ROOT_RAW=$(git rev-parse --show-toplevel");
-    expect(source).toContain('PROJECT_ROOT="$INVOCATION_ROOT"');
-    expect(source).toContain('WORKSPACE_ROOT=$(dirname "$GIT_ROOT")');
-    expect(source).toMatch(/WORKSPACE_ROOT.*pipelines.*PROJECT_ROOT/s);
-    expect(source).toContain('-RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -CheckOnly');
-    expect(source).toContain('-RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -PrepareIsolation -Parallel');
-    expect(source).not.toContain("PROJECT_ROOT=$(git rev-parse --show-toplevel");
+    expect(source).toContain("goal-lifecycle start");
+    expect(source).toContain("goal-lifecycle record-grill");
+    expect(source).toContain("goal-lifecycle validate");
+    expect(source).toContain("goal-lifecycle finish");
+    expect(source).toContain("goal-lifecycle audit");
   });
 
   test("write-goal skill propagates separate shipping approval to generated goals", () => {
@@ -239,30 +220,56 @@ describe("approval-aware harness agent contracts", () => {
 
     expect(source).toMatch(/separate explicit shipping approval/i);
     expect(source).toContain("N/A - shipping not approved");
-    expect(source).toMatch(/do not spawn (the )?Shipper unless/i);
+    expect(source).toMatch(/Run the Shipper only after Checker PASS plus separate explicit shipping approval/i);
     expect(source).toMatch(/Checker PASS.*shipping approval/is);
     expect(source).not.toContain("After Checker returns PASS, spawn a fresh `harness-shipper` agent");
     expect(source).not.toContain("After the first PASS, exit the eval loop and run the Ship stage exactly once");
   });
 
-  test("write-goal Step 0 executes for canonical and standalone targets", () => {
-    const workspace = mkdtempSync(join(tmpdir(), "goal-routing-workspace-"));
-    const pipeline = join(workspace, "pipelines", "content");
-    mkdirSync(pipeline, { recursive: true });
-    run(["git", "init", "-b", "main"], workspace);
+  test("authoring follows the mandatory managed lifecycle order before emitting a restart pointer", () => {
+    const source = readLifecycleContracts();
+    const start = source.indexOf("goal-lifecycle start");
+    const grill = source.indexOf("batch-grill-me");
+    const record = source.indexOf("goal-lifecycle record-grill", grill);
+    const durableArtifacts = source.indexOf("RUN.json + GRILL.json + BRIEF.md + HARNESS.md", record);
+    const pointer = source.indexOf("restart pointer", durableArtifacts);
 
-    const canonical = resolveSkillRoots(pipeline);
-    expect(canonical.projectRoot).toBe(normalizePath(pipeline));
-    expect(canonical.workspaceRoot).toBe(normalizePath(workspace));
+    expect(start).toBeGreaterThan(-1);
+    expect(grill).toBeGreaterThan(start);
+    expect(source).toMatch(/unconditionally invoke batch-grill-me|batch-grill-me.*unconditionally/is);
+    expect(record).toBeGreaterThan(grill);
+    expect(durableArtifacts).toBeGreaterThan(record);
+    expect(pointer).toBeGreaterThan(durableArtifacts);
+  });
 
-    const parent = mkdtempSync(join(tmpdir(), "goal-routing-standalone-"));
-    const repo = join(parent, "repo with spaces");
-    mkdirSync(repo, { recursive: true });
-    run(["git", "init", "-b", "main"], repo);
+  test("restart pointers carry only persisted run identity and validate before routing or execution", () => {
+    const source = `${readGoalSkill()}\n${readGoalExamples()}`;
 
-    const standalone = resolveSkillRoots(repo);
-    expect(standalone.projectRoot).toBe(normalizePath(repo));
-    expect(standalone.workspaceRoot).toBe(normalizePath(dirname(repo)));
+    expect(source).toMatch(/task ID.*absolute run path.*manifest path/is);
+    expect(source).toMatch(/goal-lifecycle validate --run <RUN\.json>.*first action/is);
+    expect(source).toMatch(/validate.*before.*routing.*Planner/is);
+    expect(source).toMatch(/validate.*before.*Planner.*Maker/is);
+  });
+
+  test("planner and maker reject an invocation without successful lifecycle validation", () => {
+    for (const role of ["harness-planner", "harness-maker"] as const) {
+      const source = readAgent(role);
+      expect(source).toContain("LIFECYCLE_VALIDATION: OK");
+      expect(source).toMatch(/stop.*LIFECYCLE_VALIDATION|LIFECYCLE_VALIDATION.*stop/is);
+      expect(source).toMatch(/goal-lifecycle validate --run <RUN\.json>/);
+    }
+  });
+
+  test("supported contracts never offer direct task, worktree, bypass, or conditional-grill paths", () => {
+    const source = readLifecycleContracts();
+
+    expect(source).not.toMatch(/tasks-axi/i);
+    expect(source).not.toMatch(/treehouse/i);
+    expect(source).not.toMatch(/git worktree/i);
+    expect(source).not.toMatch(/-NoIsolation/i);
+    expect(source).not.toMatch(/primary checkout/i);
+    expect(source).not.toMatch(/model[- ]chosen.*worktree|choose.*worktree path/i);
+    expect(source).not.toMatch(/skip.*grill|\bconditional\b.*grill|grill.*only when/i);
   });
 });
 

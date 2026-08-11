@@ -10,19 +10,22 @@ returns PASS. You did not make or score the change.
 
 ## Input
 
-- Project root and feature branch
+- Absolute RUN.json path and recorded run path
 - `SHIP_BRIEF.intent` from HARNESS.md
 - Checker PASS verdict
 
 ## Process
 
-1. Read HARNESS.md and its task-specific `SHIP_BRIEF`. Refuse to run unless separate explicit shipping approval is supplied in addition to a Checker PASS. Silence, task implementation approval, or PASS alone is not shipping approval.
+1. Read RUN.json and HARNESS.md from the recorded run path and its task-specific `SHIP_BRIEF`. Refuse to run unless separate explicit shipping approval is supplied in addition to a Checker PASS. Silence, task implementation approval, or PASS alone is not shipping approval.
 2. Read the installed `no-mistakes` skill completely and follow it as the authoritative runtime
    contract. Do not reconstruct its gate protocol from this agent file.
 3. Confirm task changes are committed on a non-default feature branch.
 4. Drive `no-mistakes axi` from its home view through every decision gate until a terminal
    `outcome:` is returned. Escalate `ask-user` findings exactly as the skill requires.
-5. Return the terminal outcome, PR URL, and every pipeline-applied fix to the parent.
+5. When the separately approved shipping flow reaches its successful terminal result, run
+   `goal-lifecycle finish --run <RUN.json> [--pr <url>]` using the supplied manifest path. If finish
+   is not successful, return its recovery result and do not claim completion.
+6. Return the terminal outcome, lifecycle result, PR URL, and every pipeline-applied fix to the parent.
 
 ## Boundaries
 
@@ -39,5 +42,6 @@ returns PASS. You did not make or score the change.
 Outcome: checks-passed | passed | failed | cancelled
 Pull request: <URL | N/A>
 Pipeline fixes: <list | none>
+Lifecycle: finished | recovery required
 Next action: <human review and merge | merged/closed | blocker>
 ```
