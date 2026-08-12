@@ -286,7 +286,7 @@ function finishFixture(
   const args = ['finish', '--run', manifestPath];
   if (options.outcome) args.push('--outcome', options.outcome);
   if (options.pr) args.push('--pr', options.pr);
-  const cwd = existsSync(fixture.treehouse.returned) ? fixture.repo : readRunManifest(manifestPath).worktreePath;
+  const cwd = existsSync(fixture.treehouse.returned) || existsSync(join(readRunManifest(manifestPath).runDirectory, 'COMPLETION.json')) ? fixture.repo : readRunManifest(manifestPath).worktreePath;
   return invokeLifecycle(args, fixture.env, cwd);
 }
 
@@ -556,6 +556,40 @@ test('finish rejects a late PR when its committed intent recorded none', () => {
   const retry = finishFixture(fixture, completed.manifestPath, { pr: 'https://example.invalid/late' });
   expect(retry.json).toMatchObject({ code: 'TASK_COMPLETION_PENDING' });
   expect(readFileSync(fixture.tasks.calls, 'utf8')).not.toContain('done canonical-goal --pr https://example.invalid/late');
+});
+
+test('finish rejects a same-slug alternate RUN before status, return, or task completion', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TREEHOUSE_RETURN_FAIL = '1';
+  expect(finishFixture(fixture, completed.manifestPath).json).toMatchObject({ code: 'TREEHOUSE_RETURN_FAILED' });
+  const alternateWorktree = join(fixture.root, 'other-lease');
+  const alternateDirectory = join(alternateWorktree, '.harness', 'goals', fixture.taskId);
+  const alternatePath = join(alternateDirectory, 'RUN.json');
+  mkdirSync(alternateDirectory, { recursive: true });
+  writeRunManifest(alternatePath, {
+    ...completed.run,
+    repositoryRoot: join(fixture.root, 'other-repository'),
+    gitCommonDirectory: join(fixture.root, 'other-common'),
+    worktreePath: alternateWorktree,
+    runDirectory: alternateDirectory,
+    grillReceiptPath: join(alternateDirectory, 'GRILL.json'),
+    leaseHolder: 'other-holder',
+  });
+  const alternate = readRunManifest(alternatePath);
+  expect(alternate.taskId).toBe(completed.run.taskId);
+  expect(alternate.branch).toBe(completed.run.branch);
+  expect(alternate.repositoryRoot).not.toBe(completed.run.repositoryRoot);
+  expect(alternate.gitCommonDirectory).not.toBe(completed.run.gitCommonDirectory);
+  expect(alternate.worktreePath).not.toBe(completed.run.worktreePath);
+  expect(alternate.runDirectory).not.toBe(completed.run.runDirectory);
+  expect(alternate.leaseHolder).not.toBe(completed.run.leaseHolder);
+  const beforeTreehouse = readFileSync(fixture.treehouse.calls, 'utf8');
+  const beforeTasks = readFileSync(fixture.tasks.calls, 'utf8');
+  const result = invokeLifecycle(['finish', '--run', alternatePath], fixture.env, fixture.repo);
+  expect(result.json).toMatchObject({ code: 'LEASE_IDENTITY_MISMATCH' });
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(beforeTreehouse + 'status\r\n');
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).toBe(beforeTasks + 'show canonical-goal --full\n');
 });
 
 // Catches a manifest reader accepting a future format, and a writer leaving temporary files visible.
