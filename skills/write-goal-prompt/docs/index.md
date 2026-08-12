@@ -15,7 +15,7 @@ All reference files for the write-goal-prompt skill.
 | [execution-mode-routing.md](../references/execution-mode-routing.md)           | Task-shape routing: single-run, goal-loop, time-loop, dynamic-workflow  |
 | [parallel-execution.md](../references/parallel-execution.md)                   | Historical background; Treehouse/readiness are internal to lifecycle start, not operator routing |
 | [first-principles-generation.md](../references/first-principles-generation.md) | Planner: decompose from observable outcomes; Maker: reason before code  |
-| [context-management.md](../references/context-management.md)                  | Token budget, context compression, fork vs fresh                        |
+| [context-management.md](../references/context-management.md)                  | Durable lifecycle restart: persist run artifacts, validate before routing |
 | [qa-checklist.md](../references/qa-checklist.md)                               | Pre-ship QA gates for goal prompts                                      |
 | [morning-report-specs.md](../references/morning-report-specs.md)               | Overnight run report format                                             |
 
