@@ -14,7 +14,6 @@ import { decodeTaskDetail } from './tasks-axi';
 
 const OPERATION = 'finish';
 const TREEHOUSE_PROBE = [
-  'param([string]$lease)',
   '$command = Get-Command treehouse -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1',
   'if (-not $command -or -not $command.Source) { exit 127 }',
   '& $command.Source status',
@@ -44,7 +43,7 @@ interface CompletionRecord {
   leaseHolder: string;
   outcome: 'success' | 'blocked' | 'failed';
   pr?: string;
-  phase: 'RETURN_PENDING' | 'LEASE_RETAINED';
+  phase: 'RETURN_PENDING';
 }
 
 function processSucceeded(result: ProcessResult): boolean {
@@ -67,7 +66,7 @@ function assertRunPath(runPath: string, run: RunManifestV1): void {
   if (!isAbsolute(runPath) || !samePath(runPath, join(run.runDirectory, 'RUN.json'))) {
     throw finishError('CONTEXT_RESTART_INVALID', 'finish requires the persisted absolute RUN.json path.');
   }
-  if (!pathInside(run.worktreePath, run.runDirectory) || !samePath(run.branch, 'wt/' + run.taskId)) {
+  if (!pathInside(run.worktreePath, run.runDirectory) || run.branch !== 'wt/' + run.taskId) {
     throw finishError('LEASE_IDENTITY_MISMATCH', 'The persisted run does not have its canonical worktree identity.');
   }
   assertNoReparsePath(run.worktreePath, run.runDirectory);
