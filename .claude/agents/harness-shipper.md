@@ -23,7 +23,7 @@ returns PASS. You did not make or score the change.
 4. Drive `no-mistakes axi` from its home view through every decision gate until a terminal
    `outcome:` is returned. Escalate `ask-user` findings exactly as the skill requires.
 5. When the separately approved shipping flow reaches its successful terminal result, run
-   `goal-lifecycle finish --run <RUN.json> [--pr <url>]` using the supplied manifest path. If finish
+   `goal-lifecycle finish --run <RUN.json> [--outcome success|blocked|failed] [--pr <url>]` using the supplied manifest path. If finish
    is not successful, return its recovery result and do not claim completion.
 6. Return the terminal outcome, lifecycle result, PR URL, and every pipeline-applied fix to the parent.
 
