@@ -143,7 +143,7 @@ async function returnExactLease(run: RunManifestV1): Promise<void> {
   if (!processSucceeded(returned)) throw finishError('TREEHOUSE_RETURN_FAILED', 'Treehouse could not return the exact recorded lease.');
 }
 
-async function completeTask(run: RunManifestV1, pr?: string): Promise<void> {
+async function completeTask(run: Pick<RunManifestV1, 'taskId' | 'repositoryRoot'>, pr?: string): Promise<void> {
   const args = ['done', run.taskId];
   if (pr) args.push('--pr', pr);
   const result = await runProcess('tasks-axi', args, { cwd: run.repositoryRoot });
@@ -163,6 +163,12 @@ async function reconcileCompletion(input: FinishLifecycleInput, context: Lifecyc
   try { record = JSON.parse(shown.stdout) as CompletionRecord; } catch {
     throw finishError('FINISH_PRECONDITION_FAILED', 'The committed completion intent is malformed.');
   }
+  const requiredStringFields = ['taskId', 'branch', 'worktreePath', 'repositoryRoot', 'gitCommonDirectory', 'runDirectory', 'leaseHolder', 'outcome'] as const;
+  for (const field of requiredStringFields) {
+    if (typeof record[field] !== 'string' || record[field].length === 0) {
+      throw finishError('FINISH_PRECONDITION_FAILED', `The committed completion intent is missing required field: ${field}.`);
+    }
+  }
   if (record.schemaVersion !== 1 || record.taskId !== taskId || record.branch !== branch || record.outcome !== 'success') {
     throw finishError('FINISH_PRECONDITION_FAILED', 'The completion intent does not match the persisted run identity.');
   }
@@ -179,7 +185,7 @@ async function reconcileCompletion(input: FinishLifecycleInput, context: Lifecyc
   if (detail.id !== taskId) throw finishError('TASK_COMPLETION_PENDING', 'The durable task identity changed.');
   if (detail.state === 'done') return lifecycleSuccess(OPERATION, 'Lifecycle run ' + taskId + ' is already complete.', { taskId, pr: record.pr ?? null });
   if (detail.state !== 'in_flight') throw finishError('TASK_STATE_CONFLICT', 'The durable lifecycle task is not active for reconciliation.');
-  const reconstructed = { taskId, title: detail.title, repositoryRoot: repository.root, worktreePath: record.worktreePath, leaseHolder: record.leaseHolder } as RunManifestV1;
+  const reconstructed = { taskId, title: detail.title, repositoryRoot: repository.root, worktreePath: record.worktreePath, leaseHolder: record.leaseHolder };
   const state = await leaseState(reconstructed);
   if (state === 'conflicting_holder') throw finishError('LEASE_IDENTITY_MISMATCH', 'The recorded lease is now held by a different owner.');
   if (state === 'exact_holder') {
