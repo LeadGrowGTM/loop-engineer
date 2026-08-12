@@ -39,6 +39,8 @@ interface CompletionRecord {
   branch: string;
   worktreePath: string;
   repositoryRoot: string;
+  gitCommonDirectory: string;
+  runDirectory: string;
   leaseHolder: string;
   outcome: 'success' | 'blocked' | 'failed';
   pr?: string;
@@ -169,7 +171,7 @@ async function reconcileCompletion(input: FinishLifecycleInput, context: Lifecyc
   if (record.schemaVersion !== 1 || record.taskId !== taskId || record.branch !== branch || record.outcome !== 'success') {
     throw finishError('FINISH_PRECONDITION_FAILED', 'The completion intent does not match the persisted run identity.');
   }
-  if (input.pr && record.pr && input.pr !== record.pr) {
+  if ((input.pr && !record.pr) || (input.pr && record.pr && input.pr !== record.pr)) {
     throw finishError('TASK_COMPLETION_PENDING', 'The finish retry conflicts with the recorded pull-request identity.');
   }
   const task = await runProcess('tasks-axi', ['show', taskId, '--full'], { cwd: repository.root });
@@ -185,6 +187,14 @@ async function reconcileCompletion(input: FinishLifecycleInput, context: Lifecyc
   if (state === 'exact_holder') {
     const run = readRunManifest(input.runPath);
     assertRunPath(input.runPath, run);
+    if (
+      run.taskId !== record.taskId || run.branch !== record.branch ||
+      !samePath(run.repositoryRoot, record.repositoryRoot) ||
+      !samePath(run.gitCommonDirectory, record.gitCommonDirectory) ||
+      !samePath(run.worktreePath, record.worktreePath) ||
+      !samePath(run.runDirectory, record.runDirectory) ||
+      run.leaseHolder !== record.leaseHolder
+    ) throw finishError('LEASE_IDENTITY_MISMATCH', 'The still-held run manifest does not match the committed completion identity.');
     await assertActiveTask(run);
     await assertCleanCommittedDescendant(run);
     await returnExactLease(run);
@@ -223,6 +233,8 @@ async function finishUnsafe(input: FinishLifecycleInput): Promise<LifecycleResul
     branch: run.branch,
     worktreePath: run.worktreePath,
     repositoryRoot: run.repositoryRoot,
+    gitCommonDirectory: run.gitCommonDirectory,
+    runDirectory: run.runDirectory,
     leaseHolder: run.leaseHolder,
     outcome: 'success',
     phase: 'RETURN_PENDING',

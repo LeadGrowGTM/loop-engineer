@@ -547,6 +547,17 @@ test('finish accepts an ambiguous completion commit result when HEAD proves the 
   expect(readFileSync(fixture.tasks.calls, 'utf8')).toContain('done canonical-goal');
 });
 
+test('finish rejects a late PR when its committed intent recorded none', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TASKS_DONE_FAIL = '1';
+  expect(finishFixture(fixture, completed.manifestPath).json).toMatchObject({ code: 'TASK_COMPLETION_PENDING' });
+  fixture.env.TASKS_DONE_FAIL = '0';
+  const retry = finishFixture(fixture, completed.manifestPath, { pr: 'https://example.invalid/late' });
+  expect(retry.json).toMatchObject({ code: 'TASK_COMPLETION_PENDING' });
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).not.toContain('done canonical-goal --pr https://example.invalid/late');
+});
+
 // Catches a manifest reader accepting a future format, and a writer leaving temporary files visible.
 test("manifest writes are atomic and reject unsupported schema versions", () => {
   const directory = mkdtempSync(join(tmpdir(), "goal-lifecycle-manifest-"));
