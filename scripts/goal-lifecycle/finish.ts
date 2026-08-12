@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import {
   LifecycleCommandError,
@@ -101,27 +101,43 @@ async function assertCleanCommittedDescendant(run: RunManifestV1): Promise<void>
   assertNoReparsePath(run.runDirectory, join(run.runDirectory, 'HANDOFF.md'));
 }
 
-async function hasExactLease(run: RunManifestV1): Promise<boolean> {
+type LeaseState = 'exact_holder' | 'absent' | 'conflicting_holder';
+
+async function leaseState(run: Pick<RunManifestV1, 'repositoryRoot' | 'worktreePath' | 'leaseHolder'>): Promise<LeaseState> {
   const result = await runProcess('powershell', ['-NoProfile', '-NonInteractive', '-Command', TREEHOUSE_PROBE], { cwd: run.repositoryRoot });
   if (!processSucceeded(result)) throw finishError('LEASE_IDENTITY_MISMATCH', 'Treehouse status could not verify the recorded lease.');
-  return result.stdout.split(/\r?\n/).some((line) => {
+  let state: LeaseState = 'absent';
+  for (const line of result.stdout.split(/\r?\n/).filter(Boolean)) {
     const match = /^\s*\d+\s+leased\s+(.+?)\s+\(held by ([^)]+)\)\s*$/.exec(line);
-    return Boolean(match && match[2] === run.leaseHolder && samePath(match[1], run.worktreePath));
-  });
+    if (!match) {
+      if (/\bleased\b/i.test(line)) throw finishError('LEASE_IDENTITY_MISMATCH', 'Treehouse status is malformed.');
+      continue;
+    }
+    if (samePath(match[1], run.worktreePath)) state = match[2] === run.leaseHolder ? 'exact_holder' : 'conflicting_holder';
+  }
+  return state;
 }
 
 async function commitIntent(run: RunManifestV1, record: CompletionRecord): Promise<void> {
-  writeJsonAtomic(completionPath(run), record);
+  const path = completionPath(run);
+  writeJsonAtomic(path, record);
   const relative = '.harness/goals/' + run.taskId + '/COMPLETION.json';
   const add = await runGit(['add', '--', relative], run.worktreePath);
   const commit = await runGit(['commit', '-m', 'goal-lifecycle completion intent ' + run.taskId], run.worktreePath);
-  if (!processSucceeded(add) || !processSucceeded(commit)) {
-    throw finishError('FINISH_PRECONDITION_FAILED', 'The deterministic completion intent could not be committed.');
+  if (processSucceeded(add) && processSucceeded(commit)) return;
+  const shown = await runGit(['show', 'HEAD:' + relative], run.worktreePath);
+  if (processSucceeded(shown) && shown.stdout.trim() === JSON.stringify(record, null, 2)) return;
+  await runGit(['restore', '--staged', '--', relative], run.worktreePath);
+  if (existsSync(path)) unlinkSync(path);
+  const status = await runGit(['status', '--porcelain=v1', '--untracked-files=all'], run.worktreePath);
+  if (!processSucceeded(status) || status.stdout.trim().length > 0) {
+    throw finishError('FINISH_PRECONDITION_FAILED', 'Completion intent failed and its exact cleanup could not restore the prior clean state.');
   }
+  throw finishError('FINISH_PRECONDITION_FAILED', 'The deterministic completion intent could not be committed.');
 }
 
 async function returnExactLease(run: RunManifestV1): Promise<void> {
-  if (!await hasExactLease(run)) throw finishError('LEASE_IDENTITY_MISMATCH', 'Treehouse does not report the exact recorded lease and holder.');
+  if (await leaseState(run) !== 'exact_holder') throw finishError('LEASE_IDENTITY_MISMATCH', 'Treehouse does not report the exact recorded lease and holder.');
   const returned = await runProcess(
     'powershell',
     ['-NoProfile', '-NonInteractive', '-Command', TREEHOUSE_RETURN],
@@ -150,7 +166,7 @@ async function reconcileCompletion(input: FinishLifecycleInput, context: Lifecyc
   try { record = JSON.parse(shown.stdout) as CompletionRecord; } catch {
     throw finishError('FINISH_PRECONDITION_FAILED', 'The committed completion intent is malformed.');
   }
-  if (record.schemaVersion !== 1 || record.taskId !== taskId || record.branch !== branch || record.repositoryRoot !== repository.root || record.outcome !== 'success') {
+  if (record.schemaVersion !== 1 || record.taskId !== taskId || record.branch !== branch || record.outcome !== 'success') {
     throw finishError('FINISH_PRECONDITION_FAILED', 'The completion intent does not match the persisted run identity.');
   }
   if (input.pr && record.pr && input.pr !== record.pr) {
@@ -164,7 +180,15 @@ async function reconcileCompletion(input: FinishLifecycleInput, context: Lifecyc
   if (detail.state === 'done') return lifecycleSuccess(OPERATION, 'Lifecycle run ' + taskId + ' is already complete.', { taskId, pr: record.pr ?? null });
   if (detail.state !== 'in_flight') throw finishError('TASK_STATE_CONFLICT', 'The durable lifecycle task is not active for reconciliation.');
   const reconstructed = { taskId, title: detail.title, repositoryRoot: repository.root, worktreePath: record.worktreePath, leaseHolder: record.leaseHolder } as RunManifestV1;
-  if (await hasExactLease(reconstructed)) throw finishError('TASK_COMPLETION_PENDING', 'The recorded lease is still held and requires restart validation before return.');
+  const state = await leaseState(reconstructed);
+  if (state === 'conflicting_holder') throw finishError('LEASE_IDENTITY_MISMATCH', 'The recorded lease is now held by a different owner.');
+  if (state === 'exact_holder') {
+    const run = readRunManifest(input.runPath);
+    assertRunPath(input.runPath, run);
+    await assertActiveTask(run);
+    await assertCleanCommittedDescendant(run);
+    await returnExactLease(run);
+  }
   await completeTask(reconstructed, record.pr ?? input.pr);
   return lifecycleSuccess(OPERATION, 'Reconciled lifecycle completion for ' + taskId + '.', { taskId, pr: record.pr ?? null });
 }
@@ -192,7 +216,7 @@ async function finishUnsafe(input: FinishLifecycleInput): Promise<LifecycleResul
   if (run.state !== 'VALIDATED') throw finishError('CONTEXT_RESTART_INVALID', 'finish requires a validated run.');
   await assertActiveTask(run);
   await assertCleanCommittedDescendant(run);
-  if (!await hasExactLease(run)) throw finishError('LEASE_IDENTITY_MISMATCH', 'Treehouse does not report the exact recorded lease and holder.');
+  if (await leaseState(run) !== 'exact_holder') throw finishError('LEASE_IDENTITY_MISMATCH', 'Treehouse does not report the exact recorded lease and holder.');
   const record: CompletionRecord = {
     schemaVersion: 1,
     taskId: run.taskId,

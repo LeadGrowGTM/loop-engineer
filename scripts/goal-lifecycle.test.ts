@@ -141,6 +141,7 @@ function createTreehouseFake(
       'if (Test-Path ' + String.fromCharCode(36) + 'env:TREEHOUSE_RETURNED_FILE) { ' + String.fromCharCode(36) + 'env:TREEHOUSE_STATUS_MODE = ' + String.fromCharCode(34) + 'returned' + String.fromCharCode(34) + ' }',
       String.fromCharCode(36) + 'command = ' + String.fromCharCode(36) + 'args[0]',
       'if (' + String.fromCharCode(36) + 'command -eq ' + String.fromCharCode(34) + 'return' + String.fromCharCode(34) + ') {',
+      '  if (' + String.fromCharCode(36) + 'env:TREEHOUSE_RETURN_FAIL -eq ' + String.fromCharCode(34) + '1' + String.fromCharCode(34) + ') { [System.IO.File]::AppendAllText(' + String.fromCharCode(36) + 'env:TREEHOUSE_CALLS, (' + String.fromCharCode(36) + 'args -join ' + String.fromCharCode(34) + ' ' + String.fromCharCode(34) + ') + [Environment]::NewLine) }',
       '  if (' + String.fromCharCode(36) + 'env:TREEHOUSE_RETURN_FAIL -eq ' + String.fromCharCode(34) + '1' + String.fromCharCode(34) + ') { exit 1 }',
       '  [System.IO.File]::WriteAllText(' + String.fromCharCode(36) + 'env:TREEHOUSE_RETURNED_FILE, ' + String.fromCharCode(34) + 'returned' + String.fromCharCode(34) + ')',
       '}',
@@ -307,6 +308,23 @@ function omitGitWorktreeRegistration(fixture: ReturnType<typeof createLifecycleF
   fixture.env.GIT_WORKTREE_LIST_MODE = 'omit';
 }
 
+function forceLifecycleGitFailure(fixture: ReturnType<typeof createLifecycleFixture>, operation: 'add' | 'commit'): void {
+  const realGit = Bun.which('git');
+  if (!realGit) throw new Error('test fixture requires git');
+  const bin = fixture.env.PATH!.split(';')[0];
+  writeFileSync(join(bin, 'git.cmd'), '@echo off\r\nnode %~dp0\\git-finish-fake.cjs %*\r\n');
+  writeFileSync(join(bin, 'git-finish-fake.cjs'), [
+    'const c=require(String.fromCharCode(110,111,100,101,58,99,104,105,108,100,95,112,114,111,99,101,115,115)); const a=process.argv.slice(2).map((v)=>v===String.fromCharCode(72,69,65,68,123,99,111,109,109,105,116,125)?String.fromCharCode(72,69,65,68,94,123,99,111,109,109,105,116,125):v);',
+    'const add=a.includes(String.fromCharCode(97,100,100))&&a.includes(String.fromCharCode(46,104,97,114,110,101,115,115,47,103,111,97,108,115,47,99,97,110,111,110,105,99,97,108,45,103,111,97,108,47,67,79,77,80,76,69,84,73,79,78,46,106,115,111,110));',
+    'if(process.env.GIT_FINISH_FAILURE===String.fromCharCode(97,100,100)&&add){ process.exit(1); }',
+    'const commit=a.includes(String.fromCharCode(99,111,109,109,105,116))&&a.includes(String.fromCharCode(103,111,97,108,45,108,105,102,101,99,121,99,108,101,32,99,111,109,112,108,101,116,105,111,110,32,105,110,116,101,110,116,32,99,97,110,111,110,105,99,97,108,45,103,111,97,108));',
+    'const r=c.spawnSync(process.env.REAL_GIT,a,{stdio:String.fromCharCode(105,110,104,101,114,105,116)});',
+    'if(process.env.GIT_FINISH_FAILURE===String.fromCharCode(99,111,109,109,105,116)&&commit&&r.status===0){ process.exit(1); } process.exit(r.status??1);',
+  ].join('\n'));
+  fixture.env.REAL_GIT = realGit;
+  fixture.env.GIT_FINISH_FAILURE = operation;
+}
+
 function expectSafeRemediation(result: { remediation?: unknown }): void {
   expect(Array.isArray(result.remediation)).toBe(true);
   const remediation = result.remediation as unknown[];
@@ -415,16 +433,16 @@ test('audit emits every legacy classification without manager or repository muta
   fixture.env.TREEHOUSE_STATUS_MODE = 'validate';
   const result = invokeLifecycle(['audit', '--repo', fixture.repo], fixture.env, fixture.repo);
   expect(result.exitCode).toBe(0);
-  const rows = result.json.data.rows as Array<{ classification: string; manager: string; reachable: boolean; suggestedCommand: string }>;
-  expect(rows.map((row) => row.classification).sort()).toEqual(['MISPLACED_WORKTREE', 'dirty', 'managed', 'primary', 'sibling-pipeline', 'unreachable']);
+  const rows = result.json.data.rows as Array<{ path: string; classification: string; manager: string; reachable: boolean; dirty: boolean; suggestedCommand: string }>;
+  expect(rows.map((row) => row.classification).sort()).toEqual(['MISPLACED_WORKTREE', 'MISPLACED_WORKTREE', 'MISPLACED_WORKTREE', 'MISPLACED_WORKTREE', 'managed', 'primary']);
   expect(rows.find((row) => row.classification === 'managed')).toMatchObject({ manager: 'treehouse', reachable: true });
   expect(rows.find((row) => row.classification === 'MISPLACED_WORKTREE')).toMatchObject({ manager: 'external', reachable: true });
-  expect(rows.find((row) => row.classification === 'dirty')).toMatchObject({ manager: 'external', reachable: true });
-  expect(rows.find((row) => row.classification === 'unreachable')).toMatchObject({ manager: 'external', reachable: false });
+  expect(rows.find((row) => row.dirty)).toMatchObject({ classification: 'MISPLACED_WORKTREE', manager: 'external', reachable: true });
+  expect(rows.find((row) => !row.reachable)).toMatchObject({ classification: 'MISPLACED_WORKTREE', manager: 'external' });
   expect(rows.filter((row) => row.classification === 'primary' || row.classification === 'managed').every((row) => row.suggestedCommand === '')).toBe(true);
   expect(rows.filter((row) => row.classification !== 'primary' && row.classification !== 'managed').every((row) => row.suggestedCommand.includes('worktree remove'))).toBe(true);
   const quote = String.fromCharCode(39);
-  expect(rows.find((row) => row.classification === 'MISPLACED_WORKTREE')?.suggestedCommand).toBe('git -C ' + quote + fixture.repo + quote + ' worktree remove ' + quote + external.replaceAll(quote, quote + quote) + quote);
+  expect(rows.find((row) => row.path === external)?.suggestedCommand).toBe('git -C ' + quote + fixture.repo + quote + ' worktree remove ' + quote + external.replaceAll(quote, quote + quote) + quote);
   expect(runGit(['worktree', 'list', '--porcelain'], fixture.repo)).toBe(before.worktrees);
   expect(runGit(['show-ref'], fixture.repo)).toBe(before.refs);
   expect([external, dirty, unreachable, sibling].map((path) => runGit(['status', '--porcelain=v1', '--untracked-files=all'], path)).join('|')).toBe(before.files);
@@ -447,6 +465,86 @@ test('finish reconciles task completion after a successful return without return
   expect(readFileSync(fixture.tasks.calls, 'utf8')).toContain('done canonical-goal --pr https://example.invalid/pr/2');
   const idempotent = finishFixture(fixture, completed.manifestPath, { pr: 'https://example.invalid/pr/2' });
   expect(idempotent.exitCode).toBe(0);
+  const conflictingPr = finishFixture(fixture, completed.manifestPath, { pr: 'https://example.invalid/pr/other' });
+  expect(conflictingPr.json).toMatchObject({ code: 'TASK_COMPLETION_PENDING' });
+});
+
+test('finish resumes an exact still-held lease after return failure without recommitting intent', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TREEHOUSE_RETURN_FAIL = '1';
+  const first = finishFixture(fixture, completed.manifestPath);
+  expect(first.json).toMatchObject({ code: 'TREEHOUSE_RETURN_FAILED' });
+  const completion = readFileSync(join(completed.run.runDirectory, 'COMPLETION.json'), 'utf8');
+  fixture.env.TREEHOUSE_RETURN_FAIL = '0';
+  const retry = finishFixture(fixture, completed.manifestPath);
+  expect(retry.exitCode).toBe(0);
+  expect(readFileSync(join(completed.run.runDirectory, 'COMPLETION.json'), 'utf8')).toBe(completion);
+  const returns = readFileSync(fixture.treehouse.calls, 'utf8').split(/\r?\n/).filter((line) => line.startsWith('return '));
+  expect(returns).toEqual(['return ' + completed.run.worktreePath, 'return ' + completed.run.worktreePath]);
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).toContain('done canonical-goal');
+});
+
+test('finish refuses a completion retry when the recorded path is held by another owner', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TASKS_DONE_FAIL = '1';
+  expect(finishFixture(fixture, completed.manifestPath).json).toMatchObject({ code: 'TASK_COMPLETION_PENDING' });
+  rmSync(fixture.treehouse.returned);
+  fixture.env.TREEHOUSE_HOLDER = 'other-goal';
+  fixture.env.TASKS_DONE_FAIL = '0';
+  const retry = finishFixture(fixture, completed.manifestPath);
+  expect(retry.json).toMatchObject({ code: 'LEASE_IDENTITY_MISMATCH' });
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).toContain('show canonical-goal --full');
+});
+
+test('finish retry uses committed branch evidence after returned worktree artifacts disappear', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TASKS_DONE_FAIL = '1';
+  expect(finishFixture(fixture, completed.manifestPath).json).toMatchObject({ code: 'TASK_COMPLETION_PENDING' });
+  rmSync(completed.run.runDirectory, { recursive: true, force: true });
+  fixture.env.TASKS_DONE_FAIL = '0';
+  const beforeReturns = readFileSync(fixture.treehouse.calls, 'utf8');
+  const retry = invokeLifecycle(['finish', '--run', completed.manifestPath], fixture.env, fixture.repo);
+  expect(retry.exitCode).toBe(0);
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(beforeReturns + 'status\r\n');
+  expect(readFileSync(fixture.tasks.details, 'utf8')).toContain(fixture.repo + '|done canonical-goal');
+});
+
+test('finish commit-intent failure removes only its created artifact and restores clean state', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  runGit(['config', 'user.name', ''], completed.run.worktreePath);
+  runGit(['config', 'user.email', ''], completed.run.worktreePath);
+  const result = finishFixture(fixture, completed.manifestPath);
+  expect(result.json).toMatchObject({ code: 'FINISH_PRECONDITION_FAILED' });
+  expect(existsSync(join(completed.run.runDirectory, 'COMPLETION.json'))).toBe(false);
+  expect(runGit(['status', '--porcelain=v1', '--untracked-files=all'], completed.run.worktreePath)).toBe('');
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).not.toContain('return ');
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).not.toContain('done canonical-goal');
+});
+
+test('finish add failure removes only its created completion artifact and restores the index', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  forceLifecycleGitFailure(fixture, 'add');
+  const result = finishFixture(fixture, completed.manifestPath);
+  expect(result.json).toMatchObject({ code: 'FINISH_PRECONDITION_FAILED' });
+  expect(existsSync(join(completed.run.runDirectory, 'COMPLETION.json'))).toBe(false);
+  expect(runGit(['status', '--porcelain=v1', '--untracked-files=all'], completed.run.worktreePath)).toBe('');
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).not.toContain('return ');
+});
+
+test('finish accepts an ambiguous completion commit result when HEAD proves the exact intent', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  forceLifecycleGitFailure(fixture, 'commit');
+  const result = finishFixture(fixture, completed.manifestPath);
+  expect(result.exitCode).toBe(0);
+  expect(existsSync(join(completed.run.runDirectory, 'COMPLETION.json'))).toBe(true);
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toContain('return ' + completed.run.worktreePath);
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).toContain('done canonical-goal');
 });
 
 // Catches a manifest reader accepting a future format, and a writer leaving temporary files visible.
