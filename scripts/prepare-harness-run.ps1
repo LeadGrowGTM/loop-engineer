@@ -20,6 +20,8 @@ param(
   [switch]$Parallel,
   [switch]$NoIsolation,
   [switch]$CurrentBranch,
+  [string]$RunBranch = '',
+  [string]$RequiredPoolRoot = '',
   [string]$LeaseHolder = "harness-readiness",
   [string]$DefaultBranch = "",
   [Parameter(DontShow)]
@@ -48,6 +50,7 @@ $result = [ordered]@{
   treehouseAvailable     = $false
   leasePath              = $null
   leaseHolder            = $null
+  poolRoot               = $null
   returnCommand          = $null
   runPath                = $null
   errorCodes             = @()
@@ -1162,6 +1165,28 @@ function Get-OutputLines([string]$Text) {
   return @($Text -split '\r?\n' | Where-Object { $_ -ne '' })
 }
 
+function Get-TreehouseLeasedPaths([string]$StatusText) {
+  $leases = @{}
+  foreach ($line in (Get-OutputLines $StatusText)) {
+    if ($line -match '^\s*\d+\s+leased\s+(.+)\s+\(held by ([^)]+)\)\s*$') {
+      $reportedPath = $Matches[1].Trim()
+      if ($reportedPath.StartsWith('~\') -or $reportedPath.StartsWith('~/')) {
+        $reportedPath = Join-Path $HOME $reportedPath.Substring(2)
+      }
+      if (-not [System.IO.Path]::IsPathRooted($reportedPath) -or $reportedPath.StartsWith('\\')) {
+        throw "Treehouse status reported a non-local leased path: $reportedPath"
+      }
+      $fullPath = [System.IO.Path]::GetFullPath($reportedPath)
+      $leases[$fullPath.ToLowerInvariant()] = $Matches[2].Trim()
+      continue
+    }
+    if ($line -match '\bleased\b') {
+      throw "Treehouse status contained an unparseable leased entry: $line"
+    }
+  }
+  return $leases
+}
+
 function Resolve-GitPath([string]$WorkingDirectory, [string]$Value) {
   if ([System.IO.Path]::IsPathRooted($Value)) { return (Resolve-Path -LiteralPath $Value).Path }
   return (Resolve-Path -LiteralPath (Join-Path $WorkingDirectory $Value)).Path
@@ -1185,6 +1210,27 @@ function Confirm-SourceState([string]$WorkingDirectory, [string]$ExpectedHead, [
   if ($head.Stdout.Trim() -ne $ExpectedHead -or $branch.Stdout.Trim() -ne $ExpectedBranch) { return $false }
   $dirty = Get-DirtyState $WorkingDirectory
   return $dirty.Count -eq 0
+}
+
+function Test-IdentityProvenLease(
+  [string]$CandidatePath,
+  [string]$ExpectedCommonDirectory,
+  [string]$PoolRoot = ''
+) {
+  try {
+    if (-not (Test-Path -LiteralPath $CandidatePath -PathType Container)) { return $false }
+    $candidateItem = Get-Item -LiteralPath $CandidatePath -Force -ErrorAction Stop
+    if (($candidateItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+    if ($PoolRoot -and (Test-PathInside $PoolRoot $CandidatePath)) {
+      if (Get-ReparsePoint $PoolRoot $CandidatePath) { return $false }
+    }
+    $candidateTopLevel = Invoke-Git @('rev-parse', '--show-toplevel') $CandidatePath
+    $candidateCommon = Invoke-Git @('rev-parse', '--git-common-dir') $CandidatePath
+    if ($candidateTopLevel.ExitCode -ne 0 -or $candidateCommon.ExitCode -ne 0) { return $false }
+    if ((Resolve-Path -LiteralPath $candidateTopLevel.Stdout.Trim()).Path -ine $CandidatePath) { return $false }
+    return (Resolve-GitPath $CandidatePath $candidateCommon.Stdout.Trim()) -ieq $ExpectedCommonDirectory
+  }
+  catch { return $false }
 }
 
 try {
@@ -1408,6 +1454,38 @@ try {
   }
   $sourceCommonDir = Resolve-GitPath $gitInspectionRoot $commonDirResult.Stdout.Trim()
 
+  $requiredPool = $null
+  if ($RequiredPoolRoot) {
+    if (-not [System.IO.Path]::IsPathRooted($RequiredPoolRoot) -or $RequiredPoolRoot.StartsWith('\\')) {
+      Add-ReadinessError 'invalid_pool_root' 'RequiredPoolRoot must be an absolute local path.'
+      Complete-Readiness 1
+    }
+    $requiredPool = [System.IO.Path]::GetFullPath($RequiredPoolRoot).TrimEnd('\', '/')
+    $canonicalPool = [System.IO.Path]::GetFullPath((Join-Path $gitInspectionRoot '.worktrees')).TrimEnd('\', '/')
+    if ($requiredPool -ine $canonicalPool) {
+      Add-ReadinessError 'invalid_pool_root' "RequiredPoolRoot must be the repository-local canonical pool: $canonicalPool"
+      Complete-Readiness 1
+    }
+    if (-not (Test-Path -LiteralPath $requiredPool -PathType Container)) {
+      Add-ReadinessError 'invalid_pool_root' "RequiredPoolRoot does not exist: $requiredPool"
+      Complete-Readiness 1
+    }
+    $poolReparse = Get-ReparsePoint $gitInspectionRoot $requiredPool
+    if ($poolReparse) {
+      Add-ReadinessError 'invalid_pool_root' "RequiredPoolRoot crosses a reparse point: $poolReparse"
+      Complete-Readiness 1
+    }
+    $result.poolRoot = $requiredPool
+  }
+
+  if ($RunBranch) {
+    $requestedBranchFormat = Invoke-Git @('check-ref-format', '--branch', $RunBranch) $gitInspectionRoot
+    if ($requestedBranchFormat.ExitCode -ne 0) {
+      Add-ReadinessError 'invalid_run_branch' "RunBranch is not a valid Git branch: $RunBranch"
+      Complete-Readiness 1
+    }
+  }
+
   # Isolation is the default: every run leases a treehouse worktree unless the caller
   # opts out with -NoIsolation. Canonical monorepo pipelines always require isolation
   # and cannot opt out.
@@ -1423,7 +1501,7 @@ try {
       $remediation = if ($isCanonicalMonorepoPipeline) {
         'Treehouse is required for this canonical pipeline. Install treehouse or choose a standalone repository.'
       } else {
-        'Treehouse is required for isolation but is not on PATH. Install treehouse, or pass -NoIsolation to run on the current feature branch without isolation.'
+        'Treehouse is required for isolation but is not on PATH. Install treehouse before preparing the run.'
       }
       Add-ReadinessError 'missing_treehouse' $remediation
       Complete-Readiness 1
@@ -1447,6 +1525,19 @@ try {
       Complete-Readiness 1
     }
 
+    $preAcquisitionStatus = Invoke-BoundedProcess $treehouse @('status') $gitInspectionRoot $false $InternalTreehouseStatusTimeoutMilliseconds
+    if ($preAcquisitionStatus.TimedOut -or $preAcquisitionStatus.OutputLimitExceeded -or $preAcquisitionStatus.ExitCode -ne 0) {
+      Add-ReadinessError 'treehouse_not_ready' ("Treehouse pre-acquisition status failed from '$gitInspectionRoot': " + (($preAcquisitionStatus.Stderr + ' ' + $preAcquisitionStatus.Stdout).Trim()))
+      Complete-Readiness 1
+    }
+    try {
+      $preexistingLeasePaths = Get-TreehouseLeasedPaths $preAcquisitionStatus.Stdout
+    }
+    catch {
+      Add-ReadinessError 'invalid_treehouse_status' $_.Exception.Message
+      Complete-Readiness 1
+    }
+
     $lease = Invoke-BoundedProcess $treehouse @('get', '--lease', '--lease-holder', $LeaseHolder) $gitInspectionRoot $false 60000
     if ($lease.TimedOut -or $lease.OutputLimitExceeded -or $lease.ExitCode -ne 0) {
       Add-ReadinessError 'treehouse_lease_failed' ("Treehouse lease failed: " + (($lease.Stderr + ' ' + $lease.Stdout).Trim()))
@@ -1455,22 +1546,30 @@ try {
     $leaseLines = @(Get-OutputLines $lease.Stdout | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     if ($leaseLines.Count -ne 1) {
       $cleanupCandidates = @()
+      $preexistingCandidate = $false
       foreach ($line in $leaseLines) {
         if (-not [System.IO.Path]::IsPathRooted($line) -or $line.StartsWith('\\')) { continue }
         try {
           $candidatePath = [System.IO.Path]::GetFullPath($line)
           if (-not (Test-Path -LiteralPath $candidatePath -PathType Container)) { continue }
-          $candidateCommon = Invoke-Git @('rev-parse', '--git-common-dir') $candidatePath
-          if ($candidateCommon.ExitCode -ne 0) { continue }
-          if ((Resolve-GitPath $candidatePath $candidateCommon.Stdout.Trim()) -ieq $sourceCommonDir) {
-            $cleanupCandidates += $candidatePath
+          if (Test-IdentityProvenLease $candidatePath $sourceCommonDir $requiredPool) {
+            if ($preexistingLeasePaths.ContainsKey($candidatePath.ToLowerInvariant())) {
+              $preexistingCandidate = $true
+            }
+            else {
+              $cleanupCandidates += $candidatePath
+            }
           }
         }
         catch { }
       }
 
-      $cleanup = 'Lease path could not be safely identified for automatic return. Inspect treehouse status.'
-      if ($cleanupCandidates.Count -eq 1) {
+      $cleanup = if ($preexistingCandidate) {
+        'Lease return was not attempted because an identity-proven candidate was already leased before this invocation.'
+      } else {
+        'Lease path could not be safely identified for automatic return. Inspect treehouse status.'
+      }
+      if (-not $preexistingCandidate -and $cleanupCandidates.Count -eq 1) {
         $returnResult = Invoke-BoundedProcess $treehouse @('return', $cleanupCandidates[0]) $gitInspectionRoot $false 30000
         $cleanup = if ($returnResult.ExitCode -eq 0) { 'Lease was returned.' } else { "Lease return failed: $($returnResult.Stderr.Trim())" }
       }
@@ -1485,11 +1584,18 @@ try {
     }
     $leasePath = [System.IO.Path]::GetFullPath($leaseCandidate)
     $leaseAcquired = $true
+    $leaseWasPreexisting = $preexistingLeasePaths.ContainsKey($leasePath.ToLowerInvariant())
     $leaseValid = $false
+    $leaseIdentityProven = $false
+    $leaseFailureCode = 'invalid_lease'
     try {
       if (-not (Test-Path -LiteralPath $leasePath -PathType Container)) { throw "Lease path does not exist: $leasePath" }
       $leaseItem = Get-Item -LiteralPath $leasePath -Force
       if (($leaseItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Lease path is a reparse point: $leasePath" }
+      if ($requiredPool -and (Test-PathInside $requiredPool $leasePath)) {
+        $leaseReparse = Get-ReparsePoint $requiredPool $leasePath
+        if ($leaseReparse) { throw "Lease path crosses a reparse point: $leaseReparse" }
+      }
 
       $leaseTopLevel = Invoke-Git @('rev-parse', '--show-toplevel') $leasePath
       $leaseCommon = Invoke-Git @('rev-parse', '--git-common-dir') $leasePath
@@ -1502,28 +1608,48 @@ try {
       }
       $leaseCommonDir = Resolve-GitPath $leasePath $leaseCommon.Stdout.Trim()
       if ($leaseCommonDir -ine $sourceCommonDir) { throw 'Lease belongs to a different repository.' }
+      $leaseIdentityProven = $true
+      if ($requiredPool -and -not (Test-PathInside $requiredPool $leasePath)) {
+        $leaseFailureCode = 'lease_outside_pool'
+        throw "Lease path is outside the required repository pool '$requiredPool': $leasePath"
+      }
       $leaseDirty = Get-DirtyState $leasePath
       if ($leaseDirty.Count -ne 0) { throw 'Lease worktree is dirty.' }
       if (-not (Confirm-SourceState $gitInspectionRoot $result.checkedHead $result.branch)) {
         throw 'Source repository changed before isolated branch creation. Rerun readiness.'
       }
 
-      $holderSlug = ($LeaseHolder -replace '[^a-zA-Z0-9-]', '-').Trim('-')
-      if (-not $holderSlug) { $holderSlug = 'lease' }
-      if ($holderSlug.Length -gt 40) { $holderSlug = $holderSlug.Substring(0, 40).TrimEnd('-') }
-      $sourceSlug = ($result.branch -replace '[^a-zA-Z0-9-]', '-').Trim('-')
-      if (-not $sourceSlug) { $sourceSlug = 'source' }
-      if ($sourceSlug.Length -gt 40) { $sourceSlug = $sourceSlug.Substring(0, 40).TrimEnd('-') }
-      $headLength = [Math]::Min(12, $result.checkedHead.Length)
-      $headPrefix = $result.checkedHead.Substring(0, $headLength).ToLowerInvariant()
-      $branchNonce = [Guid]::NewGuid().ToString('N').Substring(0, 8)
-      $runBranch = "harness/$holderSlug/$sourceSlug-$headPrefix-$branchNonce"
+      if ($RunBranch) {
+        $runBranch = $RunBranch
+      }
+      else {
+        $holderSlug = ($LeaseHolder -replace '[^a-zA-Z0-9-]', '-').Trim('-')
+        if (-not $holderSlug) { $holderSlug = 'lease' }
+        if ($holderSlug.Length -gt 40) { $holderSlug = $holderSlug.Substring(0, 40).TrimEnd('-') }
+        $sourceSlug = ($result.branch -replace '[^a-zA-Z0-9-]', '-').Trim('-')
+        if (-not $sourceSlug) { $sourceSlug = 'source' }
+        if ($sourceSlug.Length -gt 40) { $sourceSlug = $sourceSlug.Substring(0, 40).TrimEnd('-') }
+        $headLength = [Math]::Min(12, $result.checkedHead.Length)
+        $headPrefix = $result.checkedHead.Substring(0, $headLength).ToLowerInvariant()
+        $branchNonce = [Guid]::NewGuid().ToString('N').Substring(0, 8)
+        $runBranch = "harness/$holderSlug/$sourceSlug-$headPrefix-$branchNonce"
+      }
 
       $branchFormat = Invoke-Git @('check-ref-format', '--branch', $runBranch) $leasePath
       if ($branchFormat.ExitCode -ne 0) { throw "Generated run branch is invalid: $runBranch" }
-      $branchCreate = Invoke-Git @('switch', '-c', $runBranch, $result.checkedHead) $leasePath
+      $existingBranch = Invoke-Git @('show-ref', '--verify', '--hash', "refs/heads/$runBranch") $leasePath
+      if ($existingBranch.ExitCode -eq 0 -and $existingBranch.Stdout.Trim() -ne $result.checkedHead) {
+        throw "Existing run branch '$runBranch' does not match the checked source HEAD."
+      }
+      $branchArguments = if ($existingBranch.ExitCode -eq 0) {
+        @('switch', $runBranch)
+      }
+      else {
+        @('switch', '-c', $runBranch, $result.checkedHead)
+      }
+      $branchCreate = Invoke-Git $branchArguments $leasePath
       if ($branchCreate.ExitCode -ne 0) {
-        throw "Unable to create derived run branch '$runBranch': $($branchCreate.Stderr.Trim())"
+        throw "Unable to attach run branch '$runBranch': $($branchCreate.Stderr.Trim())"
       }
 
       $leaseBranch = Invoke-Git @('symbolic-ref', '--quiet', '--short', 'HEAD') $leasePath
@@ -1554,15 +1680,21 @@ try {
       if (-not (Confirm-SourceState $gitInspectionRoot $result.checkedHead $result.branch)) {
         throw 'Source repository changed during isolation preparation. Rerun readiness.'
       }
+      if ($leaseWasPreexisting) {
+        throw 'Treehouse returned a path that was already leased before this invocation.'
+      }
       $leaseValid = $true
     }
     catch {
       $cleanup = 'Lease return was not attempted.'
-      if ($leaseAcquired) {
+      if ($leaseAcquired -and $leaseIdentityProven -and -not $leaseWasPreexisting) {
         $returnResult = Invoke-BoundedProcess $treehouse @('return', $leasePath) $gitInspectionRoot $false 30000
         $cleanup = if ($returnResult.ExitCode -eq 0) { 'Lease was returned.' } else { "Lease return failed: $($returnResult.Stderr.Trim())" }
       }
-      Add-ReadinessError 'invalid_lease' "$($_.Exception.Message) $cleanup"
+      elseif ($leaseWasPreexisting) {
+        $cleanup = 'Lease return was not attempted because the path was already leased before this invocation.'
+      }
+      Add-ReadinessError $leaseFailureCode "$($_.Exception.Message) $cleanup"
       Complete-Readiness 1
     }
 

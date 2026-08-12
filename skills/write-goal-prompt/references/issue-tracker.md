@@ -9,12 +9,14 @@ every repo a goal runs in; it does NOT depend on the repo's `docs/agents/issue-t
 
 ## Where slices live
 
-Task working directory is `$PROJECT_ROOT/.harness/goals/<task-slug>/`, where
-`PROJECT_ROOT = git rev-parse --show-toplevel` (resolved in the Execution Router's
-Step 0). Anchored to the project the goal runs in, not the workspace root:
+Read the validated manifest before locating slices. `worktreePath` is the isolated project checkout
+and task work and commit root. `runDirectory` is the artifacts directory and the only location for the
+goal's brief, plan, slice files, progress, and checker records. `repositoryRoot` and
+`gitCommonDirectory` are ownership identities; never use either as an artifact location. The
+workspace root is never a task work or commit target.
 
 ```
-<PROJECT_ROOT>/.harness/goals/<task-slug>/
+<runDirectory>/
   PRD.md                 <- /to-prd (or Planner) - the product brief
   issues/
     01-<slug>.md         <- one durable slice per phase, numbered from 01
@@ -62,7 +64,7 @@ These are the local-markdown mapping of the five canonical triage roles
 
 - **Interactive** (a human runs `write-goal-prompt`): invoke `/to-prd` to turn the
   conversation into `PRD.md`, then `/to-issues` to decompose it into slice files -
-  targeting `$PROJECT_ROOT/.harness/goals/<slug>/issues/` with this local schema, regardless of the
+  targeting `runDirectory/issues/` with this local schema, regardless of the
   repo's default tracker backend.
 - **Autonomous** (the `/goal` loop, no user to quiz): the Planner writes PLAN.md
   `## Phases` as usual, then mirrors each phase into a slice file in this schema (no

@@ -1,32 +1,31 @@
 # Workspace Context Snapshot
-> Auto-generated at 2026-07-24 15:43:54 for agent: Review issues 21-25 harness feature additions
+> Auto-generated at 2026-08-12 18:02:43 for agent: Verify user-intent coverage
 
 ## Git State
-- **Repo:** 01KYAC4MS1WXP4SCKAQC3ZP3D1
-- **Branch:** local/integrate-issues-21-25
+- **Repo:** 01KZVET6P5T9VDMWC09MG3TN01
+- **Branch:** HEAD
 - **Remote:** https://github.com/LeadGrowGTM/loop-engineer.git
 
 ### Recent Commits
 ```
-81b0090 fix(setup-harness): validate install paths and verify guard integrity
-94d6f43 fix(pi): close four confirmed red-team findings in compaction manager
-154273b feat(pi): add optional pinned compaction manager
-0076bb8 test(readiness): stabilize measured suite bounds
-4495673 goal(harness-pi): close issue #25 checker proof
-b74bbcb test(readiness): stabilize measured timeouts (#22)
-ebd2489 goal(harness-pi): closeout phase 2 issue #21-24 integration
-3153d22 feat(maker): guard protected work mechanically (#24)
+7f49922 no-mistakes(review): Extract shared helper, deterministic budget, fail-closed manifest read
+42096af fix(rebase): keep lifecycle branch scope focused
+25ff72d no-mistakes(document): Add --outcome flag to finish CLI signature in SKILL.md, harness-shipper, and parallel-execution reference
+d774a8c no-mistakes(test): fix stale contract-drift test and split timeout-prone 5-scenario finish test
+019b8dc no-mistakes(review): fix: strict branch equality, drop dead param and type variant
+bf3a097 fix(goal-lifecycle): reject cross-repository finish retries
+db32be1 fix(goal-lifecycle): bind completion retries to leases
+8c44663 fix(goal-lifecycle): reconcile finish retries safely
 ```
 
 ### Working Tree Changes
 ```
-M .claude/agent-context/snapshot.md
+(clean)
 ```
 
 ### Unstaged Diff Summary
 ```
-.claude/agent-context/snapshot.md | 28 +++++++++++++---------------
- 1 file changed, 13 insertions(+), 15 deletions(-)
+(no changes)
 ```
 
 ### Staged Diff Summary

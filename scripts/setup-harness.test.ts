@@ -24,6 +24,10 @@ import {
 
 const TMP_BASE = join(import.meta.dir, '../.test-tmp');
 const GUARD_SOURCE = readFileSync(join(import.meta.dir, 'guard-protected-work.ts'), 'utf8');
+const VENDORED_GRILL_SOURCE = readFileSync(
+  join(import.meta.dir, '../skills/setup-harness/vendor/batch-grill-me/SKILL.md'),
+  'utf8',
+);
 let tmpCounter = 0;
 const VALID_ROUTING = [
   '# Skill Routing',
@@ -144,6 +148,42 @@ function runChecked(command: string[]): void {
   }
 }
 
+function lifecycleTestEnvironment(
+  root: string,
+  options: { tasksAxiExit?: number; treehouseExit?: number; treehouseStatus?: string } = {},
+): Record<string, string | undefined> {
+  const bin = join(root, 'lifecycle-bin');
+  const home = join(root, 'home');
+  mkdirSync(bin, { recursive: true });
+  mkdirSync(home, { recursive: true });
+  writeFileSync(
+    join(bin, 'tasks-axi.cmd'),
+    `@echo off\r\nif "%1"=="--version" (echo tasks-axi 0.1.1 & exit /b ${options.tasksAxiExit ?? 0})\r\nexit /b 0\r\n`,
+  );
+  writeFileSync(
+    join(bin, 'treehouse.cmd'),
+    [
+      '@echo off',
+      `if "%1"=="--version" (echo treehouse 1.8.0 & exit /b ${options.treehouseExit ?? 0})`,
+      `if "%1"=="status" (echo ${options.treehouseStatus ?? 'NO_ACTIVE_LEASES'} & exit /b ${options.treehouseExit ?? 0})`,
+      'exit /b 0',
+      '',
+    ].join('\r\n'),
+  );
+  return {
+    ...process.env,
+    HOME: home,
+    USERPROFILE: home,
+    PATH: `${bin};${process.env.PATH ?? ''}`,
+  };
+}
+
+function runInstall(target: string, env: Record<string, string | undefined>) {
+  return Bun.spawnSync(
+    [process.execPath, join(import.meta.dir, 'setup-harness.ts'), 'install', target],
+    { env, stdout: 'pipe', stderr: 'pipe' },
+  );
+}
 // ── scanSkills ─────────────────────────────────────────────────────────────
 
 describe('scanSkills', () => {
@@ -414,7 +454,7 @@ describe('install CLI', () => {
     const result = Bun.spawnSync(
       [process.execPath, join(import.meta.dir, 'setup-harness.ts'), 'install', target],
       {
-        env: { ...process.env, HOME: home, USERPROFILE: home },
+        env: lifecycleTestEnvironment(root),
         stdout: 'pipe',
         stderr: 'pipe',
       },
@@ -463,7 +503,7 @@ describe('install CLI', () => {
     const result = Bun.spawnSync(
       [process.execPath, join(import.meta.dir, 'setup-harness.ts'), 'install', target],
       {
-        env: { ...process.env, HOME: home, USERPROFILE: home },
+        env: lifecycleTestEnvironment(root),
         stdout: 'pipe',
         stderr: 'pipe',
       },
@@ -527,7 +567,7 @@ describe('install CLI', () => {
     const result = Bun.spawnSync(
       [process.execPath, join(import.meta.dir, 'setup-harness.ts'), 'install', target],
       {
-        env: { ...process.env, HOME: home, USERPROFILE: home },
+        env: lifecycleTestEnvironment(root),
         stdout: 'pipe',
         stderr: 'pipe',
       },
@@ -560,7 +600,7 @@ describe('install CLI', () => {
       activeId: 'C24',
     });
     const gitignore = readFileSync(join(target, '.gitignore'), 'utf8');
-    expect(gitignore).toContain('.tmp/treehouse/');
+    expect(gitignore).toContain('.worktrees/');
     expect(gitignore).not.toContain('.gnhf-runs/');
     const claudeMd = readFileSync(join(target, 'CLAUDE.md'), 'utf8');
     expect(claudeMd).toContain('non-launching readiness');
@@ -585,5 +625,137 @@ describe('install CLI', () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout.toString()).toContain('✗ CLAUDE.md has ## Harness block');
+  });
+});
+
+describe('lifecycle dependency setup', () => {
+  test('fails closed before writes when the global grill skills directory links outside HOME', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-linked-global-skills-'));
+    const target = join(root, 'target');
+    const home = join(root, 'home');
+    const outsideSkills = join(root, 'outside-skills');
+    mkdirSync(target, { recursive: true });
+    mkdirSync(join(home, '.claude'), { recursive: true });
+    mkdirSync(outsideSkills, { recursive: true });
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+    try {
+      symlinkSync(outsideSkills, join(home, '.claude', 'skills'), process.platform === 'win32' ? 'junction' : 'dir');
+    } catch (error) {
+      if (process.platform === 'win32' && error !== null && typeof error === 'object' && 'code' in error && (error.code === 'EPERM' || error.code === 'EACCES')) return;
+      throw error;
+    }
+
+    const result = runInstall(target, lifecycleTestEnvironment(root));
+
+    expect(result.exitCode).toBe(1);
+    expect(existsSync(join(outsideSkills, 'batch-grill-me', 'SKILL.md'))).toBe(false);
+    expect(existsSync(join(home, '.claude', 'agents'))).toBe(false);
+  });
+
+  test('reports tasks-axi absent from the hermetic PATH as workspace onboarding required', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-missing-tasks-axi-'));
+    const target = join(root, 'target');
+    const home = join(root, 'home');
+    const bin = join(root, 'empty-bin');
+    mkdirSync(target, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, 'git.cmd'), '@echo off\r\nexit /b 1\r\n');
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+
+    const result = runInstall(target, { ...process.env, HOME: home, USERPROFILE: home, PATH: bin });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout.toString()).toContain('tasks-axi: workspace onboarding required');
+  });
+
+  test('reports Treehouse absent from the hermetic PATH as workspace onboarding required', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-missing-treehouse-'));
+    const target = join(root, 'target');
+    const home = join(root, 'home');
+    const bin = join(root, 'empty-bin');
+    mkdirSync(target, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, 'git.cmd'), '@echo off\r\nexit /b 1\r\n');
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+
+    const result = runInstall(target, { ...process.env, HOME: home, USERPROFILE: home, PATH: bin });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout.toString()).toContain('treehouse: workspace onboarding required');
+  });
+
+  test('clean install owns the lifecycle pool and pinned grill skill', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-lifecycle-clean-'));
+    const target = join(root, 'target');
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+    const result = runInstall(target, lifecycleTestEnvironment(root));
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(join(target, 'treehouse.toml'), 'utf8')).toBe('max_trees = 16\nroot = ".worktrees/"\n');
+    expect(readFileSync(join(target, '.gitignore'), 'utf8').split(/\r?\n/)).toContain('.worktrees/');
+    expect(readFileSync(join(root, 'home', '.claude', 'skills', 'batch-grill-me', 'SKILL.md'), 'utf8')).toBe(VENDORED_GRILL_SOURCE);
+  });
+
+  test('reinstall repairs bundled grill drift without duplicating the pool ignore', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-lifecycle-reinstall-'));
+    const target = join(root, 'target');
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+    const env = lifecycleTestEnvironment(root);
+    expect(runInstall(target, env).exitCode).toBe(0);
+    const grill = join(root, 'home', '.claude', 'skills', 'batch-grill-me', 'SKILL.md');
+    writeFileSync(grill, 'drifted');
+    expect(runInstall(target, env).exitCode).toBe(0);
+    expect(readFileSync(grill, 'utf8')).toBe(VENDORED_GRILL_SOURCE);
+    expect(readFileSync(join(target, '.gitignore'), 'utf8').split(/\r?\n/).filter((line) => line === '.worktrees/')).toHaveLength(1);
+  });
+
+  test('reports a broken tasks-axi executable as workspace onboarding required', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-lifecycle-broken-tasks-'));
+    const target = join(root, 'target');
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+    const result = runInstall(target, lifecycleTestEnvironment(root, { tasksAxiExit: 7 }));
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout.toString()).toContain('tasks-axi: workspace onboarding required');
+  });
+
+  test('reports an unusable Treehouse executable as workspace onboarding required', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-lifecycle-missing-treehouse-'));
+    const target = join(root, 'target');
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+    const result = runInstall(target, lifecycleTestEnvironment(root, { treehouseExit: 7 }));
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout.toString()).toContain('treehouse: workspace onboarding required');
+  });
+
+  test('repairs the legacy pool only after Treehouse proves no active lease', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-lifecycle-repair-'));
+    const target = join(root, 'target');
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+    writeFileSync(join(target, 'treehouse.toml'), 'max_trees = 16\nroot = ".tmp/treehouse/"\n');
+    const legacyLease = join(target, '.tmp', 'treehouse', 'active-lease', 'WORKTREE_SENTINEL');
+    mkdirSync(join(target, '.tmp', 'treehouse', 'active-lease'), { recursive: true });
+    writeFileSync(legacyLease, 'lease remains owned by treehouse');
+    expect(runInstall(target, lifecycleTestEnvironment(root)).exitCode).toBe(0);
+    expect(readFileSync(join(target, 'treehouse.toml'), 'utf8')).toBe('max_trees = 16\nroot = ".worktrees/"\n');
+    expect(readFileSync(legacyLease, 'utf8')).toBe('lease remains owned by treehouse');
+  });
+
+  test('refuses legacy pool repair when Treehouse reports active leases', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setup-harness-lifecycle-active-lease-'));
+    const target = join(root, 'target');
+    const legacy = 'max_trees = 16\nroot = ".tmp/treehouse/"\n';
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+    writeFileSync(join(target, 'treehouse.toml'), legacy);
+    const result = runInstall(target, lifecycleTestEnvironment(root, { treehouseStatus: 'ACTIVE_LEASE C24' }));
+    expect(result.exitCode).toBe(1);
+    expect(readFileSync(join(target, 'treehouse.toml'), 'utf8')).toBe(legacy);
+    expect(result.stdout.toString()).toContain('treehouse.toml repair blocked by active or unknown leases');
   });
 });

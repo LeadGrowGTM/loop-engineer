@@ -1,13 +1,11 @@
-# Context Management: 170k Threshold
+# Context Management: Durable Lifecycle Restart
 
-`/compact` compresses context in-place — Claude keeps working with a summary.
+Before clearing or compacting context, persist `RUN.json`, `GRILL.json`, `BRIEF.md`, and `HARNESS.md`
+in the recorded absolute run directory. Emit the lean restart pointer only after all four exist.
 
-**Why 170k, not turn-based:** Turn-based cadence (every N turns) is unreliable — some
-turns consume 500 tokens, others 15k. Context-based compaction triggers when it matters.
-170k leaves ~30k headroom in a 200k window for the compacted summary + next action.
+The next context starts from the pointer, changes to its absolute run path, reads `RUN.json` and
+`HARNESS.md`, and makes `goal-lifecycle validate --run <RUN.json>` its first action. A non-ready
+result stops routing and execution; Planner and Maker remain unreachable. Do not recreate state from
+conversation memory or select another run location.
 
-The checkpoint signal after compacting is critical — it prevents the agent from losing
-track of multi-phase work:
-
-> "After compacting, state: which phase you're in, what's complete, what file you're
-> working on, what's next. Then continue."
+After a compact, state the current phase, completed evidence, file in progress, and next action.

@@ -1,0 +1,1304 @@
+import { expect, setDefaultTimeout, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { readRunManifest, writeRunManifest } from "./goal-lifecycle/manifest";
+import { runProcess } from "./goal-lifecycle/process";
+import { lifecycleFailure } from './goal-lifecycle/contracts';
+import { decodeTaskDetail } from './goal-lifecycle/tasks-axi';
+
+const CLI_PATH = join(import.meta.dir, "goal-lifecycle.ts");
+setDefaultTimeout(180_000);
+const PINNED_GRILL_BASE64 = 'LS0tCm5hbWU6IGJhdGNoLWdyaWxsLW1lCmRlc2NyaXB0aW9uOiBBIHJlbGVudGxlc3MgaW50ZXJ2aWV3IHRoYXQgYXNrcyBldmVyeSBmcm9udGllciBxdWVzdGlvbiBhdCBvbmNlLCByb3VuZCBieSByb3VuZC4KdXNlci1pbnZvY2FibGU6IHRydWUKLS0tCgo8IS0tIFZlbmRvcmVkIGZyb20gbWF0dHBvY29jay9za2lsbHMuIFNvdXJjZSBvZiB0cnV0aCAoZGlmZiBhZ2FpbnN0IHRoaXMgYmVmb3JlIGVkaXRpbmcpOgogICAgIGh0dHBzOi8vcmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbS9tYXR0cG9jb2NrL3NraWxscy9tYWluL3NraWxscy9pbi1wcm9ncmVzcy9iYXRjaC1ncmlsbC1tZS9TS0lMTC5tZAogICAgIFRoZSBib2R5IGJlbG93IGlzIFZFUkJBVElNIHVwc3RyZWFtIC0tIGFueSBjaGFuZ2UgdG8gaXQgaXMgZHJpZnQsIG5vdCBhIGZpeC4KCiAgICAgU29sZSBkZXZpYXRpb24sIGZyb250bWF0dGVyIG9ubHk6IHVwc3RyZWFtJ3MgZnJvbnRtYXR0ZXIgY2FycmllcyBhIGh1bWFuLW9ubHkgaW52b2NhdGlvbiBsb2NrCiAgICAgKHNlZSB0aGUgVVJMIGFib3ZlKSB3aG9zZSB3aG9sZSBwdXJwb3NlIGlzIHRoYXQgYSBtb2RlbCBjYW4gbmV2ZXIgaW52b2tlIHRoaXMgc2tpbGwgb24gaXRzIG93bi4KICAgICBsb29wLWVuZ2luZWVyJ3MgY2xhcml0eSBnYXRlIG11c3Qgcm91dGUgdG8gaXQgYXV0b21hdGljYWxseSAtLSBzZWUgQnJhbmNoIEEgb2YKICAgICBza2lsbHMvd3JpdGUtZ29hbC1wcm9tcHQvcmVmZXJlbmNlcy9jbGFyaXR5LWdhdGUubWQgLS0gc28gdGhhdCBsb2NrIGlzIGRyb3BwZWQgaGVyZSBhbmQKICAgICBgdXNlci1pbnZvY2FibGU6IHRydWVgIGlzIGFkZGVkIGluIGl0cyBwbGFjZS4gVHJhZGVkIGF3YXkga25vd2luZ2x5LCBub3Qgb3Zlcmxvb2tlZC4KICAgICAoVGhlIGxvY2sncyBsaXRlcmFsIGZsYWcgbmFtZSBpcyBzcGVsbGVkIG91dCBhdCB0aGUgc291cmNlIFVSTDsgaXQgaXMgbGVmdCB1bnNwZWxsZWQgaGVyZSBzbyB0aGUKICAgICBpbnN0YWxsIGdhdGUgYGdyZXAgLWNgIG92ZXIgdGhpcyBmaWxlIHN0YXlzIGNsZWFuLikgLS0+CgpJbnRlcnZpZXcgdGhlIHVzZXIgcmVsZW50bGVzc2x5IHVudGlsIHlvdSByZWFjaCBhIHNoYXJlZCB1bmRlcnN0YW5kaW5nLiBNYXAgdGhpcyBhcyBhICoqZGVzaWduIHRyZWUqKjogZXZlcnkgZGVjaXNpb24gYnJhbmNoZXMgaW50byB0aGUgZGVjaXNpb25zIHRoYXQgaGFuZyBvZmYgaXQuCgpXb3JrIHRoZSB0cmVlIGluICoqcm91bmRzKiouIFRoZSAqKmZyb250aWVyKiogaXMgZXZlcnkgZGVjaXNpb24gd2hvc2UgcHJlcmVxdWlzaXRlcyBhcmUgYWxyZWFkeSBzZXR0bGVkIOKAlCB0aGUgcXVlc3Rpb25zIHlvdSBjYW4gYXNrICpub3cqIHdpdGhvdXQgZ3Vlc3NpbmcgYXQgYW5zd2VycyB5b3UgaGF2ZW4ndCBoZWFyZCB5ZXQuIEFzayB0aGUgd2hvbGUgZnJvbnRpZXIgaW4gb25lIHJvdW5kOiBudW1iZXIgZWFjaCBxdWVzdGlvbiBhbmQgZ2l2ZSB5b3VyIHJlY29tbWVuZGVkIGFuc3dlci4gVGhlbiB3YWl0IGZvciB0aGUgdXNlcidzIGFuc3dlcnMgYmVmb3JlIHRoZSBuZXh0IHJvdW5kLgoKRWFjaCByb3VuZCB0aGUgdXNlciBhbnN3ZXJzIHJlc2hhcGVzIHRoZSB0cmVlIOKAlCBzZXR0bGVkIGRlY2lzaW9ucyBwdXNoIHRoZSBmcm9udGllciBvdXR3YXJkIGFuZCB1bmJsb2NrIHF1ZXN0aW9ucyB0aGF0IGRlcGVuZGVkIG9uIHRoZW0uIFJlY29tcHV0ZSB0aGUgZnJvbnRpZXIgYW5kIGFzayB0aGUgbmV4dCByb3VuZC4gQSBxdWVzdGlvbiB3aG9zZSBhbnN3ZXIgZGVwZW5kcyBvbiBhbm90aGVyIHF1ZXN0aW9uIHN0aWxsIG9wZW4gaW4gdGhpcyByb3VuZCBiZWxvbmdzIHRvIGEgKmxhdGVyKiByb3VuZCwgbm90IHRoaXMgb25lLgoKRmluZGluZyAqZmFjdHMqIGlzIHlvdXIgam9iLCBuZXZlciB0aGUgdXNlcidzLiBXaGVuIGEgZnJvbnRpZXIgcXVlc3Rpb24gbmVlZHMgYSBmYWN0IGZyb20gdGhlIGVudmlyb25tZW50IChmaWxlc3lzdGVtLCB0b29scywgZXRjLiksIGRpc3BhdGNoIGEgc3ViLWFnZW50IHRvIGZpbmQgaXQg4oCUIGRvbid0IGFzayB0aGUgdXNlciBmb3IgYW55dGhpbmcgeW91IGNvdWxkIGxvb2sgdXAgeW91cnNlbGYuIERvbid0IGJsb2NrIG9uIGl0OiBhIHJ1bm5pbmcgZXhwbG9yYXRpb24gaXMgYW4gdW5zZXR0bGVkIHByZXJlcXVpc2l0ZSwgc28gb25seSB0aGUgcXVlc3Rpb25zIGRvd25zdHJlYW0gb2YgaXQgd2FpdCBmb3IgdGhlIHN1Yi1hZ2VudCB0byByZXBvcnQg4oCUIGFzayB0aGUgcmVzdCBvZiB0aGUgZnJvbnRpZXIgbm93LiBUaGUgKmRlY2lzaW9ucyogYXJlIHRoZSB1c2VyJ3Mg4oCUIHB1dCBlYWNoIHRvIHRoZW0gYW5kIHdhaXQuCgpUaGUgc2Vzc2lvbiBpcyBkb25lIHdoZW4gdGhlIGZyb250aWVyIGlzIGVtcHR5OiBldmVyeSBicmFuY2ggb2YgdGhlIGRlc2lnbiB0cmVlIHZpc2l0ZWQsIG5vdGhpbmcgbGVmdCBzaWxlbnRseSBhc3N1bWVkLiBEbyBub3QgYWN0IG9uIGl0IHVudGlsIHRoZSB1c2VyIGNvbmZpcm1zIHlvdSBoYXZlIHJlYWNoZWQgYSBzaGFyZWQgdW5kZXJzdGFuZGluZy4K';
+
+function invokeLifecycle(args: string[], env: Record<string, string | undefined> = process.env, cwd?: string) {
+  const result = Bun.spawnSync([process.execPath, CLI_PATH, ...args], {
+    env,
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stdout = result.stdout.toString();
+  const lines = stdout.trim() === "" ? [] : stdout.trim().split(/\r?\n/);
+
+  return {
+    exitCode: result.exitCode,
+    lines,
+    json: lines.length === 1 ? JSON.parse(lines[0]) : undefined,
+    stderr: result.stderr.toString(),
+  };
+}
+
+function runGit(args: string[], cwd: string): string {
+  const result = Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
+  if (result.exitCode !== 0) {
+    throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
+  }
+  return result.stdout.toString().trim();
+}
+
+function initializeRepository(repo: string): void {
+  mkdirSync(repo, { recursive: true });
+  runGit(['init', '-b', 'main'], repo);
+  runGit(['config', 'user.name', 'Lifecycle Test'], repo);
+  runGit(['config', 'user.email', 'lifecycle@example.invalid'], repo);
+  writeFileSync(join(repo, 'README.md'), '# lifecycle fixture\n');
+  runGit(['add', 'README.md'], repo);
+  runGit(['commit', '-m', 'fixture'], repo);
+  runGit(['switch', '-c', 'feature/lifecycle'], repo);
+  writeFileSync(join(repo, '.gitignore'), '.worktrees/\n');
+  writeFileSync(join(repo, 'treehouse.toml'), 'max_trees = 16\nroot = ".worktrees/"\n');
+  runGit(['add', '.gitignore', 'treehouse.toml'], repo);
+  runGit(['commit', '-m', 'configure lifecycle pool'], repo);
+  mkdirSync(join(repo, '.worktrees'), { recursive: true });
+}
+
+interface LifecycleFixtureOptions {
+  taskState?: 'missing' | 'queued' | 'in_flight' | 'done';
+  taskTitle?: string;
+  tasksBroken?: boolean;
+  treehouseMode?: 'valid' | 'malformed' | 'sibling' | 'foreign' | 'reparse';
+  nested?: boolean;
+}
+
+function createTasksAxiFake(
+  bin: string,
+  root: string,
+  taskId: string,
+  title: string,
+  state: LifecycleFixtureOptions['taskState'],
+): { calls: string; details: string; stateFile: string } {
+  const calls = join(root, 'tasks-calls.txt');
+  const details = join(root, 'tasks-details.txt');
+  const stateFile = join(root, 'tasks-state.txt');
+  if (state && state !== 'missing') writeFileSync(stateFile, `${state}\n`);
+  writeFileSync(join(bin, 'tasks-axi.cmd'), '@echo off\r\nnode "%~dp0\\tasks-axi-fake.cjs" %*\r\n');
+  writeFileSync(
+    join(bin, 'tasks-axi-fake.cjs'),
+    [
+      'const fs = require("node:fs");',
+      'const args = process.argv.slice(2);',
+      'fs.appendFileSync(process.env.TASKS_DETAILS, [process.cwd(), args.join(String.fromCharCode(32))].join(String.fromCharCode(124)) + String.fromCharCode(10));',
+      'fs.appendFileSync(process.env.TASKS_CALLS, `${args.join(" ")}\\n`);',
+      'if (args[0] === "--version") {',
+      '  if (process.env.TASKS_BROKEN === "1") { console.error("broken launcher"); process.exit(1); }',
+      '  console.log("0.1.1"); process.exit(0);',
+      '}',
+      'if (args[0] === "show") {',
+      '  if (!fs.existsSync(process.env.TASKS_STATE_FILE)) { console.error("code: NOT_FOUND"); process.exit(1); }',
+      '  const state = fs.readFileSync(process.env.TASKS_STATE_FILE, "utf8").trim();',
+      '  const title = JSON.stringify(process.env.TASKS_TITLE);',
+      '  const repo = JSON.stringify("C:\\\\work\\\\goal");',
+      '  console.log(`task:\\n  id: ${process.env.TASKS_ID}\\n  "title": ${title}\\n  state: ${state}\\n  repo: ${repo}`);',
+      '  process.exit(0);',
+      '}',
+      'if (args[0] === "add") { fs.writeFileSync(process.env.TASKS_STATE_FILE, "queued\\n"); process.exit(0); }',
+      'if (args[0] === "start") { fs.writeFileSync(process.env.TASKS_STATE_FILE, "in_flight\\n"); process.exit(0); }',
+      'if (args[0] === String.fromCharCode(100,111,110,101)) {',
+      '  if (process.env.TASKS_DONE_FAIL === String.fromCharCode(49)) { console.error(String.fromCharCode(100,111,110,101,32,102,97,105,108,101,100)); process.exit(1); }',
+      '  fs.writeFileSync(process.env.TASKS_STATE_FILE, String.fromCharCode(100,111,110,101,10)); process.exit(0);',
+      '}',
+      'process.exit(2);',
+      '',
+    ].join('\n'),
+  );
+  return { calls, details, stateFile };
+}
+
+function createTreehouseFake(
+  bin: string,
+  root: string,
+  repo: string,
+  mode: NonNullable<LifecycleFixtureOptions['treehouseMode']>,
+): { calls: string; lease: string; returned: string } {
+  const pool = join(repo, '.worktrees');
+  const calls = join(root, 'treehouse-calls.txt');
+  const returned = join(root, 'treehouse-returned.txt');
+  let registrationRepo = repo;
+  let lease = join(pool, 'slot-1', 'repository');
+  let outputLease = lease;
+
+  if (mode === 'sibling') lease = outputLease = join(dirname(repo), 'gtm-orchestrator-funnel-batch');
+  if (mode === 'foreign') {
+    registrationRepo = join(root, 'foreign-repository');
+    initializeRepository(registrationRepo);
+    lease = outputLease = join(pool, 'foreign-slot', 'repository');
+  }
+  if (mode === 'reparse') {
+    const external = join(root, 'external-pool');
+    mkdirSync(external, { recursive: true });
+    const alias = join(pool, 'escape');
+    symlinkSync(external, alias, 'junction');
+    lease = join(external, 'repository');
+    outputLease = join(alias, 'repository');
+  }
+  mkdirSync(dirname(lease), { recursive: true });
+  runGit(['worktree', 'add', '--detach', lease, 'main'], registrationRepo);
+
+  writeFileSync(
+    join(bin, 'treehouse.ps1'),
+    [
+      'if (Test-Path ' + String.fromCharCode(36) + 'env:TREEHOUSE_RETURNED_FILE) { ' + String.fromCharCode(36) + 'env:TREEHOUSE_STATUS_MODE = ' + String.fromCharCode(34) + 'returned' + String.fromCharCode(34) + ' }',
+      String.fromCharCode(36) + 'command = ' + String.fromCharCode(36) + 'args[0]',
+      'if (' + String.fromCharCode(36) + 'command -eq ' + String.fromCharCode(34) + 'return' + String.fromCharCode(34) + ') {',
+      '  if (' + String.fromCharCode(36) + 'env:TREEHOUSE_RETURN_FAIL -eq ' + String.fromCharCode(34) + '1' + String.fromCharCode(34) + ') { [System.IO.File]::AppendAllText(' + String.fromCharCode(36) + 'env:TREEHOUSE_CALLS, (' + String.fromCharCode(36) + 'args -join ' + String.fromCharCode(34) + ' ' + String.fromCharCode(34) + ') + [Environment]::NewLine) }',
+      '  if (' + String.fromCharCode(36) + 'env:TREEHOUSE_RETURN_FAIL -eq ' + String.fromCharCode(34) + '1' + String.fromCharCode(34) + ') { exit 1 }',
+      '  [System.IO.File]::WriteAllText(' + String.fromCharCode(36) + 'env:TREEHOUSE_RETURNED_FILE, ' + String.fromCharCode(34) + 'returned' + String.fromCharCode(34) + ')',
+      '}',
+      '[System.IO.File]::AppendAllText($env:TREEHOUSE_CALLS, (($args -join " ") + "`r`n"))',
+      '$command = $args[0]',
+      'if ($command -eq "--version") { [Console]::Out.WriteLine("v1.8.0"); exit 0 }',
+      'if ($command -eq "get") {',
+      '  [Console]::Out.WriteLine($env:TREEHOUSE_LEASE)',
+      '  if ($env:TREEHOUSE_MODE -eq "malformed") { [Console]::Out.WriteLine("unexpected banner") }',
+      '  exit 0',
+      '}',
+      'if ($command -eq "return") { exit 0 }',
+      'if ($command -eq "status") {',
+      '  if ($env:TREEHOUSE_STATUS_MODE -eq "validate") { [Console]::Out.WriteLine("1 leased $env:TREEHOUSE_LEASE (held by $env:TREEHOUSE_HOLDER)") }',
+      '  exit 0',
+      '}',
+      'exit 2',
+      '',
+    ].join('\r\n'),
+  );
+  return { calls, lease: outputLease, returned };
+}
+
+function createLifecycleFixture(options: LifecycleFixtureOptions = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'goal-lifecycle-start-'));
+  const outer = join(root, 'workspace');
+  const repo = options.nested ? join(outer, 'outer-repository', 'nested-repository') : join(outer, 'repository');
+  if (options.nested) {
+    initializeRepository(join(outer, 'outer-repository'));
+  }
+  initializeRepository(repo);
+  const bin = join(root, 'bin');
+  const userHome = join(root, 'home');
+  const grillPath = join(userHome, '.claude', 'skills', 'batch-grill-me', 'SKILL.md');
+  mkdirSync(bin, { recursive: true });
+  mkdirSync(dirname(grillPath), { recursive: true });
+  writeFileSync(grillPath, Buffer.from(PINNED_GRILL_BASE64, 'base64'));
+
+  const taskId = 'canonical-goal';
+  const title = options.taskTitle ?? 'Canonical goal';
+  const tasks = createTasksAxiFake(bin, root, taskId, title, options.taskState ?? 'missing');
+  const treehouse = createTreehouseFake(bin, root, repo, options.treehouseMode ?? 'valid');
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    PATH: `${bin};${process.env.PATH ?? ''}`,
+    HOME: userHome,
+    USERPROFILE: userHome,
+    PSModuleAnalysisCachePath: join(root, 'powershell-module-cache'),
+    TASKS_CALLS: tasks.calls,
+    TASKS_DETAILS: tasks.details,
+    TASKS_STATE_FILE: tasks.stateFile,
+    TASKS_ID: taskId,
+    TASKS_TITLE: title,
+    TASKS_BROKEN: options.tasksBroken ? '1' : '0',
+    TASKS_DONE_FAIL: '0',
+    TREEHOUSE_CALLS: treehouse.calls,
+    TREEHOUSE_LEASE: treehouse.lease,
+    TREEHOUSE_MODE: options.treehouseMode ?? 'valid',
+    TREEHOUSE_STATUS_MODE: 'start',
+    TREEHOUSE_HOLDER: taskId,
+    TREEHOUSE_RETURN_FAIL: '0',
+    TREEHOUSE_RETURNED_FILE: treehouse.returned,
+  };
+  return { root, repo, taskId, title, tasks, treehouse, env, grillPath };
+}
+
+function startFixture(fixture: ReturnType<typeof createLifecycleFixture>) {
+  return invokeLifecycle(
+    ['start', '--repo', fixture.repo, '--task-id', fixture.taskId, '--title', fixture.title],
+    fixture.env,
+  );
+}
+
+const PINNED_GRILL_HASH = '92a426f9ed319ca6f54ecf8fabe8c57f82e42dd71e7e5a2d11415fb6f903557f';
+
+function completeGrillReceipt(taskId: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    taskId,
+    skill: {
+      name: 'batch-grill-me',
+      version: '1.0.0',
+      sourceHash: PINNED_GRILL_HASH,
+    },
+    rounds: [],
+    recommendations: [],
+    settledDecisions: [],
+    finalFrontierCount: 0,
+    status: 'complete',
+    redaction: {
+      redacted: false,
+      fields: [],
+    },
+    ...overrides,
+  };
+}
+
+function recordGrillFixture(
+  fixture: ReturnType<typeof createLifecycleFixture>,
+  receipt: Record<string, unknown>,
+) {
+  const start = startFixture(fixture);
+  expect(start.exitCode).toBe(0);
+  const manifestPath = start.json.data.manifestPath as string;
+  const candidatePath = join(dirname(manifestPath), 'candidate-GRILL.json');
+  writeFileSync(candidatePath, JSON.stringify(receipt, null, 2));
+  return {
+    candidatePath,
+    manifestPath,
+    result: invokeLifecycle(['record-grill', '--run', manifestPath, '--receipt', candidatePath], fixture.env),
+  };
+}
+
+function validateFixture(
+  fixture: ReturnType<typeof createLifecycleFixture>,
+  manifestPath: string,
+  cwd?: string,
+) {
+  fixture.env.TREEHOUSE_STATUS_MODE = 'validate';
+  return invokeLifecycle(['validate', '--run', manifestPath], fixture.env, cwd);
+}
+
+function completedRunFixture(fixture: ReturnType<typeof createLifecycleFixture>) {
+  const recorded = recordGrillFixture(fixture, completeGrillReceipt(fixture.taskId));
+  expect(recorded.result.exitCode).toBe(0);
+  const run = readRunManifest(recorded.manifestPath);
+  const validated = validateFixture(fixture, recorded.manifestPath, run.worktreePath);
+  expect(validated.exitCode).toBe(0);
+  writeFileSync(join(run.runDirectory, 'HANDOFF.md'), '# completed handoff\\n');
+  writeFileSync(join(run.worktreePath, 'deliverable.txt'), 'completed\\n');
+  runGit(['add', '.'], run.worktreePath);
+  runGit(['commit', '-m', 'complete lifecycle deliverable'], run.worktreePath);
+  return { manifestPath: recorded.manifestPath, run: readRunManifest(recorded.manifestPath) };
+}
+
+function finishFixture(
+  fixture: ReturnType<typeof createLifecycleFixture>,
+  manifestPath: string,
+  options: { outcome?: 'success' | 'blocked' | 'failed'; pr?: string } = {},
+) {
+  fixture.env.TREEHOUSE_STATUS_MODE = 'validate';
+  const args = ['finish', '--run', manifestPath];
+  if (options.outcome) args.push('--outcome', options.outcome);
+  if (options.pr) args.push('--pr', options.pr);
+  const cwd = existsSync(fixture.treehouse.returned) || existsSync(join(readRunManifest(manifestPath).runDirectory, 'COMPLETION.json')) ? fixture.repo : readRunManifest(manifestPath).worktreePath;
+  return invokeLifecycle(args, fixture.env, cwd);
+}
+
+function driftCanonicalGrillSkill(manifestPath: string, field: 'name' | 'version' | 'sourceHash', value: string): void {
+  const receiptPath = readRunManifest(manifestPath).grillReceiptPath;
+  const receipt = JSON.parse(readFileSync(receiptPath, 'utf8')) as { skill: Record<string, unknown> };
+  receipt.skill[field] = value;
+  writeFileSync(receiptPath, JSON.stringify(receipt));
+}
+
+function omitGitWorktreeRegistration(fixture: ReturnType<typeof createLifecycleFixture>): void {
+  const realGit = Bun.which('git');
+  if (!realGit) throw new Error('test fixture requires git');
+  const bin = fixture.env.PATH!.split(';')[0];
+  writeFileSync(join(bin, 'git.cmd'), '@echo off\r\nnode %~dp0\\git-fake.cjs %*\r\n');
+  writeFileSync(join(bin, 'git-fake.cjs'), Buffer.from('Y29uc3QgYz1yZXF1aXJlKCdub2RlOmNoaWxkX3Byb2Nlc3MnKTtjb25zdCBhPXByb2Nlc3MuYXJndi5zbGljZSgyKS5tYXAoeD0+eD09PSdIRUFEe2NvbW1pdH0nPydIRUFEXntjb21taXR9Jzp4KTtpZihwcm9jZXNzLmVudi5HSVRfV09SS1RSRUVfTElTVF9NT0RFPT09J29taXQnKXtpZihhLmluY2x1ZGVzKCd3b3JrdHJlZScpKXtpZihhLmluY2x1ZGVzKCdsaXN0Jykpe2lmKGEuaW5jbHVkZXMoJy0tcG9yY2VsYWluJykpe3Byb2Nlc3Muc3Rkb3V0LndyaXRlKCd3b3JrdHJlZSAnK3Byb2Nlc3MuZW52LkdJVF9SRUdJU1RSQVRJT05fUk9PVCsnXG4nKTtwcm9jZXNzLmV4aXQoMCl9fX19Y29uc3Qgcj1jLnNwYXduU3luYyhwcm9jZXNzLmVudi5SRUFMX0dJVCxhLHtzdGRpbzonaW5oZXJpdCd9KTtwcm9jZXNzLmV4aXQoci5zdGF0dXM9PT1udWxsPzE6ci5zdGF0dXMpOwo=', 'base64'));
+  fixture.env.REAL_GIT = realGit;
+  fixture.env.GIT_REGISTRATION_ROOT = fixture.repo;
+  fixture.env.GIT_WORKTREE_LIST_MODE = 'omit';
+}
+
+function forceLifecycleGitFailure(fixture: ReturnType<typeof createLifecycleFixture>, operation: 'add' | 'commit'): void {
+  const realGit = Bun.which('git');
+  if (!realGit) throw new Error('test fixture requires git');
+  const bin = fixture.env.PATH!.split(';')[0];
+  writeFileSync(join(bin, 'git.cmd'), '@echo off\r\nnode %~dp0\\git-finish-fake.cjs %*\r\n');
+  writeFileSync(join(bin, 'git-finish-fake.cjs'), [
+    'const c=require(String.fromCharCode(110,111,100,101,58,99,104,105,108,100,95,112,114,111,99,101,115,115)); const a=process.argv.slice(2).map((v)=>v===String.fromCharCode(72,69,65,68,123,99,111,109,109,105,116,125)?String.fromCharCode(72,69,65,68,94,123,99,111,109,109,105,116,125):v);',
+    'const add=a.includes(String.fromCharCode(97,100,100))&&a.includes(String.fromCharCode(46,104,97,114,110,101,115,115,47,103,111,97,108,115,47,99,97,110,111,110,105,99,97,108,45,103,111,97,108,47,67,79,77,80,76,69,84,73,79,78,46,106,115,111,110));',
+    'if(process.env.GIT_FINISH_FAILURE===String.fromCharCode(97,100,100)&&add){ process.exit(1); }',
+    'const commit=a.includes(String.fromCharCode(99,111,109,109,105,116))&&a.includes(String.fromCharCode(103,111,97,108,45,108,105,102,101,99,121,99,108,101,32,99,111,109,112,108,101,116,105,111,110,32,105,110,116,101,110,116,32,99,97,110,111,110,105,99,97,108,45,103,111,97,108));',
+    'const r=c.spawnSync(process.env.REAL_GIT,a,{stdio:String.fromCharCode(105,110,104,101,114,105,116)});',
+    'if(process.env.GIT_FINISH_FAILURE===String.fromCharCode(99,111,109,109,105,116)&&commit&&r.status===0){ process.exit(1); } process.exit(r.status??1);',
+  ].join('\n'));
+  fixture.env.REAL_GIT = realGit;
+  fixture.env.GIT_FINISH_FAILURE = operation;
+}
+
+function expectSafeRemediation(result: { remediation?: unknown }): void {
+  expect(Array.isArray(result.remediation)).toBe(true);
+  const remediation = result.remediation as unknown[];
+  expect(remediation.length).toBeGreaterThan(0);
+  expect(remediation.every((entry) => typeof entry === 'string' && entry.trim().length > 0)).toBe(true);
+  expect(remediation.join(' ')).not.toMatch(
+    /primary[- ]checkout|direct[- ]git|git worktree|-NoIsolation|skip(?:ping)?(?: the)? grill/i,
+  );
+}
+
+// Catches a dispatcher that emits a non-JSON result, multiple results, or treats invalid input as success.
+test("unknown operation emits exactly one typed JSON result", () => {
+  const result = invokeLifecycle(["unknown"]);
+
+  expect(result.exitCode).toBe(2);
+  expect(result.lines).toHaveLength(1);
+  expect(result.json).toMatchObject({
+    schemaVersion: 1,
+    operation: "unknown",
+    ok: false,
+    code: "INVALID_ARGUMENT",
+  });
+  expect(result.stderr).toBe("");
+  expectSafeRemediation(result.json);
+});
+
+test('finish commits completion intent, returns only the exact lease, then completes the durable task', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+
+  const result = finishFixture(fixture, completed.manifestPath, { pr: 'https://example.invalid/pr/1' });
+
+  expect(result.exitCode).toBe(0);
+  expect(result.json).toMatchObject({ operation: 'finish', ok: true, code: 'OK', data: { taskId: fixture.taskId } });
+  expect(existsSync(join(completed.run.runDirectory, 'COMPLETION.json'))).toBe(true);
+  expect(existsSync(fixture.treehouse.returned)).toBe(true);
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).toContain('done canonical-goal --pr https://example.invalid/pr/1');
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toContain('return ' + completed.run.worktreePath);
+  expect(readFileSync(fixture.tasks.details, 'utf8')).toContain(fixture.repo + '|done canonical-goal');
+});
+
+test('audit classifies registered worktrees without mutating files, refs, or manager state', () => {
+  const fixture = createLifecycleFixture();
+  const before = {
+    worktrees: runGit(['worktree', 'list', '--porcelain'], fixture.repo),
+    refs: runGit(['show-ref'], fixture.repo),
+    tasks: existsSync(fixture.tasks.calls) ? readFileSync(fixture.tasks.calls, 'utf8') : '',
+    treehouse: existsSync(fixture.treehouse.calls) ? readFileSync(fixture.treehouse.calls, 'utf8') : '',
+  };
+
+  fixture.env.TREEHOUSE_STATUS_MODE = 'validate';
+  const result = invokeLifecycle(['audit', '--repo', fixture.repo], fixture.env, fixture.repo);
+
+  expect(result.exitCode).toBe(0);
+  expect(result.json).toMatchObject({ operation: 'audit', ok: true, code: 'OK' });
+  expect(result.json.data.rows).toEqual(expect.any(Array));
+  expect(runGit(['worktree', 'list', '--porcelain'], fixture.repo)).toBe(before.worktrees);
+  expect(runGit(['show-ref'], fixture.repo)).toBe(before.refs);
+  expect(existsSync(fixture.tasks.calls) ? readFileSync(fixture.tasks.calls, 'utf8') : '').toBe(before.tasks);
+  expect(existsSync(fixture.treehouse.calls) ? readFileSync(fixture.treehouse.calls, 'utf8') : '').toBe(before.treehouse + 'status\r\n');
+});
+
+test('finish retains a blocked lease with durable recovery', () => {
+  const fixture = createLifecycleFixture();
+  const started = startFixture(fixture);
+  const result = finishFixture(fixture, started.json.data.manifestPath as string, { outcome: 'blocked' });
+  expect(result.exitCode).toBe(0);
+  expect(existsSync(join(readRunManifest(started.json.data.manifestPath as string).runDirectory, 'RECOVERY.json'))).toBe(true);
+  expect(existsSync(fixture.treehouse.returned)).toBe(false);
+  expect(existsSync(fixture.tasks.calls) ? readFileSync(fixture.tasks.calls, 'utf8') : '').not.toContain('done canonical-goal');
+});
+
+test('finish retains a failed lease with durable recovery', () => {
+  const fixture = createLifecycleFixture();
+  const started = startFixture(fixture);
+  const result = finishFixture(fixture, started.json.data.manifestPath as string, { outcome: 'failed' });
+  expect(result.exitCode).toBe(0);
+  expect(existsSync(join(readRunManifest(started.json.data.manifestPath as string).runDirectory, 'RECOVERY.json'))).toBe(true);
+  expect(existsSync(fixture.treehouse.returned)).toBe(false);
+  expect(existsSync(fixture.tasks.calls) ? readFileSync(fixture.tasks.calls, 'utf8') : '').not.toContain('done canonical-goal');
+});
+
+test('finish rejects success with a dirty worktree', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  writeFileSync(join(completed.run.worktreePath, 'untracked.txt'), 'dirty\n');
+  const result = finishFixture(fixture, completed.manifestPath);
+  expect(result.exitCode).toBe(1);
+  expect(existsSync(fixture.treehouse.returned)).toBe(false);
+  expectSafeRemediation(result.json);
+});
+
+test('finish rejects success without a handoff', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  rmSync(join(completed.run.runDirectory, 'HANDOFF.md'));
+  const result = finishFixture(fixture, completed.manifestPath);
+  expect(result.exitCode).toBe(1);
+  expect(existsSync(fixture.treehouse.returned)).toBe(false);
+  expectSafeRemediation(result.json);
+});
+
+test('finish rejects success when lease held by another owner', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TREEHOUSE_HOLDER = 'other-goal';
+  const result = finishFixture(fixture, completed.manifestPath);
+  expect(result.exitCode).toBe(1);
+  expect(existsSync(fixture.treehouse.returned)).toBe(false);
+  expectSafeRemediation(result.json);
+});
+
+test('audit emits every legacy classification without manager or repository mutation', () => {
+  const fixture = createLifecycleFixture();
+  const external = join(fixture.root, 'pipeline-misleading' + String.fromCharCode(39) + 's');
+  const dirty = join(fixture.root, 'dirty-audit');
+  const unreachable = join(fixture.root, 'unreachable-audit');
+  const sibling = join(dirname(fixture.repo), 'sibling-audit');
+  for (const [path, branch] of [[external, 'audit/external'], [dirty, 'audit/dirty'], [unreachable, 'audit/unreachable'], [sibling, 'audit/pipeline']] as const) {
+    runGit(['worktree', 'add', '-b', branch, path, 'HEAD'], fixture.repo);
+  }
+  writeFileSync(join(dirty, 'dirty.txt'), 'dirty\n');
+  writeFileSync(join(unreachable, 'unreachable.txt'), 'unreachable\n');
+  runGit(['add', 'unreachable.txt'], unreachable);
+  runGit(['commit', '-m', 'unreachable audit commit'], unreachable);
+  const before = {
+    worktrees: runGit(['worktree', 'list', '--porcelain'], fixture.repo),
+    refs: runGit(['show-ref'], fixture.repo),
+    files: [external, dirty, unreachable, sibling].map((path) => runGit(['status', '--porcelain=v1', '--untracked-files=all'], path)).join('|'),
+    tasks: existsSync(fixture.tasks.calls) ? readFileSync(fixture.tasks.calls, 'utf8') : '',
+    treehouse: existsSync(fixture.treehouse.calls) ? readFileSync(fixture.treehouse.calls, 'utf8') : '',
+  };
+  fixture.env.TREEHOUSE_STATUS_MODE = 'validate';
+  const result = invokeLifecycle(['audit', '--repo', fixture.repo], fixture.env, fixture.repo);
+  expect(result.exitCode).toBe(0);
+  const rows = result.json.data.rows as Array<{ path: string; classification: string; manager: string; reachable: boolean; dirty: boolean; suggestedCommand: string }>;
+  expect(rows.map((row) => row.classification).sort()).toEqual(['MISPLACED_WORKTREE', 'MISPLACED_WORKTREE', 'MISPLACED_WORKTREE', 'MISPLACED_WORKTREE', 'managed', 'primary']);
+  expect(rows.find((row) => row.classification === 'managed')).toMatchObject({ manager: 'treehouse', reachable: true });
+  expect(rows.find((row) => row.classification === 'MISPLACED_WORKTREE')).toMatchObject({ manager: 'external', reachable: true });
+  expect(rows.find((row) => row.dirty)).toMatchObject({ classification: 'MISPLACED_WORKTREE', manager: 'external', reachable: true });
+  expect(rows.find((row) => !row.reachable)).toMatchObject({ classification: 'MISPLACED_WORKTREE', manager: 'external' });
+  expect(rows.filter((row) => row.classification === 'primary' || row.classification === 'managed').every((row) => row.suggestedCommand === '')).toBe(true);
+  expect(rows.filter((row) => row.classification !== 'primary' && row.classification !== 'managed').every((row) => row.suggestedCommand.includes('worktree remove'))).toBe(true);
+  const quote = String.fromCharCode(39);
+  expect(rows.find((row) => row.path === external)?.suggestedCommand).toBe('git -C ' + quote + fixture.repo + quote + ' worktree remove ' + quote + external.replaceAll(quote, quote + quote) + quote);
+  expect(runGit(['worktree', 'list', '--porcelain'], fixture.repo)).toBe(before.worktrees);
+  expect(runGit(['show-ref'], fixture.repo)).toBe(before.refs);
+  expect([external, dirty, unreachable, sibling].map((path) => runGit(['status', '--porcelain=v1', '--untracked-files=all'], path)).join('|')).toBe(before.files);
+  expect(existsSync(fixture.tasks.calls) ? readFileSync(fixture.tasks.calls, 'utf8') : '').toBe(before.tasks);
+  expect(existsSync(fixture.treehouse.calls) ? readFileSync(fixture.treehouse.calls, 'utf8') : '').toBe(before.treehouse + 'status\r\n');
+});
+
+test('finish reconciles task completion after a successful return without returning twice', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TASKS_DONE_FAIL = '1';
+  const pending = finishFixture(fixture, completed.manifestPath, { pr: 'https://example.invalid/pr/2' });
+  expect(pending.json).toMatchObject({ code: 'TASK_COMPLETION_PENDING' });
+  expect(existsSync(fixture.treehouse.returned)).toBe(true);
+  const callsBefore = readFileSync(fixture.treehouse.calls, 'utf8');
+  fixture.env.TASKS_DONE_FAIL = '0';
+  const retry = finishFixture(fixture, completed.manifestPath, { pr: 'https://example.invalid/pr/2' });
+  expect(retry.exitCode).toBe(0);
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(callsBefore + 'status\r\n');
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).toContain('done canonical-goal --pr https://example.invalid/pr/2');
+  const idempotent = finishFixture(fixture, completed.manifestPath, { pr: 'https://example.invalid/pr/2' });
+  expect(idempotent.exitCode).toBe(0);
+  const conflictingPr = finishFixture(fixture, completed.manifestPath, { pr: 'https://example.invalid/pr/other' });
+  expect(conflictingPr.json).toMatchObject({ code: 'TASK_COMPLETION_PENDING' });
+});
+
+test('finish resumes an exact still-held lease after return failure without recommitting intent', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TREEHOUSE_RETURN_FAIL = '1';
+  const first = finishFixture(fixture, completed.manifestPath);
+  expect(first.json).toMatchObject({ code: 'TREEHOUSE_RETURN_FAILED' });
+  const completion = readFileSync(join(completed.run.runDirectory, 'COMPLETION.json'), 'utf8');
+  fixture.env.TREEHOUSE_RETURN_FAIL = '0';
+  const retry = finishFixture(fixture, completed.manifestPath);
+  expect(retry.exitCode).toBe(0);
+  expect(readFileSync(join(completed.run.runDirectory, 'COMPLETION.json'), 'utf8')).toBe(completion);
+  const returns = readFileSync(fixture.treehouse.calls, 'utf8').split(/\r?\n/).filter((line) => line.startsWith('return '));
+  expect(returns).toEqual(['return ' + completed.run.worktreePath, 'return ' + completed.run.worktreePath]);
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).toContain('done canonical-goal');
+});
+
+test('finish refuses a completion retry when the recorded path is held by another owner', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TASKS_DONE_FAIL = '1';
+  expect(finishFixture(fixture, completed.manifestPath).json).toMatchObject({ code: 'TASK_COMPLETION_PENDING' });
+  rmSync(fixture.treehouse.returned);
+  fixture.env.TREEHOUSE_HOLDER = 'other-goal';
+  fixture.env.TASKS_DONE_FAIL = '0';
+  const retry = finishFixture(fixture, completed.manifestPath);
+  expect(retry.json).toMatchObject({ code: 'LEASE_IDENTITY_MISMATCH' });
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).toContain('show canonical-goal --full');
+});
+
+test('finish retry uses committed branch evidence after returned worktree artifacts disappear', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TASKS_DONE_FAIL = '1';
+  expect(finishFixture(fixture, completed.manifestPath).json).toMatchObject({ code: 'TASK_COMPLETION_PENDING' });
+  rmSync(completed.run.runDirectory, { recursive: true, force: true });
+  fixture.env.TASKS_DONE_FAIL = '0';
+  const beforeReturns = readFileSync(fixture.treehouse.calls, 'utf8');
+  const retry = invokeLifecycle(['finish', '--run', completed.manifestPath], fixture.env, fixture.repo);
+  expect(retry.exitCode).toBe(0);
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(beforeReturns + 'status\r\n');
+  expect(readFileSync(fixture.tasks.details, 'utf8')).toContain(fixture.repo + '|done canonical-goal');
+});
+
+test('finish reconciliation fails closed when exact-holder manifest is corrupt or from another tenant', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TREEHOUSE_RETURN_FAIL = '1';
+  expect(finishFixture(fixture, completed.manifestPath).json).toMatchObject({ code: 'TREEHOUSE_RETURN_FAILED' });
+  fixture.env.TREEHOUSE_RETURN_FAIL = '0';
+
+  const saved = readFileSync(completed.manifestPath, 'utf8');
+  writeRunManifest(completed.manifestPath, { ...completed.run, leaseHolder: 'other-tenant' });
+  const wrongTenant = finishFixture(fixture, completed.manifestPath);
+  expect(wrongTenant.json).toMatchObject({ code: 'LEASE_IDENTITY_MISMATCH' });
+
+  writeFileSync(completed.manifestPath, 'not valid json');
+  fixture.env.TREEHOUSE_STATUS_MODE = 'validate';
+  const corrupt = invokeLifecycle(['finish', '--run', completed.manifestPath], fixture.env, fixture.repo);
+  expect(corrupt.json).toMatchObject({ code: 'LEASE_IDENTITY_MISMATCH' });
+
+  writeFileSync(completed.manifestPath, saved);
+  const legitimate = finishFixture(fixture, completed.manifestPath);
+  expect(legitimate.exitCode).toBe(0);
+});
+
+test('finish commit-intent failure removes only its created artifact and restores clean state', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  runGit(['config', 'user.name', ''], completed.run.worktreePath);
+  runGit(['config', 'user.email', ''], completed.run.worktreePath);
+  const result = finishFixture(fixture, completed.manifestPath);
+  expect(result.json).toMatchObject({ code: 'FINISH_PRECONDITION_FAILED' });
+  expect(existsSync(join(completed.run.runDirectory, 'COMPLETION.json'))).toBe(false);
+  expect(runGit(['status', '--porcelain=v1', '--untracked-files=all'], completed.run.worktreePath)).toBe('');
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).not.toContain('return ');
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).not.toContain('done canonical-goal');
+});
+
+test('finish add failure removes only its created completion artifact and restores the index', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  forceLifecycleGitFailure(fixture, 'add');
+  const result = finishFixture(fixture, completed.manifestPath);
+  expect(result.json).toMatchObject({ code: 'FINISH_PRECONDITION_FAILED' });
+  expect(existsSync(join(completed.run.runDirectory, 'COMPLETION.json'))).toBe(false);
+  expect(runGit(['status', '--porcelain=v1', '--untracked-files=all'], completed.run.worktreePath)).toBe('');
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).not.toContain('return ');
+});
+
+test('finish accepts an ambiguous completion commit result when HEAD proves the exact intent', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  forceLifecycleGitFailure(fixture, 'commit');
+  const result = finishFixture(fixture, completed.manifestPath);
+  expect(result.exitCode).toBe(0);
+  expect(existsSync(join(completed.run.runDirectory, 'COMPLETION.json'))).toBe(true);
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toContain('return ' + completed.run.worktreePath);
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).toContain('done canonical-goal');
+});
+
+test('finish rejects a late PR when its committed intent recorded none', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TASKS_DONE_FAIL = '1';
+  expect(finishFixture(fixture, completed.manifestPath).json).toMatchObject({ code: 'TASK_COMPLETION_PENDING' });
+  fixture.env.TASKS_DONE_FAIL = '0';
+  const retry = finishFixture(fixture, completed.manifestPath, { pr: 'https://example.invalid/late' });
+  expect(retry.json).toMatchObject({ code: 'TASK_COMPLETION_PENDING' });
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).not.toContain('done canonical-goal --pr https://example.invalid/late');
+});
+
+test('finish rejects a same-slug alternate RUN before status, return, or task completion', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TREEHOUSE_RETURN_FAIL = '1';
+  expect(finishFixture(fixture, completed.manifestPath).json).toMatchObject({ code: 'TREEHOUSE_RETURN_FAILED' });
+  const alternateWorktree = join(fixture.root, 'other-lease');
+  const alternateDirectory = join(alternateWorktree, '.harness', 'goals', fixture.taskId);
+  const alternatePath = join(alternateDirectory, 'RUN.json');
+  mkdirSync(alternateDirectory, { recursive: true });
+  writeRunManifest(alternatePath, {
+    ...completed.run,
+    repositoryRoot: join(fixture.root, 'other-repository'),
+    gitCommonDirectory: join(fixture.root, 'other-common'),
+    worktreePath: alternateWorktree,
+    runDirectory: alternateDirectory,
+    grillReceiptPath: join(alternateDirectory, 'GRILL.json'),
+    leaseHolder: 'other-holder',
+  });
+  const alternate = readRunManifest(alternatePath);
+  expect(alternate.taskId).toBe(completed.run.taskId);
+  expect(alternate.branch).toBe(completed.run.branch);
+  expect(alternate.repositoryRoot).not.toBe(completed.run.repositoryRoot);
+  expect(alternate.gitCommonDirectory).not.toBe(completed.run.gitCommonDirectory);
+  expect(alternate.worktreePath).not.toBe(completed.run.worktreePath);
+  expect(alternate.runDirectory).not.toBe(completed.run.runDirectory);
+  expect(alternate.leaseHolder).not.toBe(completed.run.leaseHolder);
+  const beforeTreehouse = readFileSync(fixture.treehouse.calls, 'utf8');
+  const beforeTasks = readFileSync(fixture.tasks.calls, 'utf8');
+  const result = invokeLifecycle(['finish', '--run', alternatePath], fixture.env, fixture.repo);
+  expect(result.json).toMatchObject({ code: 'LEASE_IDENTITY_MISMATCH' });
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(beforeTreehouse + 'status\r\n');
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).toBe(beforeTasks + 'show canonical-goal --full\n');
+});
+
+// Catches a manifest reader accepting a future format, and a writer leaving temporary files visible.
+test("manifest writes are atomic and reject unsupported schema versions", () => {
+  const directory = mkdtempSync(join(tmpdir(), "goal-lifecycle-manifest-"));
+  const manifestPath = join(directory, "RUN.json");
+  const pathToSchema2 = join(directory, "schema-2.json");
+
+  try {
+    writeRunManifest(manifestPath, {
+      schemaVersion: 1,
+      taskId: "goal-contract",
+      title: "Goal contract",
+      state: "STARTED",
+      repositoryRoot: "C:/repo",
+      gitCommonDirectory: "C:/repo/.git",
+      worktreePath: "C:/repo/.worktrees/goal-contract",
+      poolRoot: "C:/repo/.worktrees",
+      leaseHolder: "goal-contract",
+      branch: "wt/goal-contract",
+      sourceHead: "0123456789abcdef",
+      runDirectory: "C:/repo/.worktrees/goal-contract/.harness/goals/goal-contract",
+      grillReceiptPath: "C:/repo/.worktrees/goal-contract/.harness/goals/goal-contract/GRILL.json",
+    });
+
+    expect(readRunManifest(manifestPath)).toMatchObject({
+      schemaVersion: 1,
+      taskId: "goal-contract",
+      state: "STARTED",
+    });
+    expect(existsSync(manifestPath)).toBe(true);
+    expect(readdirSync(directory).some((name) => name.includes(".tmp-"))).toBe(false);
+
+    writeFileSync(pathToSchema2, JSON.stringify({ schemaVersion: 2 }));
+    expect(() => readRunManifest(pathToSchema2)).toThrow("RUN_MANIFEST_UNSUPPORTED");
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+// Catches a process adapter that uses a shell, drops process output, or misreports exit status.
+test("process runner executes an argv-only command with bounded captured output", async () => {
+  const result = await runProcess(process.execPath, ["-e", "process.stdout.write('lifecycle')"], {
+    outputLimitBytes: 1_024,
+    timeoutMs: 1_000,
+  });
+
+  expect(result).toEqual({
+    exitCode: 0,
+    stdout: "lifecycle",
+    stderr: "",
+    timedOut: false,
+    outputLimitExceeded: false,
+  });
+});
+
+test("process runner enforces exact combined output limit across concurrent streams", async () => {
+  const limit = 64;
+  const script = "for(let i=0;i<10;i++){process.stdout.write('A'.repeat(32));process.stderr.write('B'.repeat(32));}";
+  const result = await runProcess(process.execPath, ["-e", script], {
+    outputLimitBytes: limit,
+    timeoutMs: 5_000,
+  });
+  expect(result.stdout.length + result.stderr.length).toBeLessThanOrEqual(limit);
+  expect(result.outputLimitExceeded).toBe(true);
+});
+
+test('typed tasks-axi adapter decodes TOON escapes and rejects invalid task shapes', () => {
+  const toon = [
+    'task:\n  id: canonical-goal\n  title: "Open \"quoted\" file C:\\\\work\\\\goal"\n  state: in_flight\n  repo: "C:\\\\work\\\\goal"\n',
+  ].join('').replace(
+    'Open "quoted"',
+    `Open ${String.fromCharCode(92)}"quoted${String.fromCharCode(92)}"`,
+  );
+  const task = decodeTaskDetail(toon);
+
+  expect(task).toEqual({
+    id: 'canonical-goal',
+    title: 'Open "quoted" file C:\\work\\goal',
+    state: 'in_flight',
+  });
+  expect(() => decodeTaskDetail('task:\n  id: canonical-goal\n  title: 42\n  state: in_flight\n')).toThrow(
+    'title must be a non-empty string',
+  );
+  expect(() =>
+    decodeTaskDetail('task:\n  id: canonical-goal\n  title: first\n  title: second\n  state: in_flight\n'),
+  ).toThrow('Duplicate sibling key "title"');
+  expect(() =>
+    decodeTaskDetail('task:\n  id: canonical-goal\n  title: nested\n  state: in_flight\n  labels[1]: lifecycle\n'),
+  ).toThrow('flat scalar fields');
+});
+
+test('typed tasks-axi adapter accepts official TOON quoted-key syntax', () => {
+  const task = decodeTaskDetail(
+    'task:\n  id: canonical-goal\n  "title": Official TOON task\n  state: in_flight\n',
+  );
+
+  expect(task).toEqual({
+    id: 'canonical-goal',
+    title: 'Official TOON task',
+    state: 'in_flight',
+  });
+});
+
+test('all typed public lifecycle errors provide supported non-bypass remediation', () => {
+  for (const code of [
+    'INVALID_ARGUMENT',
+    'NOT_IMPLEMENTED',
+    'DEPENDENCY_SETUP_REQUIRED',
+    'DEPENDENCY_SETUP_FAILED',
+    'TASK_REGISTRATION_FAILED',
+    'TASK_STATE_CONFLICT',
+    'TREEHOUSE_CONFIG_UNSAFE',
+    'TREEHOUSE_LEASE_FAILED',
+    'LEASE_OUTSIDE_REPOSITORY',
+    'LEASE_IDENTITY_MISMATCH',
+    'BRANCH_IDENTITY_MISMATCH',
+    'REPOSITORY_NOT_READY',
+    'INTERNAL_ERROR',
+  ]) {
+    const result = lifecycleFailure('start', code, 'fixture failure');
+    expectSafeRemediation(result);
+  }
+});
+
+test('lifecycle start fails closed when a present tasks-axi launcher is broken', () => {
+  const fixture = createLifecycleFixture({ tasksBroken: true });
+
+  const start = startFixture(fixture);
+
+  expect(start.exitCode).not.toBe(0);
+  expect(start.json).toMatchObject({ operation: 'start', ok: false, code: 'DEPENDENCY_SETUP_REQUIRED' });
+  expectSafeRemediation(start.json);
+  expect(readFileSync(fixture.tasks.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version']);
+  expect(existsSync(fixture.treehouse.calls)).toBe(false);
+});
+
+test('lifecycle start requires the byte-exact pinned batch-grill-me installation', () => {
+  const fixture = createLifecycleFixture();
+  writeFileSync(fixture.grillPath, 'drifted skill\n');
+
+  const start = startFixture(fixture);
+
+  expect(start.exitCode).not.toBe(0);
+  expect(start.json).toMatchObject({ ok: false, code: 'DEPENDENCY_SETUP_REQUIRED' });
+  expectSafeRemediation(start.json);
+  expect(start.json.message).toContain('batch-grill-me');
+  expect(existsSync(fixture.treehouse.calls)).toBe(true);
+  expect(readFileSync(fixture.treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version']);
+});
+
+test('lifecycle start creates and starts one canonical task then persists the exact managed identity', () => {
+  const fixture = createLifecycleFixture();
+  const sourceHead = runGit(['rev-parse', 'HEAD'], fixture.repo);
+
+  const start = startFixture(fixture);
+
+  expect(start.exitCode).toBe(0);
+  expect(start.lines).toHaveLength(1);
+  expect(start.json.data).toMatchObject({
+    taskId: fixture.taskId,
+    leaseHolder: fixture.taskId,
+    branch: `wt/${fixture.taskId}`,
+    repositoryRoot: fixture.repo,
+    sourceHead,
+  });
+  const manifestPath = start.json.data.manifestPath as string;
+  const manifest = readRunManifest(manifestPath);
+  expect(manifest).toMatchObject({
+    state: 'STARTED',
+    taskId: fixture.taskId,
+    title: fixture.title,
+    repositoryRoot: fixture.repo,
+    worktreePath: fixture.treehouse.lease,
+    poolRoot: join(fixture.repo, '.worktrees'),
+    leaseHolder: fixture.taskId,
+    branch: `wt/${fixture.taskId}`,
+    sourceHead,
+  });
+  expect(readdirSync(dirname(manifestPath)).some((name) => name.includes('.tmp-'))).toBe(false);
+  expect(readFileSync(fixture.tasks.calls, 'utf8').trim().split(/\r?\n/)).toEqual([
+    '--version',
+    `show ${fixture.taskId} --full`,
+    `add ${fixture.taskId} ${fixture.title}`,
+    `start ${fixture.taskId}`,
+    `show ${fixture.taskId} --full`,
+  ]);
+  const treehouseCalls = readFileSync(fixture.treehouse.calls, 'utf8').trim().split(/\r?\n/);
+  expect(treehouseCalls).toEqual([
+    '--version',
+    'status',
+    `get --lease --lease-holder ${fixture.taskId}`,
+  ]);
+});
+
+test('lifecycle start reuses a compatible active tasks-axi identity without mutating it', () => {
+  const fixture = createLifecycleFixture({ taskState: 'in_flight' });
+
+  const start = startFixture(fixture);
+
+  expect(start.exitCode).toBe(0);
+  const calls = readFileSync(fixture.tasks.calls, 'utf8').trim().split(/\r?\n/);
+  expect(calls).toEqual(['--version', `show ${fixture.taskId} --full`]);
+});
+
+test('lifecycle start decodes escaped quotes and Windows paths from tasks-axi TOON', () => {
+  const title = 'Open "quoted" file C:\\work\\goal';
+  const fixture = createLifecycleFixture({ taskState: 'in_flight', taskTitle: title });
+
+  const start = startFixture(fixture);
+
+  expect(start.exitCode).toBe(0);
+  expect(start.json.data).toMatchObject({ taskId: fixture.taskId });
+  expect(readRunManifest(start.json.data.manifestPath as string).title).toBe(title);
+  expect(readFileSync(fixture.tasks.calls, 'utf8').trim().split(/\r?\n/)).toEqual([
+    '--version',
+    `show ${fixture.taskId} --full`,
+  ]);
+});
+
+test('lifecycle start rejects conflicting tasks-axi title or terminal state before acquisition', () => {
+  for (const conflict of ['title', 'state'] as const) {
+    const fixture = createLifecycleFixture({ taskState: conflict === 'state' ? 'done' : 'in_flight' });
+    if (conflict === 'title') fixture.env.TASKS_TITLE = 'Different durable task';
+
+    const start = startFixture(fixture);
+
+    expect(start.exitCode).not.toBe(0);
+    expect(start.json).toMatchObject({ ok: false, code: 'TASK_STATE_CONFLICT' });
+    expectSafeRemediation(start.json);
+    expect(readFileSync(fixture.treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version']);
+  }
+});
+
+test('lifecycle start gives a nested repository ownership of its own pool and Git identity', () => {
+  const fixture = createLifecycleFixture({ nested: true });
+
+  const start = startFixture(fixture);
+
+  expect(start.exitCode).toBe(0);
+  expect(start.json.data).toMatchObject({
+    repositoryRoot: fixture.repo,
+    poolRoot: join(fixture.repo, '.worktrees'),
+  });
+  expect((start.json.data.worktreePath as string).startsWith(join(fixture.repo, '.worktrees'))).toBe(true);
+});
+
+test('lifecycle start rejects unsafe Treehouse config before lease acquisition', () => {
+  const fixture = createLifecycleFixture();
+  writeFileSync(join(fixture.repo, 'treehouse.toml'), 'max_trees = 16\nroot = "../gtm-orchestrator-funnel-batch"\n');
+  runGit(['add', 'treehouse.toml'], fixture.repo);
+  runGit(['commit', '-m', 'unsafe pool regression'], fixture.repo);
+
+  const start = startFixture(fixture);
+
+  expect(start.exitCode).not.toBe(0);
+  expect(start.json).toMatchObject({ ok: false, code: 'TREEHOUSE_CONFIG_UNSAFE' });
+  expectSafeRemediation(start.json);
+  expect(readFileSync(fixture.treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version']);
+});
+
+test('lifecycle start rejects the original sibling worktree regression and returns only that lease', () => {
+  const fixture = createLifecycleFixture({ treehouseMode: 'sibling' });
+
+  const start = startFixture(fixture);
+
+  expect(start.exitCode).not.toBe(0);
+  expect(start.json.code).toBe('LEASE_OUTSIDE_REPOSITORY');
+  expectSafeRemediation(start.json);
+  const calls = readFileSync(fixture.treehouse.calls, 'utf8');
+  expect(calls.trim().split(/\r?\n/)).toEqual([
+    '--version',
+    'status',
+    `get --lease --lease-holder ${fixture.taskId}`,
+    `return ${fixture.treehouse.lease}`,
+  ]);
+  expect(calls).not.toContain('git worktree');
+});
+
+test('lifecycle start rejects reparse escapes and foreign Git common directories', () => {
+  const reparse = createLifecycleFixture({ treehouseMode: 'reparse' });
+  const escaped = startFixture(reparse);
+  expect(escaped.exitCode).not.toBe(0);
+  expect(escaped.json.code).toBe('LEASE_OUTSIDE_REPOSITORY');
+  expectSafeRemediation(escaped.json);
+
+  const foreign = createLifecycleFixture({ treehouseMode: 'foreign' });
+  const wrongIdentity = startFixture(foreign);
+  expect(wrongIdentity.exitCode).not.toBe(0);
+  expect(wrongIdentity.json.code).toBe('LEASE_IDENTITY_MISMATCH');
+  expectSafeRemediation(wrongIdentity.json);
+  expect(readFileSync(foreign.treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual([
+    '--version',
+    'status',
+    `get --lease --lease-holder ${foreign.taskId}`,
+  ]);
+});
+
+test('lifecycle start rejects malformed Treehouse output and returns its one identity-proven candidate', () => {
+  const fixture = createLifecycleFixture({ treehouseMode: 'malformed' });
+
+  const start = startFixture(fixture);
+
+  expect(start.exitCode).not.toBe(0);
+  expect(start.json.code).toBe('TREEHOUSE_LEASE_FAILED');
+  expectSafeRemediation(start.json);
+  expect(readFileSync(fixture.treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual([
+    '--version',
+    'status',
+    `get --lease --lease-holder ${fixture.taskId}`,
+    `return ${fixture.treehouse.lease}`,
+  ]);
+});
+
+// Catches accepting a no-op grill as missing proof instead of persisting its completed zero frontier.
+test('record-grill persists a completed zero-question receipt and advances the run', () => {
+  const fixture = createLifecycleFixture();
+  const recorded = recordGrillFixture(fixture, completeGrillReceipt(fixture.taskId));
+
+  expect(recorded.result.exitCode).toBe(0);
+  expect(recorded.result.lines).toHaveLength(1);
+  expect(recorded.result.json).toMatchObject({ operation: 'record-grill', ok: true, code: 'OK' });
+  expect(readRunManifest(recorded.manifestPath).state).toBe('GRILL_COMPLETE');
+  expect(JSON.parse(readFileSync(join(dirname(recorded.manifestPath), 'GRILL.json'), 'utf8'))).toEqual(
+    completeGrillReceipt(fixture.taskId),
+  );
+});
+
+// Catches round normalization that loses the interview order or omits required per-round arrays.
+test('record-grill preserves ordered completed multi-round receipts', () => {
+  const fixture = createLifecycleFixture();
+  const rounds = [
+    {
+      questions: ['Which users are in scope?'],
+      recommendations: ['Start with active accounts.'],
+      settledDecisions: ['Active accounts are in scope.'],
+    },
+    {
+      questions: ['Which timezone applies?'],
+      recommendations: ['Use America/Toronto.'],
+      settledDecisions: ['America/Toronto is the canonical timezone.'],
+    },
+  ];
+  const recorded = recordGrillFixture(fixture, completeGrillReceipt(fixture.taskId, { rounds }));
+
+  expect(recorded.result.exitCode).toBe(0);
+  expect(JSON.parse(readFileSync(join(dirname(recorded.manifestPath), 'GRILL.json'), 'utf8')).rounds).toEqual(rounds);
+});
+
+// Catches writing a receipt from another durable task into this run directory.
+test('record-grill rejects a task-mismatched receipt without changing the started run', () => {
+  const fixture = createLifecycleFixture();
+  const recorded = recordGrillFixture(fixture, completeGrillReceipt('other-goal'));
+
+  expect(recorded.result.exitCode).not.toBe(0);
+  expect(recorded.result.json).toMatchObject({ operation: 'record-grill', ok: false, code: 'GRILL_RECEIPT_INVALID' });
+  expectSafeRemediation(recorded.result.json);
+  expect(readRunManifest(recorded.manifestPath).state).toBe('STARTED');
+  expect(existsSync(join(dirname(recorded.manifestPath), 'GRILL.json'))).toBe(false);
+});
+
+// Catches an accepted invalid receipt leaving an invalid or advanced durable run behind.
+for (const invalidReceipt of [
+  ['an incomplete receipt', completeGrillReceipt('canonical-goal', { status: 'in_progress' })],
+  ['a receipt with a nonzero frontier', completeGrillReceipt('canonical-goal', { finalFrontierCount: 1 })],
+  ['a structurally malformed receipt', completeGrillReceipt('canonical-goal', { rounds: [{ questions: ['Question'], recommendations: [], settledDecisions: 'not-an-array' }] })],
+  ['an unpinned receipt', completeGrillReceipt('canonical-goal', { skill: { name: 'batch-grill-me', version: '1.0.0', sourceHash: 'drifted' } })],
+] as const) {
+  test(`record-grill fails closed for ${invalidReceipt[0]}`, () => {
+    const fixture = createLifecycleFixture();
+    const recorded = recordGrillFixture(fixture, invalidReceipt[1]);
+
+    expect(recorded.result.exitCode).not.toBe(0);
+    expect(recorded.result.json).toMatchObject({ operation: 'record-grill', ok: false, code: 'GRILL_RECEIPT_INVALID' });
+    expectSafeRemediation(recorded.result.json);
+    expect(readRunManifest(recorded.manifestPath).state).toBe('STARTED');
+  });
+}
+
+// Catches identity metadata that can persist secret-like content or drift from the approved pinned skill.
+for (const invalidIdentity of [
+  ['a wrong skill name', { name: 'other-grill', version: '1.0.0', sourceHash: PINNED_GRILL_HASH }],
+  ['a wrong skill version', { name: 'batch-grill-me', version: '1.0.1', sourceHash: PINNED_GRILL_HASH }],
+  ['secret-like skill version content', { name: 'batch-grill-me', version: 'authorization: Bearer hunter2', sourceHash: PINNED_GRILL_HASH }],
+  ['secret-like source hash content', { name: 'batch-grill-me', version: '1.0.0', sourceHash: 'api_key=abc123' }],
+] as const) {
+  test(`record-grill rejects ${invalidIdentity[0]} before persistence`, () => {
+    const fixture = createLifecycleFixture();
+    const recorded = recordGrillFixture(
+      fixture,
+      completeGrillReceipt(fixture.taskId, { skill: invalidIdentity[1] }),
+    );
+
+    expect(recorded.result.exitCode).not.toBe(0);
+    expect(recorded.result.json).toMatchObject({ operation: 'record-grill', ok: false, code: 'GRILL_RECEIPT_INVALID' });
+    expect(readRunManifest(recorded.manifestPath).state).toBe('STARTED');
+    expect(existsSync(join(dirname(recorded.manifestPath), 'GRILL.json'))).toBe(false);
+  });
+}
+
+// Catches root task identity being treated as non-sensitive because it is checked only after parsing.
+test('record-grill rejects secret-like root task identity before persistence', () => {
+  const fixture = createLifecycleFixture();
+  const recorded = recordGrillFixture(fixture, completeGrillReceipt('api_key=abc123'));
+
+  expect(recorded.result.exitCode).not.toBe(0);
+  expect(recorded.result.json).toMatchObject({ operation: 'record-grill', ok: false, code: 'GRILL_RECEIPT_INVALID' });
+  expect(recorded.result.json.message).toContain('unredacted secret-like content at taskId');
+  expect(readRunManifest(recorded.manifestPath).state).toBe('STARTED');
+  expect(existsSync(join(dirname(recorded.manifestPath), 'GRILL.json'))).toBe(false);
+});
+
+// Catches retrying an already persisted proof as an illegal state transition.
+test('record-grill is idempotent for an already completed matching receipt', () => {
+  const fixture = createLifecycleFixture();
+  const first = recordGrillFixture(fixture, completeGrillReceipt(fixture.taskId));
+  expect(first.result.exitCode).toBe(0);
+  const canonical = readFileSync(join(dirname(first.manifestPath), 'GRILL.json'), 'utf8');
+  const retry = invokeLifecycle(['record-grill', '--run', first.manifestPath, '--receipt', first.candidatePath], fixture.env);
+
+  expect(retry.exitCode).toBe(0);
+  expect(retry.json).toMatchObject({ operation: 'record-grill', ok: true, code: 'OK' });
+  expect(readRunManifest(first.manifestPath).state).toBe('GRILL_COMPLETE');
+  expect(readFileSync(join(dirname(first.manifestPath), 'GRILL.json'), 'utf8')).toBe(canonical);
+});
+
+// Catches a retry rejecting the canonical receipt solely because its first write redacted prose.
+test('record-grill is idempotent after canonical redaction', () => {
+  const fixture = createLifecycleFixture();
+  const receipt = completeGrillReceipt(fixture.taskId, {
+    recommendations: ['Set api_key=abc123 before continuing.'],
+  });
+  const first = recordGrillFixture(fixture, receipt);
+  expect(first.result.exitCode).toBe(0);
+  const retry = invokeLifecycle(['record-grill', '--run', first.manifestPath, '--receipt', first.candidatePath], fixture.env);
+
+  expect(retry.exitCode).toBe(0);
+  expect(retry.json).toMatchObject({ operation: 'record-grill', ok: true, code: 'OK' });
+});
+
+// Catches canonical proof retries being treated as fresh unredacted candidates.
+test('record-grill accepts its canonical redacted GRILL.json on retry without changing it', () => {
+  const fixture = createLifecycleFixture();
+  const first = recordGrillFixture(fixture, completeGrillReceipt(fixture.taskId, {
+    recommendations: ['Set api_key=abc123 before continuing.'],
+  }));
+  expect(first.result.exitCode).toBe(0);
+  const canonicalPath = join(dirname(first.manifestPath), 'GRILL.json');
+  const canonical = readFileSync(canonicalPath, 'utf8');
+  const retry = invokeLifecycle(['record-grill', '--run', first.manifestPath, '--receipt', canonicalPath], fixture.env);
+
+  expect(retry.exitCode).toBe(0);
+  expect(retry.json).toMatchObject({ operation: 'record-grill', ok: true, code: 'OK' });
+  expect(readFileSync(canonicalPath, 'utf8')).toBe(canonical);
+  expect(JSON.parse(canonical).redaction).toEqual({ redacted: true, fields: ['recommendations[0]'] });
+});
+
+// Catches a fresh run accepting forged redaction markers merely because they resemble canonical proof.
+test('record-grill rejects forged redaction metadata at the canonical path before its first transition', () => {
+  const fixture = createLifecycleFixture();
+  const start = startFixture(fixture);
+  expect(start.exitCode).toBe(0);
+  const manifestPath = start.json.data.manifestPath as string;
+  const manifest = readRunManifest(manifestPath);
+  writeFileSync(manifest.grillReceiptPath, JSON.stringify(completeGrillReceipt(fixture.taskId, {
+    recommendations: ['[REDACTED]'],
+    redaction: { redacted: true, fields: ['recommendations[0]'] },
+  }), null, 2));
+
+  const result = invokeLifecycle(['record-grill', '--run', manifestPath, '--receipt', manifest.grillReceiptPath], fixture.env);
+
+  expect(result.exitCode).not.toBe(0);
+  expect(result.json).toMatchObject({ operation: 'record-grill', ok: false, code: 'GRILL_RECEIPT_INVALID' });
+  expect(readRunManifest(manifestPath).state).toBe('STARTED');
+});
+
+// Catches persisting credentials hidden in receipt prose or under a secret-like unknown key.
+test('record-grill recursively redacts secret-like content and rejects secret-like receipt keys', () => {
+  const fixture = createLifecycleFixture();
+  const recorded = recordGrillFixture(
+    fixture,
+    completeGrillReceipt(fixture.taskId, {
+      rounds: [{
+        questions: ['Should authorization: Bearer hunter2 be used?'],
+        recommendations: ['Set api_key=abc123 before continuing.'],
+        settledDecisions: ['Credentials are supplied out of band.'],
+      }],
+    }),
+  );
+
+  expect(recorded.result.exitCode).toBe(0);
+  const canonical = JSON.parse(readFileSync(join(dirname(recorded.manifestPath), 'GRILL.json'), 'utf8'));
+  expect(JSON.stringify(canonical)).not.toContain('hunter2');
+  expect(JSON.stringify(canonical)).not.toContain('abc123');
+  expect(canonical.redaction).toMatchObject({ redacted: true });
+  expect(canonical.redaction.fields).toEqual([
+    'rounds[0].questions[0]',
+    'rounds[0].recommendations[0]',
+  ]);
+
+  const unsafeFixture = createLifecycleFixture();
+  const unsafe = recordGrillFixture(
+    unsafeFixture,
+    completeGrillReceipt(unsafeFixture.taskId, { api_key: 'abc123' }),
+  );
+  expect(unsafe.result.exitCode).not.toBe(0);
+  expect(unsafe.result.json).toMatchObject({ ok: false, code: 'GRILL_RECEIPT_INVALID' });
+  expect(readRunManifest(unsafe.manifestPath).state).toBe('STARTED');
+});
+
+test('validate restarts from only persisted run state in a fresh process and is idempotent', () => {
+  const fixture = createLifecycleFixture();
+  const recorded = recordGrillFixture(fixture, completeGrillReceipt(fixture.taskId));
+  expect(recorded.result.exitCode).toBe(0);
+  const run = readRunManifest(recorded.manifestPath);
+
+  const first = validateFixture(fixture, recorded.manifestPath, run.worktreePath);
+  expect(first.exitCode).toBe(0);
+  expect(first.lines).toHaveLength(1);
+  expect(first.json).toMatchObject({ operation: 'validate', ok: true, code: 'OK', data: {
+    taskId: fixture.taskId,
+    worktreePath: run.worktreePath,
+    runDirectory: run.runDirectory,
+    state: 'VALIDATED',
+  } });
+  expect(readRunManifest(recorded.manifestPath).state).toBe('VALIDATED');
+
+  const retry = validateFixture(fixture, recorded.manifestPath, run.worktreePath);
+  expect(retry.exitCode).toBe(0);
+  expect(retry.json).toMatchObject({ operation: 'validate', ok: true, code: 'OK' });
+  expect(readRunManifest(recorded.manifestPath).state).toBe('VALIDATED');
+});
+
+test('validate fails closed for every persisted restart invariant', () => {
+  const cases: Array<{
+    name: string;
+    mutate: (fixture: ReturnType<typeof createLifecycleFixture>, manifestPath: string) => void;
+    cwd: (fixture: ReturnType<typeof createLifecycleFixture>, manifestPath: string) => string;
+    code: string;
+  }> = [
+    { name: 'wrong current directory', mutate: () => {}, cwd: (fixture) => fixture.repo, code: 'CONTEXT_RESTART_INVALID' },
+    {
+      name: 'inactive durable task',
+      mutate: (fixture) => writeFileSync(fixture.tasks.stateFile, 'queued\n'),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'CONTEXT_RESTART_INVALID',
+    },
+    {
+      name: 'wrong canonical branch',
+      mutate: (_fixture, manifestPath) => {
+        const run = readRunManifest(manifestPath);
+        writeRunManifest(manifestPath, { ...run, branch: 'wt/other-goal' });
+      },
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'BRANCH_IDENTITY_MISMATCH',
+    },
+    {
+      name: 'missing canonical grill receipt',
+      mutate: (_fixture, manifestPath) => rmSync(readRunManifest(manifestPath).grillReceiptPath),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'GRILL_RECEIPT_MISSING',
+    },
+    {
+      name: 'wrong Treehouse lease holder',
+      mutate: (fixture) => { fixture.env.TREEHOUSE_HOLDER = 'other-goal'; },
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'LEASE_IDENTITY_MISMATCH',
+    },
+    {
+      name: 'repository common-directory identity drift',
+      mutate: (fixture, manifestPath) => {
+        const run = readRunManifest(manifestPath);
+        writeRunManifest(manifestPath, { ...run, gitCommonDirectory: fixture.repo });
+      },
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'LEASE_IDENTITY_MISMATCH',
+    },
+    {
+      name: 'pool containment drift before registered-worktree use',
+      mutate: (fixture, manifestPath) => {
+        const run = readRunManifest(manifestPath);
+        writeRunManifest(manifestPath, { ...run, poolRoot: join(fixture.repo, '.worktrees', 'wrong-pool') });
+      },
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'LEASE_OUTSIDE_REPOSITORY',
+    },
+    {
+      name: 'removed Git worktree registration',
+      mutate: (fixture) => omitGitWorktreeRegistration(fixture),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'LEASE_IDENTITY_MISMATCH',
+    },
+    {
+      name: 'reparse traversal at canonical run artifact',
+      mutate: (fixture, manifestPath) => {
+        const receiptPath = readRunManifest(manifestPath).grillReceiptPath;
+        const externalReceipt = join(fixture.root, 'external-GRILL.json');
+        writeFileSync(externalReceipt, readFileSync(receiptPath, 'utf8'));
+        rmSync(receiptPath);
+        symlinkSync(externalReceipt, receiptPath, 'file');
+      },
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'LEASE_OUTSIDE_REPOSITORY',
+    },
+    {
+      name: 'pinned grill skill name drift',
+      mutate: (_fixture, manifestPath) => driftCanonicalGrillSkill(manifestPath, 'name', 'other-grill'),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'GRILL_RECEIPT_INVALID',
+    },
+    {
+      name: 'pinned grill skill version drift',
+      mutate: (_fixture, manifestPath) => driftCanonicalGrillSkill(manifestPath, 'version', '9.9.9'),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'GRILL_RECEIPT_INVALID',
+    },
+    {
+      name: 'pinned grill skill hash drift',
+      mutate: (_fixture, manifestPath) => driftCanonicalGrillSkill(manifestPath, 'sourceHash', '0'.repeat(64)),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'GRILL_RECEIPT_INVALID',
+    },
+    {
+      name: 'source HEAD drift',
+      mutate: (fixture) => {
+        writeFileSync(join(fixture.repo, 'source-drift.txt'), 'drift\n');
+        runGit(['add', 'source-drift.txt'], fixture.repo);
+        runGit(['commit', '-m', 'source drift'], fixture.repo);
+      },
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'LEASE_IDENTITY_MISMATCH',
+    },
+    {
+      name: 'invalid canonical grill receipt',
+      mutate: (_fixture, manifestPath) => writeFileSync(readRunManifest(manifestPath).grillReceiptPath, '{"schemaVersion":1}\n'),
+      cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
+      code: 'GRILL_RECEIPT_INVALID',
+    },
+  ];
+
+  const fixture = createLifecycleFixture();
+  const recorded = recordGrillFixture(fixture, completeGrillReceipt(fixture.taskId));
+  expect(recorded.result.exitCode).toBe(0);
+  const canonicalManifest = readFileSync(recorded.manifestPath, 'utf8');
+  const canonicalReceipt = readFileSync(readRunManifest(recorded.manifestPath).grillReceiptPath, 'utf8');
+  const canonicalTaskState = readFileSync(fixture.tasks.stateFile, 'utf8');
+
+  for (const scenario of cases) {
+    rmSync(readRunManifest(recorded.manifestPath).grillReceiptPath, { force: true });
+    writeFileSync(recorded.manifestPath, canonicalManifest);
+    writeFileSync(readRunManifest(recorded.manifestPath).grillReceiptPath, canonicalReceipt);
+    writeFileSync(fixture.tasks.stateFile, canonicalTaskState);
+    fixture.env.TREEHOUSE_HOLDER = fixture.taskId;
+    fixture.env.GIT_WORKTREE_LIST_MODE = undefined;
+    scenario.mutate(fixture, recorded.manifestPath);
+
+    const result = validateFixture(fixture, recorded.manifestPath, scenario.cwd(fixture, recorded.manifestPath));
+    expect(result.exitCode).not.toBe(0);
+    expect(result.json).toMatchObject({ operation: 'validate', ok: false, code: scenario.code });
+    expectSafeRemediation(result.json);
+    expect(readRunManifest(recorded.manifestPath).state).toBe('GRILL_COMPLETE');
+  }
+});

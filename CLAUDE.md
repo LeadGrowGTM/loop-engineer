@@ -14,11 +14,12 @@ Goal prompt writer + approval-gated planner/maker/checker harness for in-session
 | `skills/write-goal-prompt/docs/` | Architecture map, reference index |
 | `skills/write-goal-prompt/kb/` | KB scaffold — LOG.md, signals/, docs/ |
 | `scripts/triage.ts` | Bun CLI: list/review/dismiss/log/signal for the triage inbox |
-| `scripts/prepare-harness-run.ps1` | Non-launching, fail-fast readiness check for repository, branch, tree, layout, and default-on treehouse isolation (`-NoIsolation` opts out) |
+| `scripts/goal-lifecycle.ts` | The only supported managed lifecycle entry point: `start`, `record-grill`, `validate`, `finish`, and read-only `audit` |
+| `scripts/prepare-harness-run.ps1` | Non-launching bounded readiness check used by managed lifecycle start; not a manual isolation entry point |
 | `scripts/validate-pipeline-layout.ps1` | Pre-flight pipeline-layout check called by `prepare-harness-run.ps1` |
-| `scripts/setup-harness.ts` | Installs harness agents + seeds `.harness/`, `.tasks.toml`, `treehouse.toml` into a repo |
+| `scripts/setup-harness.ts` | Seeds `.harness/`, project-local `.tasks.toml`, `.worktrees/` Treehouse config and ignore rule; installs harness assets and verifies the pinned grill |
 | `scripts/rename-to-loop-engineer.ps1` | One-shot: rename this repo's dir `agent-harness` → `loop-engineer` + fix refs (not yet run) |
-| `treehouse.toml` | Optional treehouse worktree-pool config (`max_trees`, `root`) for explicit isolation |
+| `treehouse.toml` | Required managed-worktree config: repo-owned `.worktrees/` pool; Treehouse controls its nested layout |
 | `docs/agents/` | Matt Pocock engineering skill configuration |
 | `docs/adr/` | Architectural decision records |
 
@@ -32,24 +33,19 @@ The model that wrote the code grades its own homework generously. Five-agent loo
 
 ## Supported execution
 
-Runs stay in the active Claude Code session so approval gates remain visible. Before work starts, run `scripts/prepare-harness-run.ps1 -CheckOnly`. The `-CheckOnly` mode does not start task execution and does not mutate Git state. It fails fast on an unsafe repository, default or detached branch, dirty tree, invalid pipeline layout, or unprepared required isolation.
+Runs stay in the active Claude Code session so approval gates remain visible. Use `goal-lifecycle`, never a direct Git/Treehouse/manual path or `-NoIsolation` fallback. `start` requires `tasks-axi`, Treehouse, and the pinned `batch-grill-me` skill; it registers the task, creates `wt/<task-id>`, and leases a verified worktree only from the repo-owned `.worktrees/` pool. Treehouse owns the pool's nested internal layout; use only the returned worktree path.
 
-**Treehouse isolation is the default.** Every run requires an isolated worktree unless the caller opts out with `-NoIsolation` for trivial, read-only, or throwaway work. Because isolation is default-on, a plain `-CheckOnly` reports `isolationRequired: true` and is not READY until you rerun with `-PrepareIsolation`. The `-PrepareIsolation` mode acquires a Treehouse lease and creates a unique derived `runBranch` at the checked source `HEAD` before returning READY. Run the in-session harness from the returned worktree path, commit only on `runBranch`, and verify that branch before returning the lease. `-NoIsolation` runs on the current clean feature branch with no worktree; it cannot be combined with `-PrepareIsolation`/`-Parallel`, and canonical monorepo pipelines reject it (they always require isolation). With isolation default-on, missing Treehouse fails readiness for any run that did not opt out.
+The required sequence is: start; unconditional grill; `record-grill`; persist `RUN.json`, `GRILL.json`, `BRIEF.md`, and `HARNESS.md` in the recorded run directory; emit the lean pointer or clear context; `/goal clear`; `validate`; then Planner and Maker. Validation failure blocks Planner and Maker. `finish` verifies task/branch/lease identity before completion and lease return. A blocked or failed run retains its lease. `audit` is read-only and reports, but never removes or changes, a pre-existing `misplaced_worktree`.
+
+`/setup-harness` creates the repository configuration and installs/verifies harness assets, including the pinned grill; workspace `/onboard` provides the internal `tasks-axi` and Treehouse CLIs. Setup does not start a task or acquire a lease. The readiness script is an internal lifecycle implementation/diagnostic seam, not an operator pre-goal command or alternate path.
 
 ## Key commands
 
 ```powershell
-powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
-  -RepoPath C:\path\to\repo -CheckOnly
+# Start the managed lifecycle; it registers, leases, and persists RUN.json.
+bun scripts/goal-lifecycle.ts start `
+  --repo C:\path\to\repo --task-id my-task --title <title>
 
-# Opt out of default isolation (trivial / read-only run on the current feature branch)
-powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
-  -RepoPath C:\path\to\repo -CheckOnly -NoIsolation
-
-# Prepare the default treehouse isolation (leases a worktree + derived runBranch)
-powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
-  -RepoPath C:\path\to\repo -PrepareIsolation -Parallel `
-  -LeaseHolder harness-my-task
 ```
 
 ```bash

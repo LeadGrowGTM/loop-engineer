@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { resolveRoleModel } from "./resolve-role-model";
 
 const repoRoot = join(import.meta.dir, "..");
@@ -9,37 +8,10 @@ const agentPath = (name: string) => join(repoRoot, ".claude", "agents", `${name}
 const readAgent = (name: string) => readFileSync(agentPath(name), "utf8");
 const goalSkillPath = join(repoRoot, "skills", "write-goal-prompt", "SKILL.md");
 const goalExamplesPath = join(repoRoot, "skills", "write-goal-prompt", "EXAMPLES.md");
+const issueTrackerPath = join(repoRoot, "skills", "write-goal-prompt", "references", "issue-tracker.md");
 const readGoalSkill = () => readFileSync(goalSkillPath, "utf8");
 const readGoalExamples = () => readFileSync(goalExamplesPath, "utf8");
-const gitExecutable = Bun.which("git");
-if (!gitExecutable) throw new Error("Git executable not found");
-const gitBash = resolve(dirname(gitExecutable), "..", "bin", "bash.exe");
-const BASH = existsSync(gitBash) ? gitBash : Bun.which("bash");
-if (!BASH) throw new Error("Bash executable not found");
-
-function run(command: string[], cwd: string): string {
-  const result = Bun.spawnSync(command, { cwd, stdout: "pipe", stderr: "pipe" });
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `Command failed (${result.exitCode}): ${command.join(" ")}\nstdout: ${result.stdout.toString()}\nstderr: ${result.stderr.toString()}`,
-    );
-  }
-  return result.stdout.toString().trim();
-}
-
-function normalizePath(value: string): string {
-  return resolve(value).replaceAll("\\", "/");
-}
-
-function resolveSkillRoots(cwd: string): { projectRoot: string; workspaceRoot: string } {
-  const match = readGoalSkill().match(/## Execution Router[\s\S]*?```bash\r?\n([\s\S]*?)\r?\n```/);
-  if (!match) throw new Error("Execution Router Step 0 shell snippet not found");
-  const snippet = match[1].replaceAll("\r\n", "\n");
-  const output = run([BASH, "-c", `${snippet}\nprintf '%s\\n' "$PROJECT_ROOT" "$WORKSPACE_ROOT"`], cwd).split(/\r?\n/);
-  if (output.length !== 2) throw new Error(`Expected two routing paths, received ${output.length}`);
-  return { projectRoot: output[0], workspaceRoot: output[1] };
-}
-
+const readIssueTracker = () => readFileSync(issueTrackerPath, "utf8");
 const roles = [
   "harness-planner",
   "harness-maker",
@@ -47,6 +19,43 @@ const roles = [
   "harness-checker",
   "harness-shipper",
 ] as const;
+
+function expectAuthoringLifecycleSequence(source: string): void {
+  const durableArtifacts = source.indexOf("RUN.json + GRILL.json + BRIEF.md + HARNESS.md");
+  const pointer = source.indexOf("restart pointer", durableArtifacts);
+  const validate = source.indexOf("First action: goal-lifecycle validate --run <RUN.json>", pointer);
+
+  expect(source).toMatch(/authoring (?:order|sequence) is `start\s*->\s*unconditional batch-grill-me\s*->\s*record-grill\s*->\s*durable\s+artifacts\s*->\s*emit restart pointer`/i);
+  expect(durableArtifacts).toBeGreaterThan(-1);
+  expect(pointer).toBeGreaterThan(durableArtifacts);
+  expect(validate).toBeGreaterThan(pointer);
+}
+
+function expectRestartPointerValidationGate(source: string): void {
+  const validate = source.indexOf("First action: goal-lifecycle validate --run <RUN.json>");
+  const routing = source.indexOf("[ROUTING_GUARD]", validate);
+  const planner = source.indexOf("Planner", validate);
+  const maker = source.indexOf("Maker", validate);
+
+  expect(validate).toBeGreaterThan(-1);
+  expect(routing).toBeGreaterThan(validate);
+  expect(planner).toBeGreaterThan(validate);
+  expect(maker).toBeGreaterThan(validate);
+  expect(source.slice(validate)).toMatch(/Validate before routing, Planner, or Maker/i);
+}
+
+function expectRestartPointerPayload(source: string): void {
+  const start = source.indexOf("/goal [LIFECYCLE_RESTART]");
+  const end = source.indexOf("```", start);
+  const pointer = source.slice(start, end);
+
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  expect(pointer).toMatch(/^Task ID:\s+\S+/m);
+  expect(pointer).toMatch(/^Absolute run path:\s+\S+/m);
+  expect(pointer).toMatch(/^Manifest path:\s+\S*RUN\.json/m);
+  expect(pointer).toMatch(/execute the exact \[ROUTING_GUARD\] block persisted in HARNESS\.md/i);
+}
 
 describe("approval-aware harness agent contracts", () => {
   test("every role reads its task-specific HARNESS brief", () => {
@@ -100,50 +109,13 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).toMatch(/never merge/i);
   });
 
-  test("write-goal parent runs the skill-routing resolver before Planner", () => {
+  test("write-goal routes only after lifecycle validation", () => {
     const source = readGoalSkill();
 
-    expect(source).toContain("scripts/resolve-skill-routing.ts");
-    expect(source).toContain("--project-root");
-    expect(source).toContain("--emit-shell-guard");
-    expect(source).toContain("ROUTING_EVIDENCE");
     expect(source).toContain("[ROUTING_GUARD]");
     expect(source).toContain("[SKILL_ROUTING_RESOLUTION]");
-    expect(source).not.toContain("<ABSOLUTE_ROUTING_RESOLVER>");
-    expect(source).toMatch(/nonzero.*do not invoke (the )?Planner|do not invoke (the )?Planner.*nonzero/is);
-  });
-
-  test("complete example runs the routing guard before Planner", () => {
-    const source = readGoalExamples();
-
-    expect(source).toContain("resolve-skill-routing.ts");
-    expect(source).toContain("--emit-shell-guard");
-    expect(source).toContain("ROUTING_EVIDENCE");
-    expect(source).toContain("[SKILL_ROUTING_RESOLUTION]");
+    expect(source).toMatch(/validation.*before.*routing.*Planner/is);
     expect(source).toMatch(/nonzero.*stop.*Planner|stop.*Planner.*nonzero/is);
-    expect(source).toMatch(/PLAN\.md.*exact routing evidence.*selected source.*fallback/is);
-  });
-
-  test("Harness Architect supports direct routing without reading a routing file", () => {
-    const source = readGoalSkill();
-    const match = source.match(
-      /\*\*Agent 4[^\n]*Harness Architect[^\n]*\*\*\r?\n\r?\n```\r?\n([\s\S]*?)\r?\n```\r?\n\r?\nSynthesize/,
-    );
-    expect(match).not.toBeNull();
-    const contract = match![1];
-
-    expect(contract).toMatch(
-      /selectedSource is project-local or canonical, read only normalizedPath/i,
-    );
-    expect(contract).toMatch(
-      /selectedSource\s+is direct, do not read a routing file/i,
-    );
-    expect(contract).toMatch(/documented\s+direct quality bar/i);
-    expect(contract).toContain("- [ ] routing resolution consumed");
-    expect(contract).toMatch(
-      /selected routing file read.*project-local or canonical only.*omit for direct/i,
-    );
-    expect(contract).not.toContain("- [ ] skill-routing.md read");
   });
 
   test("planner consumes exact routing evidence without gaining Bash", () => {
@@ -170,7 +142,7 @@ describe("approval-aware harness agent contracts", () => {
 
   test("maker invokes the installed protected-work guard before edits and every commit", () => {
     const source = readAgent("harness-maker");
-    const guardPath = "$PROJECT_ROOT/scripts/guard-protected-work.ts";
+    const guardPath = "$RUN_WORKTREE_PATH/scripts/guard-protected-work.ts";
     const captureCommand = `bun "${guardPath}" capture`;
     const validateCommand = `bun "${guardPath}" validate`;
     const captureIndex = source.indexOf(captureCommand);
@@ -221,17 +193,14 @@ describe("approval-aware harness agent contracts", () => {
     expect(source).toMatch(/overlap|not.*isolate|cannot be isolated/i);
   });
 
-  test("write-goal skill keeps canonical pipeline target separate from workspace root", () => {
+  test("write-goal skill exposes the complete lifecycle interface", () => {
     const source = readGoalSkill();
 
-    expect(source).toContain('INVOCATION_ROOT=$(normalize_path "$(pwd -P)")');
-    expect(source).toContain("GIT_ROOT_RAW=$(git rev-parse --show-toplevel");
-    expect(source).toContain('PROJECT_ROOT="$INVOCATION_ROOT"');
-    expect(source).toContain('WORKSPACE_ROOT=$(dirname "$GIT_ROOT")');
-    expect(source).toMatch(/WORKSPACE_ROOT.*pipelines.*PROJECT_ROOT/s);
-    expect(source).toContain('-RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -CheckOnly');
-    expect(source).toContain('-RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -PrepareIsolation -Parallel');
-    expect(source).not.toContain("PROJECT_ROOT=$(git rev-parse --show-toplevel");
+    expect(source).toContain("goal-lifecycle start");
+    expect(source).toContain("goal-lifecycle record-grill");
+    expect(source).toContain("goal-lifecycle validate");
+    expect(source).toContain("goal-lifecycle finish");
+    expect(source).toContain("goal-lifecycle audit");
   });
 
   test("write-goal skill propagates separate shipping approval to generated goals", () => {
@@ -239,30 +208,125 @@ describe("approval-aware harness agent contracts", () => {
 
     expect(source).toMatch(/separate explicit shipping approval/i);
     expect(source).toContain("N/A - shipping not approved");
-    expect(source).toMatch(/do not spawn (the )?Shipper unless/i);
+    expect(source).toMatch(/Run the Shipper only after Checker PASS plus separate explicit shipping approval/i);
     expect(source).toMatch(/Checker PASS.*shipping approval/is);
     expect(source).not.toContain("After Checker returns PASS, spawn a fresh `harness-shipper` agent");
     expect(source).not.toContain("After the first PASS, exit the eval loop and run the Ship stage exactly once");
   });
 
-  test("write-goal Step 0 executes for canonical and standalone targets", () => {
-    const workspace = mkdtempSync(join(tmpdir(), "goal-routing-workspace-"));
-    const pipeline = join(workspace, "pipelines", "content");
-    mkdirSync(pipeline, { recursive: true });
-    run(["git", "init", "-b", "main"], workspace);
+  test("write-goal skill independently orders lifecycle authoring through its validation-gated pointer", () => {
+    const source = readGoalSkill();
 
-    const canonical = resolveSkillRoots(pipeline);
-    expect(canonical.projectRoot).toBe(normalizePath(pipeline));
-    expect(canonical.workspaceRoot).toBe(normalizePath(workspace));
+    expectAuthoringLifecycleSequence(source);
+    expectRestartPointerValidationGate(source);
+    expectRestartPointerPayload(source);
+  });
 
-    const parent = mkdtempSync(join(tmpdir(), "goal-routing-standalone-"));
-    const repo = join(parent, "repo with spaces");
-    mkdirSync(repo, { recursive: true });
-    run(["git", "init", "-b", "main"], repo);
+  test("complete example independently orders lifecycle authoring through its validation-gated pointer", () => {
+    const source = readGoalExamples();
 
-    const standalone = resolveSkillRoots(repo);
-    expect(standalone.projectRoot).toBe(normalizePath(repo));
-    expect(standalone.workspaceRoot).toBe(normalizePath(dirname(repo)));
+    expectAuthoringLifecycleSequence(source);
+    expectRestartPointerValidationGate(source);
+    expectRestartPointerPayload(source);
+  });
+
+  test("clarity-gate independently requires start, an unconditional grill, and recorded receipt", () => {
+    const source = readFileSync(join(repoRoot, "skills", "write-goal-prompt", "references", "clarity-gate.md"), "utf8");
+
+    expect(source).toMatch(/batch-grill-me.*after\s+`goal-lifecycle start`.*before\s+`goal-lifecycle record-grill`/is);
+    expect(source).toMatch(/no alternate interview route.*no omission/is);
+  });
+
+  test("context-management independently persists the durable artifacts before its restart validation gate", () => {
+    const source = readFileSync(join(repoRoot, "skills", "write-goal-prompt", "references", "context-management.md"), "utf8");
+    const artifacts = source.indexOf("RUN.json`, `GRILL.json`, `BRIEF.md`, and `HARNESS.md");
+    const pointer = source.indexOf("restart pointer", artifacts);
+    const validate = source.indexOf("goal-lifecycle validate --run <RUN.json>", pointer);
+
+    expect(artifacts).toBeGreaterThan(-1);
+    expect(pointer).toBeGreaterThan(artifacts);
+    expect(validate).toBeGreaterThan(pointer);
+    expect(source.slice(validate)).toMatch(/stops routing and execution; Planner and Maker remain unreachable/i);
+  });
+
+  test("managed-run reference independently gates its restart pointer before routing or execution", () => {
+    const source = readFileSync(join(repoRoot, "skills", "write-goal-prompt", "references", "parallel-execution.md"), "utf8");
+    const start = source.indexOf("goal-lifecycle start");
+    const pointer = source.indexOf("restart pointer", start);
+    const validate = source.indexOf("goal-lifecycle validate --run <RUN.json>", pointer);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(pointer).toBeGreaterThan(start);
+    expect(validate).toBeGreaterThan(pointer);
+    expect(source.slice(validate)).toMatch(/before routing, Planner, or Maker/i);
+  });
+
+  test("planner and maker reject an invocation without successful lifecycle validation", () => {
+    for (const role of ["harness-planner", "harness-maker"] as const) {
+      const source = readAgent(role);
+      expect(source).toContain("LIFECYCLE_VALIDATION: OK");
+      expect(source).toMatch(/stop.*LIFECYCLE_VALIDATION|LIFECYCLE_VALIDATION.*stop/is);
+      expect(source).toMatch(/goal-lifecycle validate --run <RUN\.json>/);
+    }
+  });
+
+  test("maker uses explicit manifest roots for task work, artifacts, and ownership", () => {
+    const source = readAgent("harness-maker");
+
+    expect(source).toContain("worktreePath");
+    expect(source).toContain("runDirectory");
+    expect(source).toContain("repositoryRoot");
+    expect(source).toContain("gitCommonDirectory");
+    expect(source).toContain("RUN_WORKTREE_PATH");
+    expect(source).toContain("RUN_DIRECTORY");
+    expect(source).toContain("REPOSITORY_ROOT");
+    expect(source).toContain("GIT_COMMON_DIRECTORY");
+    expect(source).not.toContain("$PROJECT_ROOT");
+    expect(source).toMatch(/worktreePath.*guard.*commit root/is);
+    expect(source).toMatch(/runDirectory.*artifacts/is);
+    expect(source).toMatch(/workspace root.*never.*task work.*commit target/is);
+  });
+
+  test("authoring resolves the nested target repository root before lifecycle start", () => {
+    const source = readGoalSkill();
+
+    expect(source).toContain("git -C <candidate-target> rev-parse --show-toplevel");
+    expect(source).toMatch(/exact absolute output.*--repo/is);
+    expect(source).toMatch(/nested repository.*not.*workspace.*monorepo/i);
+  });
+
+  test("issue slices consume the manifest run directory instead of deleted router roots", () => {
+    const source = readIssueTracker();
+
+    expect(source).toContain("worktreePath");
+    expect(source).toContain("runDirectory");
+    expect(source).toMatch(/runDirectory.*artifacts/is);
+    expect(source).toMatch(/worktreePath.*task work.*commit root/is);
+    expect(source).not.toContain("$PROJECT_ROOT");
+    expect(source).not.toContain("Execution Router");
+  });
+
+  test("supported contracts never offer direct task, worktree, bypass, or conditional-grill paths", () => {
+    const contracts = [
+      ["write-goal skill", readGoalSkill()],
+      ["complete example", readGoalExamples()],
+      ["clarity gate", readFileSync(join(repoRoot, "skills", "write-goal-prompt", "references", "clarity-gate.md"), "utf8")],
+      ["managed-run reference", readFileSync(join(repoRoot, "skills", "write-goal-prompt", "references", "parallel-execution.md"), "utf8")],
+      ["context-management reference", readFileSync(join(repoRoot, "skills", "write-goal-prompt", "references", "context-management.md"), "utf8")],
+      ["planner", readAgent("harness-planner")],
+      ["maker", readAgent("harness-maker")],
+      ["shipper", readAgent("harness-shipper")],
+    ] as const;
+
+    for (const [name, source] of contracts) {
+      expect(source, name).not.toMatch(/tasks-axi/i);
+      expect(source, name).not.toMatch(/treehouse/i);
+      expect(source, name).not.toMatch(/git worktree/i);
+      expect(source, name).not.toMatch(/-NoIsolation/i);
+      expect(source, name).not.toMatch(/primary checkout/i);
+      expect(source, name).not.toMatch(/model[- ]chosen.*worktree|choose.*worktree path/i);
+      expect(source, name).not.toMatch(/skip.*grill|\bconditional\b.*grill|grill.*only when/i);
+    }
   });
 });
 

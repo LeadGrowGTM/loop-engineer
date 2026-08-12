@@ -1,2 +1,2 @@
 max_trees = 16
-root = ".tmp/treehouse/"
+root = ".worktrees/"

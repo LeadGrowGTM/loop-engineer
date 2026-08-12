@@ -35,6 +35,19 @@ export interface SmokeResult {
   passed: boolean;
 }
 
+export type LifecycleDependencyState = 'ready' | 'workspace-onboarding-required' | 'installable-drift';
+
+export interface LifecycleDependency {
+  name: 'tasks-axi' | 'treehouse' | 'batch-grill-me';
+  state: LifecycleDependencyState;
+  ready: boolean;
+}
+
+export interface LifecycleDependencyReport {
+  dependencies: LifecycleDependency[];
+  ready: boolean;
+}
+
 export const AGENT_FILES = [
   'harness-planner.md',
   'harness-maker.md',
@@ -192,6 +205,9 @@ export function isValidSkillRouting(content: string): boolean {
 
 export const GUARD_RELATIVE_PATH = 'scripts/guard-protected-work.ts';
 const SOURCE_GUARD_PATH = join(import.meta.dir, 'guard-protected-work.ts');
+const VENDORED_GRILL_RELATIVE_PATH = '.claude/skills/batch-grill-me/SKILL.md';
+const SOURCE_GRILL_PATH = join(import.meta.dir, '../skills/setup-harness/vendor/batch-grill-me/SKILL.md');
+const TREEHOUSE_CONFIG = 'max_trees = 16\nroot = ".worktrees/"\n';
 
 type ContainedPathKind = 'directory' | 'regular-file';
 
@@ -295,6 +311,13 @@ function trustedHomeDirectory(): string {
   return trustedTargetDirectory(home);
 }
 
+function mkdirTrustedHomePath(relativePath: string): string {
+  const home = trustedHomeDirectory();
+  const destination = trustedContainedPath(home, relativePath, 'directory');
+  mkdirSync(destination, { recursive: true });
+  return trustedContainedPath(home, relativePath, 'directory');
+}
+
 type InstallPaths = {
   targetDir: string;
   agentsDir: string;
@@ -306,6 +329,7 @@ type InstallPaths = {
   treehouseTomlPath: string;
   gitignorePath: string;
   claudeMdPath: string;
+  grillSkillPath: string;
 };
 
 // Fail closed with zero side effects when any install destination - including
@@ -327,7 +351,79 @@ function validateInstallPaths(targetDir: string): InstallPaths {
     treehouseTomlPath: trustedContainedPath(trustedTargetDir, 'treehouse.toml', 'regular-file'),
     gitignorePath: trustedContainedPath(trustedTargetDir, '.gitignore', 'regular-file'),
     claudeMdPath: trustedContainedPath(trustedTargetDir, 'CLAUDE.md', 'regular-file'),
+    grillSkillPath: trustedContainedPath(
+      trustedHomeDirectory(),
+      VENDORED_GRILL_RELATIVE_PATH,
+      'regular-file',
+    ),
   };
+}
+
+function commandIsUsable(command: string, cwd: string): boolean {
+  try {
+    const result = Bun.spawnSync([command, '--version'], { cwd, stdout: 'pipe', stderr: 'pipe' });
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
+export function doctorLifecycleDependencies(targetDir: string): LifecycleDependencyReport {
+  const trustedTargetDir = trustedTargetDirectory(targetDir);
+  const tasksAxiReady = commandIsUsable('tasks-axi', trustedTargetDir);
+  const treehouseReady = commandIsUsable('treehouse', trustedTargetDir);
+  let grillReady = false;
+  try {
+    const grillPath = trustedContainedPath(
+      trustedHomeDirectory(),
+      VENDORED_GRILL_RELATIVE_PATH,
+      'regular-file',
+    );
+    grillReady = existsSync(grillPath) &&
+      readFileSync(grillPath).equals(readFileSync(SOURCE_GRILL_PATH));
+  } catch {
+    grillReady = false;
+  }
+  const dependencies: LifecycleDependency[] = [
+    {
+      name: 'tasks-axi',
+      state: tasksAxiReady ? 'ready' : 'workspace-onboarding-required',
+      ready: tasksAxiReady,
+    },
+    {
+      name: 'treehouse',
+      state: treehouseReady ? 'ready' : 'workspace-onboarding-required',
+      ready: treehouseReady,
+    },
+    {
+      name: 'batch-grill-me',
+      state: grillReady ? 'ready' : 'installable-drift',
+      ready: grillReady,
+    },
+  ];
+  return { dependencies, ready: dependencies.every((dependency) => dependency.ready) };
+}
+
+function treehouseProvesNoActiveLeases(targetDir: string): boolean {
+  try {
+    const result = Bun.spawnSync(['treehouse', 'status'], { cwd: targetDir, stdout: 'pipe', stderr: 'pipe' });
+    if (result.exitCode !== 0) return false;
+    const status = result.stdout.toString().trim();
+    return /^(?:NO_ACTIVE_LEASES|no active leases|no leases)$/i.test(status);
+  } catch {
+    return false;
+  }
+}
+
+function isLegacyTreehouseConfig(content: string): boolean {
+  return /^\s*root\s*=\s*["']\.tmp\/treehouse\/["']\s*$/m.test(content);
+}
+
+function repairLegacyTreehouseConfig(content: string): string {
+  return content.replace(
+    /^(\s*root\s*=\s*["'])\.tmp\/treehouse\/(["']\s*)$/m,
+    '$1.worktrees/$2',
+  );
 }
 
 function trustedExistingRegularFile(targetDir: string, relativePath: string): string | null {
@@ -489,6 +585,11 @@ if (import.meta.main) {
     const revalidated = (relativePath: string, expectedKind: ContainedPathKind) =>
       trustedContainedPath(trustedTargetDirectory(targetDirArg), relativePath, expectedKind);
     const trustedAgentsDir = () => trustedContainedPath(trustedHomeDirectory(), '.claude/agents', 'directory');
+    const trustedGrillSkillPath = () => trustedContainedPath(
+      trustedHomeDirectory(),
+      VENDORED_GRILL_RELATIVE_PATH,
+      'regular-file',
+    );
 
     const targetDir = trustedTargetDirectory(targetDirArg);
     const sourceAgentsDir = join(import.meta.dir, '../.claude/agents');
@@ -499,6 +600,13 @@ if (import.meta.main) {
       copyFileSync(join(sourceAgentsDir, f), destPath);
       console.log(`Copied ${f} → ${destPath}`);
     }
+
+    mkdirTrustedHomePath('.claude');
+    mkdirTrustedHomePath('.claude/skills');
+    mkdirTrustedHomePath('.claude/skills/batch-grill-me');
+    const grillSkillPath = trustedGrillSkillPath();
+    copyFileSync(SOURCE_GRILL_PATH, trustedGrillSkillPath());
+    console.log(`Installed bundled batch-grill-me → ${grillSkillPath}`);
 
     const guardPath = revalidated(GUARD_RELATIVE_PATH, 'regular-file');
     mkdirSync(dirname(guardPath), { recursive: true });
@@ -534,16 +642,31 @@ if (import.meta.main) {
     // treehouse resolves the nearest treehouse.toml from cwd; without one, a run from
     // the project would fall through to the monorepo pool.
     const treehouseTomlPath = revalidated('treehouse.toml', 'regular-file');
-    if (existsSync(treehouseTomlPath)) {
-      console.log('treehouse.toml already present — left as-is');
-    } else {
-      writeFileSync(treehouseTomlPath, 'max_trees = 16\nroot = ".tmp/treehouse/"\n');
+    let treehouseRepairBlocked = false;
+    const legacyTreehouseConfig = existsSync(treehouseTomlPath) &&
+      isLegacyTreehouseConfig(readFileSync(treehouseTomlPath, 'utf8'));
+    if (legacyTreehouseConfig) {
+      if (treehouseProvesNoActiveLeases(targetDir)) {
+        writeFileSync(
+          treehouseTomlPath,
+          repairLegacyTreehouseConfig(readFileSync(treehouseTomlPath, 'utf8')),
+        );
+        console.log('Repaired treehouse.toml legacy pool after no-active-lease status');
+      } else {
+        treehouseRepairBlocked = true;
+        console.log('treehouse.toml repair blocked by active or unknown leases');
+      }
+    }
+    if (!existsSync(treehouseTomlPath)) {
+      writeFileSync(treehouseTomlPath, TREEHOUSE_CONFIG);
       console.log('Wrote treehouse.toml (per-project worktree pool)');
+    } else if (!legacyTreehouseConfig) {
+      console.log('treehouse.toml already present — left as-is');
     }
 
     // Keep the project-local worktree pool out of git.
     const gitignorePath = revalidated('.gitignore', 'regular-file');
-    const ignoreLines = ['.tmp/treehouse/'];
+    const ignoreLines = ['.worktrees/'];
     const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
     const missing = ignoreLines.filter((l) => !existingIgnore.split(/\r?\n/).includes(l));
     if (missing.length) {
@@ -570,6 +693,18 @@ if (import.meta.main) {
     console.log('\nSmoke test:');
     for (const r of smoke) console.log(`  ${r.passed ? '✓' : '✗'} ${r.check}`);
     if (!smoke.every((r) => r.passed)) process.exit(1);
+
+    const dependencies = doctorLifecycleDependencies(targetDir);
+    console.log('\nLifecycle dependencies:');
+    for (const dependency of dependencies.dependencies) {
+      const suffix = dependency.state === 'workspace-onboarding-required'
+        ? 'workspace onboarding required'
+        : dependency.state === 'installable-drift'
+          ? 'installable bundled skill drift'
+          : 'ready';
+      console.log(`  ${dependency.name}: ${suffix}`);
+    }
+    if (treehouseRepairBlocked || !dependencies.ready) process.exit(1);
   } else {
     console.error('Commands: scan <dir> | smoke <target-dir> <agents-dir> | install <target-dir>');
     process.exit(1);
