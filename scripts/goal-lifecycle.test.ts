@@ -387,27 +387,54 @@ test('audit classifies registered worktrees without mutating files, refs, or man
   expect(existsSync(fixture.treehouse.calls) ? readFileSync(fixture.treehouse.calls, 'utf8') : '').toBe(before.treehouse + 'status\r\n');
 });
 
-test('finish retains blocked and failed leases with durable recovery and rejects unsafe success preconditions', () => {
-  for (const outcome of ['blocked', 'failed'] as const) {
-    const fixture = createLifecycleFixture();
-    const started = startFixture(fixture);
-    const result = finishFixture(fixture, started.json.data.manifestPath as string, { outcome });
-    expect(result.exitCode).toBe(0);
-    expect(existsSync(join(readRunManifest(started.json.data.manifestPath as string).runDirectory, 'RECOVERY.json'))).toBe(true);
-    expect(existsSync(fixture.treehouse.returned)).toBe(false);
-    expect(existsSync(fixture.tasks.calls) ? readFileSync(fixture.tasks.calls, 'utf8') : '').not.toContain('done canonical-goal');
-  }
-  for (const mutation of ['dirty', 'handoff', 'holder'] as const) {
-    const fixture = createLifecycleFixture();
-    const completed = completedRunFixture(fixture);
-    if (mutation === 'dirty') writeFileSync(join(completed.run.worktreePath, 'untracked.txt'), 'dirty\n');
-    if (mutation === 'handoff') rmSync(join(completed.run.runDirectory, 'HANDOFF.md'));
-    if (mutation === 'holder') fixture.env.TREEHOUSE_HOLDER = 'other-goal';
-    const result = finishFixture(fixture, completed.manifestPath);
-    expect(result.exitCode).toBe(1);
-    expect(existsSync(fixture.treehouse.returned)).toBe(false);
-    expectSafeRemediation(result.json);
-  }
+test('finish retains a blocked lease with durable recovery', () => {
+  const fixture = createLifecycleFixture();
+  const started = startFixture(fixture);
+  const result = finishFixture(fixture, started.json.data.manifestPath as string, { outcome: 'blocked' });
+  expect(result.exitCode).toBe(0);
+  expect(existsSync(join(readRunManifest(started.json.data.manifestPath as string).runDirectory, 'RECOVERY.json'))).toBe(true);
+  expect(existsSync(fixture.treehouse.returned)).toBe(false);
+  expect(existsSync(fixture.tasks.calls) ? readFileSync(fixture.tasks.calls, 'utf8') : '').not.toContain('done canonical-goal');
+});
+
+test('finish retains a failed lease with durable recovery', () => {
+  const fixture = createLifecycleFixture();
+  const started = startFixture(fixture);
+  const result = finishFixture(fixture, started.json.data.manifestPath as string, { outcome: 'failed' });
+  expect(result.exitCode).toBe(0);
+  expect(existsSync(join(readRunManifest(started.json.data.manifestPath as string).runDirectory, 'RECOVERY.json'))).toBe(true);
+  expect(existsSync(fixture.treehouse.returned)).toBe(false);
+  expect(existsSync(fixture.tasks.calls) ? readFileSync(fixture.tasks.calls, 'utf8') : '').not.toContain('done canonical-goal');
+});
+
+test('finish rejects success with a dirty worktree', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  writeFileSync(join(completed.run.worktreePath, 'untracked.txt'), 'dirty\n');
+  const result = finishFixture(fixture, completed.manifestPath);
+  expect(result.exitCode).toBe(1);
+  expect(existsSync(fixture.treehouse.returned)).toBe(false);
+  expectSafeRemediation(result.json);
+});
+
+test('finish rejects success without a handoff', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  rmSync(join(completed.run.runDirectory, 'HANDOFF.md'));
+  const result = finishFixture(fixture, completed.manifestPath);
+  expect(result.exitCode).toBe(1);
+  expect(existsSync(fixture.treehouse.returned)).toBe(false);
+  expectSafeRemediation(result.json);
+});
+
+test('finish rejects success when lease held by another owner', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TREEHOUSE_HOLDER = 'other-goal';
+  const result = finishFixture(fixture, completed.manifestPath);
+  expect(result.exitCode).toBe(1);
+  expect(existsSync(fixture.treehouse.returned)).toBe(false);
+  expectSafeRemediation(result.json);
 });
 
 test('audit emits every legacy classification without manager or repository mutation', () => {
