@@ -123,8 +123,8 @@ function unsupportedOperation(operation: string): LifecycleResult {
 }
 
 /**
- * The sole caller-facing lifecycle seam. Later tasks replace the placeholders
- * with operation modules while preserving this one-result contract.
+ * The sole caller-facing lifecycle seam. Each of the five operations delegates
+ * to its own module while preserving this one-result contract.
  */
 export async function runGoalLifecycle(
   argv: string[],
