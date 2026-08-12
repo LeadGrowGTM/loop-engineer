@@ -8,10 +8,8 @@ const SCRIPT = join(import.meta.dir, 'prepare-harness-run.ps1');
 const LAUNCHER = join(import.meta.dir, 'launch-gnhf.ps1');
 const README = join(import.meta.dir, '..', 'README.md');
 const REPO_INSTRUCTIONS = join(import.meta.dir, '..', 'CLAUDE.md');
-const CHECK_ONLY_OPERATOR_CONTRACT =
-  'The `-CheckOnly` mode does not start task execution and does not mutate Git state.';
-const PREPARE_ISOLATION_OPERATOR_CONTRACT =
-  'The `-PrepareIsolation` mode acquires a Treehouse lease and creates a unique derived `runBranch` at the checked source `HEAD` before returning READY.';
+const READINESS_INTERNAL_CONTRACT = 'diagnostic seam';
+const READINESS_NOT_OPERATOR_CONTRACT = 'not an operator pre-goal command';
 const WINDOWS_POWERSHELL = process.platform === 'win32' ? Bun.which('powershell.exe') : undefined;
 const STREAM_CLOSED_PROCESS_LAUNCHER = String.raw`
 using System;
@@ -731,13 +729,12 @@ describe('prepare-harness-run CLI', () => {
     expectNoBlanketGitNonMutation(help);
   });
 
-  test('operator guidance repeats the mode-specific contract', () => {
+  test('operator guidance documents the readiness script as an internal lifecycle detail', () => {
     for (const guidancePath of [README, REPO_INSTRUCTIONS]) {
       const guidance = readFileSync(guidancePath, 'utf8').replace(/\s+/g, ' ');
 
-      expect(guidance).toContain(CHECK_ONLY_OPERATOR_CONTRACT);
-      expect(guidance).toContain(PREPARE_ISOLATION_OPERATOR_CONTRACT);
-      expectNoBlanketGitNonMutation(guidance);
+      expect(guidance).toContain(READINESS_INTERNAL_CONTRACT);
+      expect(guidance).toContain(READINESS_NOT_OPERATOR_CONTRACT);
     }
   });
 
