@@ -26,7 +26,7 @@ export interface AuditRow {
   dirty: boolean;
   reachable: boolean;
   manager: 'primary' | 'treehouse' | 'external';
-  classification: 'primary' | 'managed' | 'MISPLACED_WORKTREE' | 'dirty' | 'unreachable' | 'sibling-pipeline';
+  classification: 'primary' | 'managed' | 'MISPLACED_WORKTREE';
   suggestedCommand: string;
 }
 
