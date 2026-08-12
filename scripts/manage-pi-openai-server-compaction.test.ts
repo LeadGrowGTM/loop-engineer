@@ -128,6 +128,29 @@ function createProcessTraps(
   return { bin, hits };
 }
 
+function writeLifecycleDependencyTools(bin: string): void {
+  if (process.platform === 'win32') {
+    writeFileSync(
+      join(bin, 'tasks-axi.cmd'),
+      '@echo off\r\nif "%1"=="--version" echo tasks-axi 0.1.1\r\nexit /b 0\r\n',
+    );
+    writeFileSync(
+      join(bin, 'treehouse.cmd'),
+      '@echo off\r\nif "%1"=="--version" echo treehouse 1.8.0\r\nexit /b 0\r\n',
+    );
+    return;
+  }
+
+  for (const [command, version] of [
+    ['tasks-axi', 'tasks-axi 0.1.1'],
+    ['treehouse', 'treehouse 1.8.0'],
+  ] as const) {
+    const path = join(bin, command);
+    writeFileSync(path, `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${version}"; fi\nexit 0\n`);
+    chmodSync(path, 0o755);
+  }
+}
+
 function stdoutLines(stdout: string): string[] {
   return stdout.replace(/\r?\n$/, '').split(/\r?\n/);
 }
@@ -2582,6 +2605,7 @@ describe('manage-pi-openai-server-compaction CLI', () => {
     const argvLog = join(trapRoot, 'git-argv.log');
     writeFileSync(argvLog, '');
     writeReadinessGit(traps.bin, trapRoot, target, argvLog);
+    writeLifecycleDependencyTools(traps.bin);
     const result = Bun.spawnSync(
       [process.execPath, SETUP_HARNESS_PATH, 'install', target],
       {
