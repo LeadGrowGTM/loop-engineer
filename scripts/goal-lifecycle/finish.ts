@@ -8,7 +8,7 @@ import {
   type LifecycleResult,
 } from './contracts';
 import { readRunManifest, writeJsonAtomic, type RunManifestV1 } from './manifest';
-import { runProcess, type ProcessResult } from './process';
+import { processSucceeded, runProcess } from './process';
 import { assertNoReparsePath, pathInside, resolveRepository, runGit, samePath } from './repository';
 import { decodeTaskDetail } from './tasks-axi';
 
@@ -44,10 +44,6 @@ interface CompletionRecord {
   outcome: 'success' | 'blocked' | 'failed';
   pr?: string;
   phase: 'RETURN_PENDING';
-}
-
-function processSucceeded(result: ProcessResult): boolean {
-  return !result.timedOut && !result.outputLimitExceeded && result.exitCode === 0;
 }
 
 function finishError(code: string, message: string): LifecycleCommandError {
@@ -187,7 +183,12 @@ async function reconcileCompletion(input: FinishLifecycleInput, context: Lifecyc
   const state = await leaseState(reconstructed);
   if (state === 'conflicting_holder') throw finishError('LEASE_IDENTITY_MISMATCH', 'The recorded lease is now held by a different owner.');
   if (state === 'exact_holder') {
-    const run = readRunManifest(input.runPath);
+    let run: RunManifestV1;
+    try {
+      run = readRunManifest(input.runPath);
+    } catch {
+      throw finishError('LEASE_IDENTITY_MISMATCH', 'The still-held worktree manifest is missing or corrupt; the committed completion identity is authoritative.');
+    }
     assertRunPath(input.runPath, run);
     if (
       run.taskId !== record.taskId || run.branch !== record.branch ||

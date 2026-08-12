@@ -13,11 +13,16 @@ export interface ProcessResult {
   outputLimitExceeded: boolean;
 }
 
+export function processSucceeded(result: ProcessResult): boolean {
+  return !result.timedOut && !result.outputLimitExceeded && result.exitCode === 0;
+}
+
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1_048_576;
 
 interface OutputBudget {
-  remaining: number;
+  readonly limit: number;
+  consumed: number;
   exceeded: boolean;
 }
 
@@ -33,10 +38,16 @@ async function readBounded(
     while (true) {
       const { done, value } = await reader.read();
       if (done) return chunks;
-      const captured = value.byteLength <= budget.remaining ? value : value.slice(0, budget.remaining);
-      if (captured.byteLength > 0) chunks.push(captured);
-      budget.remaining -= captured.byteLength;
-      if (value.byteLength > captured.byteLength) {
+      const available = budget.limit - budget.consumed;
+      if (available <= 0) {
+        budget.exceeded = true;
+        stop();
+        continue;
+      }
+      const captured = value.byteLength <= available ? value : value.slice(0, available);
+      chunks.push(captured);
+      budget.consumed += captured.byteLength;
+      if (value.byteLength > available) {
         budget.exceeded = true;
         stop();
       }
@@ -87,7 +98,7 @@ export async function runProcess(
     timedOut = true;
     stop();
   }, timeoutMs);
-  const budget: OutputBudget = { remaining: outputLimitBytes, exceeded: false };
+  const budget: OutputBudget = { limit: outputLimitBytes, consumed: 0, exceeded: false };
 
   try {
     const [stdoutChunks, stderrChunks, exitCode] = await Promise.all([

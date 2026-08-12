@@ -9,7 +9,7 @@ import {
 } from './contracts';
 import { validateCanonicalGrillReceipt } from './grill';
 import { readRunManifest, writeRunManifest, type RunManifestV1 } from './manifest';
-import { runProcess, type ProcessResult } from './process';
+import { processSucceeded, runProcess } from './process';
 import { assertNoReparsePath, pathInside, resolveRepository, samePath, verifyManagedWorktree } from './repository';
 import { decodeTaskDetail } from './tasks-axi';
 
@@ -38,10 +38,6 @@ function validationRemediation(remediation: string[]): string[] {
   return normalized.length > 0 ? normalized : [
     'Resolve the reported restart invariant and retry goal-lifecycle validate from the persisted worktree.',
   ];
-}
-
-function processSucceeded(result: ProcessResult): boolean {
-  return !result.timedOut && !result.outputLimitExceeded && result.exitCode === 0;
 }
 
 function assertPersistedPaths(runPath: string, run: RunManifestV1): void {

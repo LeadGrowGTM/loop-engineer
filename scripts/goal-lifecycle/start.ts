@@ -10,7 +10,7 @@ import {
   type LifecycleResult,
 } from './contracts';
 import { writeRunManifest, type RunManifestV1 } from './manifest';
-import { runProcess, type ProcessResult } from './process';
+import { processSucceeded, runProcess, type ProcessResult } from './process';
 import { decodeTaskDetail, type TaskRecord } from './tasks-axi';
 import {
   assertNoReparsePath,
@@ -59,10 +59,6 @@ function dependencyFailure(name: string, detail: string): LifecycleCommandError 
     ['Run the supported setup/onboarding flow, verify dependencies, then retry lifecycle start.'],
     { dependency: name },
   );
-}
-
-function processSucceeded(result: ProcessResult): boolean {
-  return !result.timedOut && !result.outputLimitExceeded && result.exitCode === 0;
 }
 
 async function doctorDependencies(repositoryRoot: string): Promise<void> {

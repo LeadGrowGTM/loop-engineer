@@ -539,6 +539,28 @@ test('finish retry uses committed branch evidence after returned worktree artifa
   expect(readFileSync(fixture.tasks.details, 'utf8')).toContain(fixture.repo + '|done canonical-goal');
 });
 
+test('finish reconciliation fails closed when exact-holder manifest is corrupt or from another tenant', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  fixture.env.TREEHOUSE_RETURN_FAIL = '1';
+  expect(finishFixture(fixture, completed.manifestPath).json).toMatchObject({ code: 'TREEHOUSE_RETURN_FAILED' });
+  fixture.env.TREEHOUSE_RETURN_FAIL = '0';
+
+  const saved = readFileSync(completed.manifestPath, 'utf8');
+  writeRunManifest(completed.manifestPath, { ...completed.run, leaseHolder: 'other-tenant' });
+  const wrongTenant = finishFixture(fixture, completed.manifestPath);
+  expect(wrongTenant.json).toMatchObject({ code: 'LEASE_IDENTITY_MISMATCH' });
+
+  writeFileSync(completed.manifestPath, 'not valid json');
+  fixture.env.TREEHOUSE_STATUS_MODE = 'validate';
+  const corrupt = invokeLifecycle(['finish', '--run', completed.manifestPath], fixture.env, fixture.repo);
+  expect(corrupt.json).toMatchObject({ code: 'LEASE_IDENTITY_MISMATCH' });
+
+  writeFileSync(completed.manifestPath, saved);
+  const legitimate = finishFixture(fixture, completed.manifestPath);
+  expect(legitimate.exitCode).toBe(0);
+});
+
 test('finish commit-intent failure removes only its created artifact and restores clean state', () => {
   const fixture = createLifecycleFixture();
   const completed = completedRunFixture(fixture);
@@ -671,6 +693,17 @@ test("process runner executes an argv-only command with bounded captured output"
     timedOut: false,
     outputLimitExceeded: false,
   });
+});
+
+test("process runner enforces exact combined output limit across concurrent streams", async () => {
+  const limit = 64;
+  const script = "for(let i=0;i<10;i++){process.stdout.write('A'.repeat(32));process.stderr.write('B'.repeat(32));}";
+  const result = await runProcess(process.execPath, ["-e", script], {
+    outputLimitBytes: limit,
+    timeoutMs: 5_000,
+  });
+  expect(result.stdout.length + result.stderr.length).toBeLessThanOrEqual(limit);
+  expect(result.outputLimitExceeded).toBe(true);
 });
 
 test('typed tasks-axi adapter decodes TOON escapes and rejects invalid task shapes', () => {

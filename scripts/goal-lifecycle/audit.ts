@@ -8,7 +8,7 @@ import {
   type LifecycleResult,
 } from './contracts';
 import { pathInside, resolveRepository, runGit, samePath } from './repository';
-import { runProcess, type ProcessResult } from './process';
+import { processSucceeded, runProcess } from './process';
 
 const OPERATION = 'audit';
 const TREEHOUSE_STATUS = [
@@ -28,10 +28,6 @@ export interface AuditRow {
   manager: 'primary' | 'treehouse' | 'external';
   classification: 'primary' | 'managed' | 'MISPLACED_WORKTREE';
   suggestedCommand: string;
-}
-
-function processSucceeded(result: ProcessResult): boolean {
-  return !result.timedOut && !result.outputLimitExceeded && result.exitCode === 0;
 }
 
 interface WorktreeEntry { path: string; head: string; branch: string | null; }
