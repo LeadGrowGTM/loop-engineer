@@ -171,6 +171,9 @@ async function reconcileCompletion(input: FinishLifecycleInput, context: Lifecyc
   if (record.schemaVersion !== 1 || record.taskId !== taskId || record.branch !== branch || record.outcome !== 'success') {
     throw finishError('FINISH_PRECONDITION_FAILED', 'The completion intent does not match the persisted run identity.');
   }
+  if (!samePath(record.repositoryRoot, repository.root)) {
+    throw finishError('LEASE_IDENTITY_MISMATCH', 'The completion intent does not match the current repository identity.');
+  }
   if ((input.pr && !record.pr) || (input.pr && record.pr && input.pr !== record.pr)) {
     throw finishError('TASK_COMPLETION_PENDING', 'The finish retry conflicts with the recorded pull-request identity.');
   }
