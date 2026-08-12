@@ -23,8 +23,7 @@ $Allowlist = @(
   "content",
   "newsletter-pipeline",
   "outbound",
-  "leadgrow-video-storyboard-clean",
-  "auto-prompt-creator"
+  "leadgrow-video-storyboard-clean"
 )
 
 function Get-DirectoryClassification {

@@ -242,4 +242,3 @@ if (receipt.status !== 'complete' || receipt.finalFrontierCount !== 0) {
 - [ ] **Step 5: Run `bun test` once with a ten-minute-or-longer timeout and record exact totals/output.**
 - [ ] **Step 6: Re-read issue #31 and the approved design line by line; map all 50 user stories to the implemented task/test evidence and fix any uncovered requirement.**
 - [ ] **Step 7: Commit `docs(goal-lifecycle): document deterministic operations`.**
-
