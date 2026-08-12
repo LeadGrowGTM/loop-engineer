@@ -52,6 +52,11 @@ const SUPPORTED_REMEDIATION: Record<string, string[]> = {
   GRILL_RECEIPT_MISSING: ['Resume batch-grill-me and record its completed receipt through goal-lifecycle.'],
   GRILL_RECEIPT_INVALID: ['Resume batch-grill-me and record the completed zero frontier.'],
   CONTEXT_RESTART_INVALID: ['Restart from the persisted RUN.json in its recorded worktree and retry goal-lifecycle validate.'],
+  FINISH_PRECONDITION_FAILED: ['Resolve the recorded lifecycle safety condition, then retry goal-lifecycle finish.'],
+  HANDOFF_MISSING: ['Create the required HANDOFF.md in the persisted run directory, commit the task work, then retry goal-lifecycle finish.'],
+  TREEHOUSE_RETURN_FAILED: ['Leave the lease in place, resolve the Treehouse return failure, then retry goal-lifecycle finish.'],
+  TASK_COMPLETION_PENDING: ['Reconcile the durable task completion through goal-lifecycle finish without returning another lease.'],
+  AUDIT_FAILED: ['Resolve the repository inspection error, then retry goal-lifecycle audit.'],
   REPOSITORY_NOT_READY: ['Resolve the reported repository readiness errors, then retry lifecycle start.'],
   INTERNAL_ERROR: ['Review lifecycle diagnostics and retry only after the reported safety condition is resolved.'],
 };
