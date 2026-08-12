@@ -28,12 +28,13 @@ These are the only supported lifecycle operations:
 goal-lifecycle start --repo <absolute-repository-path> --task-id <slug> --title <one-line-title>
 goal-lifecycle record-grill --run <RUN.json> --receipt <candidate-GRILL.json>
 goal-lifecycle validate --run <RUN.json>
-goal-lifecycle finish --run <RUN.json> [--pr <url>]
+goal-lifecycle finish --run <RUN.json> [--outcome success|blocked|failed] [--pr <url>]
 goal-lifecycle audit --repo <absolute-repository-path>
 ```
 
 Use `audit` only for read-only diagnostics. Use `finish` only after the work and required handoff
-records are complete. Do not call underlying task, lease, or repository-management tools directly.
+records are complete. Outcome defaults to `success` when omitted. Do not call underlying task, lease,
+or repository-management tools directly.
 
 ## Authoring sequence
 
@@ -128,7 +129,8 @@ SHIPPING
 Run the Shipper only after Checker PASS plus separate explicit shipping approval for this invocation.
 Without that approval, record N/A - shipping not approved. The Shipper never merges. Once the
 approved shipping flow has prepared its result, invoke goal-lifecycle finish --run <RUN.json>
-[--pr <url>] to complete the lifecycle. A failed or blocked goal retains its run for recovery.
+[--outcome success|blocked|failed] [--pr <url>] to complete the lifecycle. A failed or blocked goal
+retains its run for recovery.
 
 CONTEXT_MANAGEMENT
 Before context clear, confirm RUN.json, GRILL.json, BRIEF.md, and HARNESS.md are persisted at the

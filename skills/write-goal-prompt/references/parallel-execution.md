@@ -5,7 +5,7 @@ the authoritative task identity, absolute run path, run directory, and manifest 
 agents use those values exactly and never select, create, return, or alter a run location themselves.
 
 After the work and required handoff records are complete, the separately approved shipping flow
-invokes `goal-lifecycle finish --run <RUN.json> [--pr <url>]`. A blocked or failed goal retains its
+invokes `goal-lifecycle finish --run <RUN.json> [--outcome success|blocked|failed] [--pr <url>]`. A blocked or failed goal retains its
 run for recovery. Use `goal-lifecycle audit --repo <absolute-repository-path>` for read-only
 diagnostics; it does not change state.
 
