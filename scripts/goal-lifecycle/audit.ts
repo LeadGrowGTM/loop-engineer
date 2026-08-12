@@ -79,20 +79,13 @@ async function collectRow(entry: WorktreeEntry, repoRoot: string, poolRoot: stri
   }
   const primary = samePath(entry.path, repoRoot);
   const managed = !primary && pathInside(poolRoot, entry.path) && leases.has(resolve(entry.path).toLowerCase());
-  const siblingPipeline = !primary && !managed && samePath(dirname(entry.path), dirname(repoRoot));
   const dirty = status.stdout.trim().length > 0;
   const reachable = ancestor.exitCode === 0;
   const classification: AuditRow['classification'] = primary
     ? 'primary'
-    : siblingPipeline
-      ? 'sibling-pipeline'
-      : dirty
-        ? 'dirty'
-        : !reachable
-          ? 'unreachable'
-          : managed
-            ? 'managed'
-            : 'MISPLACED_WORKTREE';
+    : managed
+      ? 'managed'
+      : 'MISPLACED_WORKTREE';
   const manager: AuditRow['manager'] = primary ? 'primary' : managed ? 'treehouse' : 'external';
   return {
     path: entry.path,
