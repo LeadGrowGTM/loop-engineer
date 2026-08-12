@@ -12,6 +12,8 @@ import {
 import { startLifecycle, type StartLifecycleInput } from './goal-lifecycle/start';
 import { recordGrill } from './goal-lifecycle/grill';
 import { validateLifecycle } from './goal-lifecycle/validate';
+import { finishLifecycle, type FinishLifecycleInput } from './goal-lifecycle/finish';
+import { auditLifecycle } from './goal-lifecycle/audit';
 
 function parseStartArguments(argv: string[]): StartLifecycleInput {
   const values = new Map<string, string>();
@@ -86,6 +88,31 @@ function parseValidateArguments(argv: string[]): { runPath: string } {
   return { runPath: argv[1] };
 }
 
+function parseFinishArguments(argv: string[]): FinishLifecycleInput {
+  const values = new Map<string, string>();
+  const allowed = new Set(['--run', '--outcome', '--pr']);
+  for (let index = 0; index < argv.length; index += 2) {
+    const flag = argv[index];
+    const value = argv[index + 1];
+    if (!allowed.has(flag) || !value || values.has(flag)) {
+      throw new LifecycleCommandError('INVALID_ARGUMENT', 'finish requires one --run and optional --outcome and --pr values.', ['Use: goal-lifecycle finish --run <absolute-RUN.json> [--outcome success|blocked|failed] [--pr <url>].']);
+    }
+    values.set(flag, value);
+  }
+  const outcome = values.get('--outcome') ?? 'success';
+  if (!values.get('--run') || (outcome !== 'success' && outcome !== 'blocked' && outcome !== 'failed')) {
+    throw new LifecycleCommandError('INVALID_ARGUMENT', 'finish requires --run and a supported outcome.', ['Use: goal-lifecycle finish --run <absolute-RUN.json> [--outcome success|blocked|failed] [--pr <url>].']);
+  }
+  return { runPath: values.get('--run')!, outcome, ...(values.get('--pr') ? { pr: values.get('--pr') } : {}) };
+}
+
+function parseAuditArguments(argv: string[]): { repo: string } {
+  if (argv.length !== 2 || argv[0] !== '--repo' || argv[1].length === 0) {
+    throw new LifecycleCommandError('INVALID_ARGUMENT', 'audit requires exactly one --repo value.', ['Use: goal-lifecycle audit --repo <path>.']);
+  }
+  return { repo: argv[1] };
+}
+
 function unsupportedOperation(operation: string): LifecycleResult {
   return lifecycleFailure(
     operation,
@@ -122,6 +149,12 @@ export async function runGoalLifecycle(
     }
     if (operation === 'validate') {
       return await validateLifecycle(parseValidateArguments(argv.slice(1)), _context);
+    }
+    if (operation === 'finish') {
+      return await finishLifecycle(parseFinishArguments(argv.slice(1)), _context);
+    }
+    if (operation === 'audit') {
+      return await auditLifecycle(parseAuditArguments(argv.slice(1)), _context);
     }
     return unsupportedOperation(operation);
   } catch (error) {
