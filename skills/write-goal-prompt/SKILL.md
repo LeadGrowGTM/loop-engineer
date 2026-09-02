@@ -4,13 +4,12 @@ name: write-goal-prompt
 description: >
   Transforms a task description into a ready-to-paste /goal command for Claude Code.
   Use when handing off overnight or unsupervised work — multi-step implementation,
-  migration, backlog drains, anything with a verifiable end state. Outputs a lean
-  goal condition (well under 4000 chars) carrying task content, a compact [PARAMS]
-  block, and a HARNESS.md pointer; the standing protocol (execution stages, eval loop,
-  fallbacks, context compaction, morning report) lives in HARNESS.md, read first.
-  Triggered by: "write a goal prompt", "turn this into a /goal", "overnight task",
-  "run unsupervised", "hand off this task".
-version: 3.8.0
+  migration, backlog drains, anything with a verifiable end state. Outputs a structured
+  goal condition (up to 4000 chars) with context-based auto-compaction, HTML summary
+  page, Excalidraw diagram, and fallback guardrails baked in. Triggered by: "write a
+  goal prompt", "turn this into a /goal", "overnight task", "run unsupervised",
+  "hand off this task".
+version: 3.9.0
 maturity: validated
 triggers:
   - write a goal prompt
@@ -20,13 +19,13 @@ triggers:
   - hand off this task
   - /goal prompt
   - goal prompt
-  - run inline
+  - run with gnhf
   - autonomous loop
-  - approval-gated loop
+  - gnhf this
   - run overnight
   - parallel agents
 feedback:
-  last_reviewed: 2026-06-21
+  last_reviewed: 2026-09-02
   known_gaps:
     - "Goal evaluator checks existence not quality — quality floors in done criteria are the only defense"
     - "HARNESS.md must be written to task working dir before emitting — easy to forget"
@@ -34,11 +33,11 @@ feedback:
 
 # Skill: Write Goal Prompt
 
-Converts a free-form task into a `/goal` command ready to paste into Claude Code. Designed for approval-gated in-session work - agent runs against a fixed signal and leaves a structured report. Output: a lean goal condition (well under 4000 chars) carrying task content, a compact `[PARAMS]` block, and a HARNESS.md pointer. The standing protocol - execution stages, eval loop, tiered fallbacks, proof, morning report, context compaction, turn limit - lives in HARNESS.md (read first), not inlined in the goal condition.
+Converts a free-form task into a `/goal` command ready to paste into Claude Code, OR a `gnhf` autonomous run command for overnight unattended work. Designed for overnight handoffs — agent runs autonomously, self-evaluates against a fixed signal, leaves a structured morning report. Output: structured goal condition (≤4000 chars) with eval loop, tiered fallbacks, HTML + Excalidraw morning report.
 
 ## Execution Router (Run Before Phase 0)
 
-**Step 0 - Resolve project target and workspace root (do this before anything else).** The loop anchors artifacts to the project target while Git safety checks anchor to the containing workspace repository. Resolve both once:
+**Step 0 - Resolve project target and workspace root before anything else.**
 
 ```bash
 normalize_path() {
@@ -56,16 +55,12 @@ if [ -n "$GIT_ROOT_RAW" ]; then
   GIT_ROOT=$(normalize_path "$GIT_ROOT_RAW")
   PROJECT_ROOT="$GIT_ROOT"
   WORKSPACE_ROOT=$(dirname "$GIT_ROOT")
-
   case "$INVOCATION_ROOT" in
     "$GIT_ROOT"/pipelines/*)
       PIPELINE_RELATIVE=${INVOCATION_ROOT#"$GIT_ROOT"/pipelines/}
       case "$PIPELINE_RELATIVE" in
         ""|*/*) ;;
-        *)
-          PROJECT_ROOT="$INVOCATION_ROOT"
-          WORKSPACE_ROOT="$GIT_ROOT"
-          ;;
+        *) PROJECT_ROOT="$INVOCATION_ROOT"; WORKSPACE_ROOT="$GIT_ROOT" ;;
       esac
       ;;
   esac
@@ -75,51 +70,52 @@ else
 fi
 ```
 
-A direct `pipelines/<name>` invocation remains the project target and uses the containing Git root as its workspace boundary; readiness decides whether that target is canonical and allowed. Standalone repositories use their Git toplevel as the project target and its parent as the strict workspace boundary. If no Git root exists, the physical current directory is the target and its parent is the boundary.
+Everything the run writes belongs under `$PROJECT_ROOT`. Pass both roots to every
+harness agent. Before work, run the non-launching readiness check:
 
-Everything this run writes lives under `$PROJECT_ROOT`:
+```text
+powershell -NoProfile -File scripts/prepare-harness-run.ps1 -RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -CheckOnly
+```
 
-- **Working dir:** `$PROJECT_ROOT/.harness/goals/<slug>/` - BRIEF.md, PLAN.md, issues/, PROGRESS.md, CYCLE_LOG.md, HANDOFF.*
-- **Backlog:** run tasks-axi from `$PROJECT_ROOT` so it resolves the project-local `.tasks.toml` (seeded by `/setup-harness`), not the monorepo one.
-- **Commits:** the Maker works from `$PROJECT_ROOT`; Git resolves `$WORKSPACE_ROOT` for a tracked pipeline.
-- **readiness / treehouse:** pass `$PROJECT_ROOT` as the target and `$WORKSPACE_ROOT` as its trust boundary.
+When isolation is approved and required, prepare it explicitly:
 
-Pass both resolved absolute paths to every harness agent. Agents write bare artifact names relative to `$PROJECT_ROOT`.
+```text
+powershell -NoProfile -File scripts/prepare-harness-run.ps1 -RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -PrepareIsolation -Parallel
+```
 
 ### Step 0.1 - Resolve Planner skill routing with the executable guard
 
-Planner has no Bash and must not decide filesystem fallback. Resolve this skill's `scripts/resolve-skill-routing.ts` path and `$PROJECT_ROOT` as data. Invoke both CLI modes with an argument-vector process API, never by inserting either path into `bash -c` source:
+Planner has no Bash and must not decide filesystem fallback. Resolve this skill's
+`scripts/resolve-skill-routing.ts` and invoke both CLI modes with argument vectors:
 
 ```text
 resolution argv: ["bun", ROUTING_RESOLVER, "--project-root", PROJECT_ROOT]
-guard argv:      ["bun", ROUTING_RESOLVER, "--emit-shell-guard", "--project-root", PROJECT_ROOT]
+guard argv: ["bun", ROUTING_RESOLVER, "--emit-shell-guard", "--project-root", PROJECT_ROOT]
 ```
 
-The resolution call prints JSON. On a nonzero exit, preserve that JSON and do not invoke Planner. On success, pass stdout unchanged in the Planner invocation context:
+The resolution call prints JSON. On nonzero exit, preserve it and do not invoke Planner.
+On success pass stdout unchanged as:
 
 ```text
 [SKILL_ROUTING_RESOLUTION]
 <exact ROUTING_EVIDENCE JSON>
 ```
 
-The guard-generation call prints a complete POSIX shell snippet. The resolver applies standard single-quote argument escaping to every absolute path, so `$()`, backticks, spaces, and quotes remain literal argv data. Insert that stdout unchanged under `[ROUTING_GUARD]` in the generated goal. Do not hand-build the command, replace path placeholders, or re-quote the output. At runtime, execute the emitted snippet immediately before Planner. It prints `ROUTING_EVIDENCE` and exits with the resolver's nonzero status, so Planner stays blocked on malformed or unreadable routing.
+Insert the guard-generation stdout unchanged under `[ROUTING_GUARD]` in the goal.
+Execute it immediately before Planner; on nonzero, do not invoke the Planner.
 
-Keep the Step 0.1 JSON and pass it to Harness Architect during Phase 1.5. The runtime JSON is authoritative for Planner. For `project-local` or `canonical`, readers use only `normalizedPath`. For `direct`, use confirmed HARNESS routing or a documented direct quality bar. Do not fall through a present malformed or unreadable file.
+Determine execution mode first. Ask if not obvious from context. This is the **infrastructure** axis (where/how the harness runs); it is distinct from the _task-shape_ axis in the "Execution Mode Routing" section below (`references/execution-mode-routing.md`).
 
-Then determine execution mode. Ask if not obvious from context. This is the **infrastructure** axis (where/how the harness runs); it is distinct from the *task-shape* axis in the "Execution Mode Routing" section below (`references/execution-mode-routing.md`).
+| Task shape                                   | Mode                                              |
+| -------------------------------------------- | ------------------------------------------------- |
+| < 1 hr, needs back-and-forth decisions       | **in-session harness** - proceed to Phase 0       |
+| > 1 hr, fully specifiable                     | **in-session harness** - current supported path   |
+| Explicitly requested detached overnight run   | **gnhf autonomous** - legacy/advanced path below  |
+| Multiple independent streams simultaneously  | **parallel isolated runs** - one worktree per stream |
 
-| Task shape                                  | Mode                                                                    |
-| ------------------------------------------- | ----------------------------------------------------------------------- |
-| < 1 hr, needs back-and-forth decisions      | **in-session harness** - proceed to Phase 0                             |
-| > 1 hr, fully specifiable                   | **in-session approval-gated harness** - budget phases, remain attached  |
-| Multiple independent streams simultaneously | **treehouse-isolated sessions** - run readiness before explicit leasing |
-
-No route starts a detached process. Run the non-launching readiness check before work, and use `references/parallel-execution.md` when isolation is required.
-
-**Always register in tasks-axi first - run from `$PROJECT_ROOT` so it hits the project-local backlog:**
+**Always register in tasks-axi first (both modes):**
 
 ```bash
-cd "$PROJECT_ROOT"
 tasks-axi add <slug> "<one-line title>"
 tasks-axi start <slug>
 # On completion: tasks-axi done <slug> [--pr <url>]
@@ -131,7 +127,7 @@ Slug format: `<domain>-<3-4-word-kebab>` e.g. `outbound-rbs-sequence-v3`, `conte
 
 ## What `/goal` Is
 
-`/goal <condition>` sets an autonomous loop: Claude works, then a small model checks whether the condition holds. Repeats until met or you run `/goal clear`. Requires Claude Code v2.1.139+.
+`/goal <condition>` sets an autonomous loop: the Maker works and a fresh Checker subagent evaluates the artifacts. Repeats until the threshold is met or you run `/goal clear`. Requires Claude Code v2.1.139+.
 
 ---
 
@@ -139,7 +135,7 @@ Slug format: `<domain>-<3-4-word-kebab>` e.g. `outbound-rbs-sequence-v3`, `conte
 
 **No subagents — author decision work. Run before intake.**
 
-A goal without an eval is a task description. Output: the eval values for the goal's `[PARAMS]` block (reward signal, done threshold, max cycles) — the loop mechanics live in HARNESS.md's `EVAL_LOOP` section. See `references/eval-loop-design.md` for the four design questions, human-judgment flag, and task-type lookup.
+A goal without an eval is a task description. Output: completed `[EVAL LOOP]` block. See `references/eval-loop-design.md` for the four design questions, human-judgment flag, and task-type lookup.
 
 Produce: single reward signal (programmatic — flag if human judgment required) · mechanical gate (binary, seconds, no LLM) · qualitative gate (scored) · max_cycles (default 3) · done condition (exact threshold).
 
@@ -147,18 +143,16 @@ Produce: single reward signal (programmatic — flag if human judgment required)
 
 ## Phase 0.5: Clarity Gate
 
-**Run after Phase 0, before Phase 1.** Resolve ambiguity BEFORE authoring the goal. Do not skip lightly - an unclear goal wastes an unsupervised run. Route on task size; branch bodies live in `references/clarity-gate.md`.
+Read `references/clarity-gate.md` completely. Skip only when Task, Stack, Features,
+Done criteria, Quality bar, Context, and safety boundaries are already unambiguous.
 
-**Skip only when** all Phase 1 fields (Task, Tech/Stack, Done criteria, Context) are fully specified in the user's opening message with no open scope questions. When in doubt, do not skip - grill.
+- Use `/grilling` when answers change which question comes next.
+- Use `batch-grill-me` when open decisions are independent and can be asked as a frontier.
+- Use `/wayfinder` when the work spans multiple sessions or the unknowns require investigation.
 
-| Signal | Route |
-| --- | --- |
-| Fully specified, zero ambiguity | **Skip** → Phase 1 |
-| Large / multi-session / >~5 open scope questions / investigative unknowns | **`/wayfinder`** — chart the work as an investigation-ticket map, resolve, then resume Phase 1 with decisions folded in (Branch B) |
-| Single-session scope, ambiguity is **chained** (each answer decides the next question) | **`/grilling`** — deep interactive depth, one question at a time (Branch A) |
-| Single-session scope, ambiguity is **wide but independent** (many decisions, few dependencies) | **`batch-grill-me`** — multi-round frontier batches: ask every prerequisites-settled decision in one numbered round, recompute the frontier, repeat until empty (Branch A) |
-
-Fold every answer (or the wayfinder map's decisions) into Phase 1 as if the user specified those fields upfront. See `references/clarity-gate.md` for the "which do I pick" test between the two grill paths and the full wayfinder routing test.
+Subagents discover facts; the user decides consequential preferences. Fold every resolved
+decision into Phase 1. If Wayfinder shows the work is too large for one goal, stop and emit
+the mapped sequence instead of forcing a 4000-character condition.
 
 ---
 
@@ -179,8 +173,6 @@ Fold every answer (or the wayfinder map's decisions) into Phase 1 as if the user
 | **Blockers**          | What Claude should NOT do without a decision                                  | No                                                    |
 
 **Intake rules:** Skip if all fields present. Ask Key features + Quality bar together if missing (one question). Extract Tech/Stack from Context if buried. Surface Constraints before emitting if task touches live env, shared DB, or per-call API.
-
-**Ambiguous scope → `/to-prd` intake (optional):** If the task is underspecified and you're authoring interactively, run `/to-prd` first to turn the conversation into a `PRD.md` in the task working dir. The Planner then traces each phase slice's Parent to it (see `references/issue-tracker.md`). Skip for well-specified tasks — don't add ceremony a one-line goal doesn't need.
 
 ---
 
@@ -225,34 +217,40 @@ Return: array of {tool, purpose, invocation} for up to 5 relevant tools/scripts.
 
 ```
 Read .claude/agent-context/snapshot.md for workspace context before starting.
-Confirm harness agents exist in at least one of these locations (Glob both):
-  - .claude/agents/harness-planner.md, harness-maker.md, harness-checker.md, harness-shipper.md
-  - ~/.claude/agents/harness-planner.md, harness-maker.md, harness-checker.md, harness-shipper.md
-Use the exact resolver output supplied by the parent; do not probe fallback paths yourself:
-[SKILL_ROUTING_RESOLUTION]
-[EXACT ROUTING_EVIDENCE JSON]
-When selectedSource is project-local or canonical, read only normalizedPath. When selectedSource
-is direct, do not read a routing file; use confirmed HARNESS routing or direct with a documented
-direct quality bar. If status is not resolved or errors is non-empty, return BLOCKED instead of
-designing routing.
+Confirm all current harness agents exist in at least one of these locations (Glob both):
+  - .claude/agents/harness-planner.md, harness-maker.md, harness-prover.md,
+    harness-checker.md, harness-shipper.md
+  - ~/.claude/agents/harness-planner.md, harness-maker.md, harness-prover.md,
+    harness-checker.md, harness-shipper.md
+Read .harness/skill-routing.md (installed by /setup-harness). If missing, fall back to
+  .claude/skills/write-goal-prompt/references/skill-routing.md.
+
+Consume the Step 0.1 resolution JSON. If selectedSource is project-local or canonical, read only normalizedPath.
+If selectedSource is direct, do not read a routing file; use
+confirmed HARNESS routing or a documented direct quality bar. A malformed or unreadable
+present routing file blocks planning instead of falling through.
 
 Task being goal-prompted: [TASK SUMMARY]
 Skills confirmed available (from Agent 1): [SKILL SCANNER RESULTS]
 
-Write HARNESS.md content with SEVEN sections:
+Write HARNESS.md content with EIGHT sections:
+
+PRE_PLANNER_APPROVAL:
+List exact approved source paths and goal-local bookkeeping paths. Newly discovered
+scope requires a new proposal ID and explicit approval before planning.
 
 PLANNER_BRIEF:
 What context files should Planner read first for this task?
 What phases should PLAN.md have? What ordering/dependency constraints?
 What turn budget split makes sense given task complexity?
+Planner writes BRIEF.md, PLAN.md, and one durable `issues/NN-*.md` slice per phase.
 
 MAKER_ROUTING:
 Map each phase to a specific skill from the confirmed list, or "direct" if none match.
 Format: "Phase N: <skill-name or direct> — <artifact it produces>"
-Use selectedSource from [SKILL_ROUTING_RESOLUTION]:
-- For project-local or canonical, follow only the routing heuristics in normalizedPath.
-- For direct, do not read a routing file. Use confirmed skills where they match; otherwise use
-  direct and state a task-specific direct implementation quality bar.
+Follow skill-routing.md heuristics.
+Maker must run the current protected-work capture/validate guard and commit each
+approved slice atomically with its source, slice status, and proof.
 
 PROVER_BRIEF (include only if goal involves a running app — UI feature, API endpoint, or CLI behaviour; otherwise write "PROVER_BRIEF: N/A — static artifact goal"):
 Feature intent: <one sentence — what the feature should do, from the goal>
@@ -273,21 +271,12 @@ What PASS threshold (default: mean ≥ 3.5/5.0)?
 Note: checker agent file enforces fresh context — no extra isolation instructions needed.
 
 SHIP_BRIEF:
-Set `intent` to the user's original objective plus any decisions or constraints that a reviewer
-cannot infer from the diff. State that Checker PASS is necessary but not sufficient: a separate
-explicit shipping approval for the current invocation is also required. Do not spawn Shipper unless
-both are present. Without shipping approval, terminate with `N/A - shipping not approved`. With
-approval, spawn a fresh `harness-shipper` agent; that agent invokes `/no-mistakes` once and drives
-it until `checks-passed`, `passed`, `failed`, or `cancelled`. Never infer approval from PASS, never
-ship inline, and never invoke Shipper on ITERATE or PLATEAU. Treat `checks-passed` as "PR prepared
-for human merge," not merged.
-
-ORCHESTRATION NOTE (optional, for goals with concurrent phases):
-If PLAN.md marks any phases as parallel-safe (e.g., red-team's four attack roles), reference the
-provider-aware model resolver at `$PROJECT_ROOT/scripts/resolve-role-model.ts` and the concurrency
-matrix in `docs/adr/0007-provider-aware-model-orchestration.md`. The resolver returns {model,
-provider, tier} — a spawn descriptor consumable by parallel fan-outs without shared mutable state.
-Each concurrent role resolves its model independently via `resolveRoleModel(role, detectedProvider)`.
+Write `N/A — shipping is not authorized` unless the user separately and explicitly
+asked to ship. Checker PASS never authorizes shipping. If separately approved, state
+intent; Shipper runs no-mistakes once, prepares a PR, and never merges.
+Checker PASS is necessary but not sufficient: do not spawn Shipper unless separate
+explicit shipping approval exists for this invocation. Without it, record
+`N/A - shipping not approved` and terminate successfully.
 
 LOOP_TRACKER:
 A markdown checklist the running agent fills in as the loop progresses.
@@ -300,8 +289,10 @@ omit Prover rows if PROVER_BRIEF is N/A; omit Red-team rows if REDTEAM_BRIEF is 
 ### Planner
 - [ ] HARNESS.md read
 - [ ] routing resolution consumed
-- [ ] selected routing file read: `<normalizedPath>` (project-local or canonical only; omit for direct)
+- [ ] selected routing file read (project-local or canonical only; omit for direct)
+- [ ] BRIEF.md written: `<path>`
 - [ ] PLAN.md written: `<path>`
+- [ ] Durable slices written: `<issues/ path>`
 
 ### Cycle 1
 - [ ] Maker: <Phase 1 name> — artifact: `<path>` — commit: `<SHA>`
@@ -334,12 +325,12 @@ omit Prover rows if PROVER_BRIEF is N/A; omit Red-team rows if REDTEAM_BRIEF is 
 - [ ] Verdict: PASS / PLATEAU (max cycles reached)
 
 ### Final
-- [ ] Shipping: terminal outcome: `<checks-passed | passed | failed | cancelled | N/A - no PASS | N/A - shipping not approved>`
-- [ ] Pull request: `<URL | N/A>`
 - [ ] HANDOFF.md written: `<path>`
 - [ ] HANDOFF.html written: `<path>`
 - [ ] HANDOFF.excalidraw written: `<path>`
 - [ ] HANDOFF.html published: `<ht-ml.app URL>` (or export fallback + reason in HANDOFF.md)
+- [ ] Shipping approval: not requested / approved separately
+- [ ] Shipper: N/A / PR prepared for human review (never merged)
 ```
 
 Synthesize Agents 1-3 into `[TOOLS]` block. Agent 4 output becomes `HARNESS.md` (written in Phase 2.5 before length measurement). Omit `[TOOLS]` entirely if nothing relevant found — don't invent tools. Drop CLI tools first if tight on 4000-char limit. Phase 2.5 skills-exist check satisfied by discovery output — no re-glob needed.
@@ -348,7 +339,7 @@ Synthesize Agents 1-3 into `[TOOLS]` block. Agent 4 output becomes `HARNESS.md` 
 
 ## Phase 2: Format the Goal Condition
 
-Standing protocol boilerplate does NOT go here. It lives in HARNESS.md (written in Phase 2.5) as standing sections the agent reads first, so it never competes for the 4000-char budget. The goal condition carries only task-specific content, a compact `[PARAMS]` block, and a lean `[HARNESS]` pointer. Keep total well under 4000 characters - aim for the brevity budget in Phase 2.5, not the ceiling.
+Template below. Keep total **under 4000 characters**.
 
 ```
 [GOAL] <one-sentence verifiable end state — what the evaluator checks>
@@ -384,127 +375,73 @@ Use this context:
 [TOOLS]
 <populated from Phase 1.5 discovery — omit entirely if nothing relevant found>
 
-[PARAMS]
-Reward signal: <single programmatic metric — the qualitative gate produces it>
-Done: <exact threshold — e.g. mechanical gate passes AND mean rubric ≥ 4.0/5.0>
-Max cycles: <N — default 3>
-Turn limit: <max_turns — default 80>
-[Constraints — include the two lines below ONLY if the task touches live data, shared infra, or a per-call cost API; omit entirely otherwise]
-Cost ceiling: <e.g. stay under $5 in API calls total>
-Do NOT touch: <live table / running job / shared sheet>
-
 [HARNESS]
-Read <absolute-path>/HARNESS.md before starting and follow it end to end. Its standing sections
-carry the protocol: EXECUTION_PROTOCOL (the 5-stage Planner→Maker→Prover→Checker→Ship flow),
-EVAL_LOOP, BLOCKERS, PROOF_PROTOCOL, MORNING_REPORT, CONTEXT_MANAGEMENT, TURN_LIMIT. Use the
-task-specific values in [PARAMS] above wherever a section references them. The per-task briefs
-(PLANNER_BRIEF, MAKER_ROUTING, PROVER_BRIEF, REDTEAM_BRIEF, CHECKER_BRIEF, SHIP_BRIEF) and
-LOOP_TRACKER live there too.
-Before stage 1, the goal parent runs the exact safe snippet generated in Execution Router Step 0.1:
-[ROUTING_GUARD]
-<exact stdout from resolver --emit-shell-guard mode>
-A nonzero result stops before Planner.
-```
-
----
-
-## Phase 2.5: QA Validation
-
-**Execution: spawn 1-3 parallel Haiku/Explore agents — do not run inline.**
-
-### Step 0 — Write HARNESS.md (before measuring)
-
-Write `HARNESS.md` to the task working directory using Agent 4 output from Phase 1.5. It holds
-two kinds of content:
-
-**A. Task-customized briefs** (from Agent 4): `PLANNER_BRIEF`, `MAKER_ROUTING`, `PROVER_BRIEF`,
-`REDTEAM_BRIEF`, `CHECKER_BRIEF`, `SHIP_BRIEF`, followed by `LOOP_TRACKER`.
-
-**B. Standing protocol sections** - the boilerplate moved OUT of the goal condition so it stops
-eating the 4000-char budget. These are GENERIC: write them verbatim into every HARNESS.md exactly
-as printed below. Do NOT bake task-specific values into them - max cycles, done threshold, turn
-count, cost ceiling, and do-not-touch all come from the goal's `[PARAMS]` block, which each section
-references. The seven standing sections are `EXECUTION_PROTOCOL`, `EVAL_LOOP`, `CONTEXT_MANAGEMENT`,
-`BLOCKERS`, `PROOF_PROTOCOL`, `MORNING_REPORT`, `TURN_LIMIT`.
-
-Write these seven sections verbatim:
-
-```text
-EXECUTION_PROTOCOL
-Five-stage execution. Before stage 1, the goal parent runs the [ROUTING_GUARD] snippet from the
-goal condition; a nonzero result stops before Planner. On success, pass exact `ROUTING_EVIDENCE`
-stdout to Planner under `[SKILL_ROUTING_RESOLUTION]`; do not parse or reformat it in the parent.
-1. Planner (turns 1-5): consume the routing resolution, decompose task → write PLAN.md (phases,
-   exact routing evidence, selected source/fallback, checker rubric), then mirror each phase to a
-   durable slice in `issues/NN-<slug>.md` (survives /compact, tracks per-phase Status). PLAN.md
-   `## Phases` stays canonical; slices are the durable drive-list. Do not produce task artifacts
-   until PLAN.md is written.
-2. Maker (turns 6-<N>): execute per PLAN.md, invoke skills per phase, commit at each phase boundary.
-3. Prover (running-app goals only): spawn harness-prover with PROVER_BRIEF. Pass feature intent +
-   exercise instructions. Get PROOF VERDICT before Checker. Skip entirely for static artifact goals
-   (PROVER_BRIEF: N/A).
+Read HARNESS.md before starting. Five-agent execution:
+1. Planner (turns 1-5): write BRIEF.md, PLAN.md, and one durable issue slice per phase.
+   Do not produce task artifacts until PLAN.md is written.
+2. Maker (turns 6-<N>): execute approved slices, use protected-work guards, and commit each slice atomically.
+3. Prover (running-app goals only): spawn harness-prover with PROVER_BRIEF from HARNESS.md.
+   Pass feature intent + exercise instructions. Get PROOF VERDICT before Checker.
+   Skip this step entirely for static artifact goals (PROVER_BRIEF: N/A).
 3b. Red-team (adversarial-verify goals — running app, user-facing flow, or security-sensitive
-   code): run the red-team Workflow (`.claude/workflows/red-team.js`) with REDTEAM_BRIEF (target,
-   paths, entryPoint). Feed its worst-first holes back to the Maker as fix input BEFORE Checker
-   scores. Skip for static/internal artifacts (REDTEAM_BRIEF: N/A).
-4. Checker: spawn fresh harness-checker subagent with CHECKER_BRIEF. Pass artifact paths + PROOF
-   VERDICT (if running-app goal). Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
-5. Ship (only after Checker PASS plus separate explicit shipping approval for this invocation):
-   if approval is absent, do not spawn the Shipper and record `N/A - shipping not approved` as the
-   terminal shipping outcome. If approval is present, spawn a fresh `harness-shipper` agent with
-   SHIP_BRIEF.intent, project root, branch, and both approval signals. The shipper invokes
-   `/no-mistakes`; the goal agent must never drive it inline. `checks-passed` means the PR is ready
-   for human review/merge; do not wait for merge. Do not run this stage for ITERATE or PLATEAU.
+   code): run the red-team Workflow (`.claude/workflows/red-team.js`) with REDTEAM_BRIEF from
+   HARNESS.md (target, paths, entryPoint). Feed its worst-first holes back to the Maker as fix
+   input BEFORE Checker scores. Skip for static/internal artifacts (REDTEAM_BRIEF: N/A).
+4. Checker: spawn fresh harness-checker subagent with CHECKER_BRIEF from HARNESS.md.
+   Pass artifact paths + PROOF VERDICT (if running-app goal).
+   Checker opens "I did not write this." Writes scores to CYCLE_LOG.md.
+5. Shipper: only after Checker PASS AND separate explicit shipping approval, spawn fresh
+   harness-shipper. It runs no-mistakes once, prepares a PR, and never merges. Otherwise skip.
+   Do not spawn the Shipper unless both PASS and the separate approval are present;
+   otherwise record `N/A - shipping not approved`.
 
-Work through the task to completion. If you hit a blocker, do not stop. Use mocks, stubs, or
-documented assumptions. Record each workaround and continue with everything that does not require
-my decision.
+Work through the task to completion. If you hit a blocker, do not stop. Use mocks, stubs, or documented assumptions. Record each workaround and continue with everything that does not require my decision.
 
-EVAL_LOOP
-At turn 1, before any other work, write your eval plan in HANDOFF.md under "Eval Loop Design". Do
-not start the task until this is written. Pull the reward signal, done condition, and max cycles
-from the goal's [PARAMS] block. Include:
-  - Reward signal: <from [PARAMS]>
+[EVAL LOOP]
+At turn 1, before any other work, write your eval plan in HANDOFF.md under
+"Eval Loop Design". Do not start the task until this is written. Include:
+  - Reward signal: <single metric>
   - Mechanical gate: <fast binary check — runs in seconds, no LLM judgment>
   - Qualitative gate: <scored check — produces the reward signal>
-  - Max cycles: <from [PARAMS] — default 3>
-  - Done condition: <from [PARAMS]>
+  - Max cycles: <N — default 3>
+  - Done condition: <exact threshold>
 
-Then execute the task using this loop — repeat up to max_cycles times:
+Then execute the task using this loop — repeat up to <max_cycles> times:
   1. Generate output (inputs are fixed — do not change the spec, only the output)
   2. Run mechanical gate — if it fails, fix and re-run before proceeding to step 3
-  2b. Adversarial-verify goals only: run the red-team Workflow (REDTEAM_BRIEF). Fix every
-     critical/high hole it returns before step 3. Skip if REDTEAM_BRIEF: N/A.
-  3. Spawn checker subagent (CHECKER_BRIEF) — pass artifact paths only, not your context. Checker
-     opens "I did not write this." Writes dimension scores + reward signal to CYCLE_LOG.md.
+  2b. Adversarial-verify goals only: run the red-team Workflow (REDTEAM_BRIEF in HARNESS.md).
+     Fix every critical/high hole it returns before step 3. Skip if REDTEAM_BRIEF: N/A.
+  3. Spawn checker subagent (checker brief in HARNESS.md) — pass artifact paths only,
+     not your context. Checker opens "I did not write this." Writes dimension scores
+     + reward signal to CYCLE_LOG.md.
   4. If done condition met → commit, proceed to next phase
   5. If not → read CYCLE_LOG.md, fix only the lowest-scoring dimension, return to step 1
-  6. If 3 consecutive cycles produce the same reward signal → exit loop (plateau), commit current
-     best, note "plateau after N cycles" in HANDOFF.md
+  6. If 3 consecutive cycles produce the same reward signal → exit loop (plateau),
+     commit current best, note "plateau after N cycles" in HANDOFF.md
 
-Log each cycle to HANDOFF.md: cycle number, mechanical gate result, reward signal score, what
-changed. After each cycle, update the LOOP_TRACKER section — check off completed steps, fill in
-paths, SHAs, and reward signals. After the first PASS, exit the eval loop. Run the Ship stage
-exactly once only when the current invocation also contains separate explicit shipping approval.
-Otherwise do not spawn Shipper, record `N/A - shipping not approved` in HANDOFF.md and LOOP_TRACKER,
-and terminate successfully. If an approved Ship stage returns `failed` or `cancelled`, report that
-terminal outcome; do not describe the change as merge-ready.
+Log each cycle to HANDOFF.md: cycle number, mechanical gate result, reward signal score, what changed.
+After each cycle, update the LOOP_TRACKER section in HARNESS.md — check off completed steps, fill in paths, SHAs, and reward signals.
 
-CONTEXT_MANAGEMENT
-Run /compact when context approaches the compact threshold (default 170k tokens). After compacting,
-state your current checkpoint before continuing. Do NOT compact on turn 1.
+[CONTEXT MANAGEMENT]
+Run /compact when context approaches 170k tokens. After compacting, state your current checkpoint before continuing. Do NOT compact on turn 1.
 
-BLOCKERS
-If you hit a hard blocker: mock/stub it, document in HANDOFF.md under "Needs My Decision", and
-continue all work that does not depend on the blocked piece. Skill/process failures use tiered
-fallbacks — never silently downgrade substance:
+[CONSTRAINTS]
+<Include this block whenever any of the following apply — omit entirely if none do>
+Cost ceiling: <e.g., "Stay under $5 in API calls total.">
+Do NOT touch unsupervised:
+- <live table / running job / shared sheet>
+If any constraint would be violated: stop that task, document in HANDOFF.md under
+"Constraint Block", and continue with everything that doesn't violate.
+
+[BLOCKERS]
+If you hit a hard blocker: mock/stub it, document in HANDOFF.md under "Needs My
+Decision", and continue all work that does not depend on the blocked piece.
+Skill/process failures use tiered fallbacks — never silently downgrade substance:
 - Tier 1: Run the same process manually (same depth, same searches)
 - Tier 2: Reduced scope — mark artifact quality: draft in frontmatter
 - Tier 3: Skeleton from trained knowledge — mark quality: placeholder, flag in HANDOFF
-If a constraint from [PARAMS] would be violated: stop that task, document in HANDOFF.md under
-"Constraint Block", and continue with everything that doesn't violate.
 
-PROOF_PROTOCOL
+[PROOF PROTOCOL]
 Every completed phase needs proof, not assertion. After each phase append to PROGRESS.md:
   Phase N: <name> — COMPLETE
   Artifact: <absolute-path>
@@ -515,47 +452,52 @@ Every completed phase needs proof, not assertion. After each phase append to PRO
   Commit: <SHA>
 Never write "Phase N complete" without proof on the line below it.
 
-MORNING_REPORT
+[MORNING REPORT]
 By morning, leave me the morning report in the task's working directory:
 1. HANDOFF.md — what completed, workarounds, needs my decision, evidence
 2. HANDOFF.html — single-page visual summary (see references/morning-report-specs.md)
 3. HANDOFF.excalidraw — architecture/flow diagram (see references/morning-report-specs.md)
+
 Then PUBLISH the report so I wake up to a link, not a file on disk:
-4. Run `lavish-axi share HANDOFF.html` — publishes to a hosted URL (headless-safe HTTPS POST, no
-   browser needed). Publish PUBLIC: do NOT pass --password. The link must open in one click from
-   anywhere, including a comment on the no-mistakes PR — a password gate makes the report
-   single-player. The trade: anyone with the URL can read it, so keep credentials, tokens, and
-   client PII OUT of the report body — gate the value, not the page. Record the hosted URL in a
-   "## 📋 Published Report" block at the TOP of HANDOFF.md. The update_key is still a secret: write
-   it to HANDOFF.secret.local, add that filename to .gitignore immediately — it is
-   update/delete-capable and MUST NEVER be committed. If ht-ml.app is unreachable, fall back to
+4. Run `lavish-axi share HANDOFF.html --password <fresh-random-pw>` — publishes to a
+   hosted URL (headless-safe HTTPS POST, no browser needed). --password is mandatory
+   (pages are public by default; this is client/business work). Record ONLY the hosted
+   URL in a "## 📋 Published Report" block at the TOP of HANDOFF.md. Write the password
+   and update_key to HANDOFF.secret.local and add that filename to .gitignore
+   immediately — the update_key is update/delete-capable and MUST NEVER be committed
+   to any repo. If ht-ml.app is unreachable, fall back to
    `lavish-axi export HANDOFF.html --out HANDOFF.export.html` and note why in HANDOFF.md.
    See references/morning-report-specs.md.
 
-TURN_LIMIT
-Stop after the turn limit in [PARAMS] (default 80). If not done, write all three morning-report
-files anyway, then publish per MORNING_REPORT step 4.
+[TURN LIMIT] Stop after <max_turns> turns. If not done, write all three files anyway,
+then publish per step 4.
 ```
 
-Then update the `[HARNESS]` block in the goal candidate so the first line names the real path:
-`Read <absolute-path>/HARNESS.md before starting and follow it end to end.` Replace the
-`[ROUTING_GUARD]` placeholder with exact stdout from resolver `--emit-shell-guard` mode. Never
-interpolate or re-quote its paths. Any unresolved placeholder blocks emission.
+---
 
-The task working directory is `$PROJECT_ROOT/.harness/goals/<task-slug>/` (resolved in
-Execution Router Step 0). Write HARNESS.md there and use that absolute path.
+## Phase 2.5: QA Validation
 
-This step happens before length measurement — the HARNESS.md content (both the task briefs and the
-standing protocol sections) is NOT inlined into the goal prompt. The goal only carries the path
-reference plus the `[PARAMS]` values the standing sections consume.
+**Execution: spawn 1-3 parallel Haiku/Explore agents — do not run inline.**
 
-### LENGTH GATE — TWO-SIDED, MEASURED, NO EXCEPTIONS
+### Step 0 — Write HARNESS.md (before measuring)
 
-**4000 is the rejection line, NOT a budget to fill.** `/goal` rejects any condition ≥4000 characters ("Goal condition is limited to 4000 characters") — a rejected goal is a failed deliverable. But a prompt that merely *clears* 4000 can still be bloated. The default equilibrium of this skill is drift toward the ceiling: the QA checklist only ever tells you to ADD blocks, so an unchecked prompt fills to ~3990. That is the failure the last few long prompts came from.
+Write `HARNESS.md` to the task working directory using Agent 4 output from Phase 1.5.
+It must contain `PRE_PLANNER_APPROVAL`, `PLANNER_BRIEF`, `MAKER_ROUTING`,
+`PROVER_BRIEF`, `REDTEAM_BRIEF`, `CHECKER_BRIEF`, `SHIP_BRIEF`, and `LOOP_TRACKER`,
+plus the standing execution, blocker, proof, and reporting protocol.
 
-So the gate is two-sided:
-- **Hard cap 4000 / safe target 3990** — over this is BLOCKED, non-negotiable (mechanical, DO NOT eyeball).
-- **Brevity budget ~1500** (single-phase) / **~2500** (multi-phase) — over this is a WARN, not a block. It means: compress unless every block earns its place. These budgets dropped once the ~6000 chars of standing protocol moved to HARNESS.md; a normal lean goal now lands around 1200-2500 chars. Aim for the *shortest* prompt that still passes the dry-run self-check, not the longest that fits.
+Then update the `[HARNESS]` block in the goal candidate so the first line reads:
+`Read <absolute-path>/HARNESS.md before starting.`
+
+If the task's working directory is not clear from context, write to
+`temp/goals/<task-slug>/HARNESS.md` and use that absolute path.
+
+This step happens before length measurement — HARNESS.md content is NOT inlined
+into the goal prompt. The goal only carries the path reference.
+
+### HARD LENGTH GATE — BLOCKING, MEASURED, NO EXCEPTIONS
+
+`/goal` **rejects any condition ≥4000 characters** ("Goal condition is limited to 4000 characters"). A rejected goal is a failed deliverable. This gate is mechanical — DO NOT eyeball it.
 
 Before emitting, you MUST run this sequence as actual shell commands (not mentally):
 
@@ -579,13 +521,10 @@ Fallback if Bun is unavailable (note the `encoding="utf-8"` — WITHOUT it, Pyth
 python -c "txt=open('temp/_goal-candidate.txt', encoding='utf-8').read().rstrip('\n'); print(len(txt))"
 ```
 
-The script prints `WARN` when the candidate is over the brevity budget but under the cap. Pass `--brevity 2500` for a genuinely multi-phase task; do not raise it just to silence the warning.
-
 **Step 3 — gate:**
 
 - Command **exits non-zero** (≥3990) → BLOCKED. Compress (see `references/qa-checklist.md` Length Gate steps). Re-write file. Re-run Step 2. Repeat until it exits 0.
-- Command prints **WARN** (≥ brevity budget, < 3990) → not blocked, but run the necessity pass in `references/qa-checklist.md` (Brevity Pass) before emitting: cut filler, move inlined detail to a reference file. Emit only what survives.
-- Command **exits 0 with OK** (< brevity budget) → pass. Proceed.
+- Command **exits 0** (< 3990) → pass. Proceed.
 
 **Step 4 — emit with proof:**
 Copy the `[Measured: XXXX chars]` line the script prints, immediately before the code fence. No measured count = gate not run = failure.
@@ -600,73 +539,108 @@ Fix any failure before emitting: (1) context verification — subagents confirm 
 
 ## Phase 3: Output
 
-**In-session harness mode:** Emit as a code fence. Add: **"Paste this into a Sonnet session. `/goal clear` to abort early."** See `EXAMPLES.md` for a complete worked example.
+**In-session harness mode:** Emit as a code fence. Add: **"Paste this into a frontier-model session with the current harness agents installed. `/goal clear` to abort early."** See `EXAMPLES.md` for a complete worked example.
 
-All goal execution remains attached to the current Claude Code session. Do not emit or start a detached runner.
+**gnhf mode:** Skip this phase. Output is the gnhf command block (see gnhf Path below).
 
 ---
 
-## Readiness and Worktree Path
+## gnhf Path (Overnight Autonomous Mode)
 
-Run the supported preflight before task execution. It reports repository, branch, dirty-tree, pipeline-layout, and isolation state as one JSON object.
+Use only when the user explicitly requests a detached unattended run and accepts that approval-sensitive stages cannot proceed without them. The current supported harness path is in-session. The goal condition becomes the gnhf objective directly — same content, no `/goal` wrapper, no 4000-char limit.
 
-**Check only - no mutation:**
+Skip Phase 2.5 QA. Skip Phase 3.
 
-```powershell
-powershell -NoProfile -File C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\prepare-harness-run.ps1 `
-  -RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -CheckOnly
-```
-
-Isolation is required by default, so a plain `-CheckOnly` reports `isolationRequired: true` and `status: "NOT_READY"` until isolation is prepared (or the run opts out — see below). A nonzero result includes exact errors and dirty paths. Resolve those errors manually; the preflight never commits, stashes, resets, switches branches, or starts task execution.
-
-**Prepare the default isolation:**
+**Preferred — inline detached launch (no terminal drop, survives this session):**
 
 ```powershell
-powershell -NoProfile -File C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\prepare-harness-run.ps1 `
-  -RepoPath "$PROJECT_ROOT" -WorkspaceRoot "$WORKSPACE_ROOT" -PrepareIsolation -Parallel `
-  -LeaseHolder harness-<slug>
+pwsh C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\launch-gnhf.ps1 `
+  -Objective "<full objective from Phase 2>" `
+  -StopWhen "<done condition from Phase 0 eval loop>" -MaxIterations 30
 ```
 
-Use returned `runPath` for isolated work. Return the lease deliberately after review. For trivial, read-only, or throwaway work, pass `-NoIsolation` instead to run on the current feature branch with no worktree — canonical monorepo-tracked pipelines always require the isolated path and reject `-NoIsolation`. Full lifecycle and remediation: `references/parallel-execution.md`.
+It pre-flights, starts gnhf detached + hidden, logs to `.gnhf-runs/gnhf-<stamp>.log`, and writes a handle JSON (PID + log + args). Register the task in tasks-axi first and mark it done after morning review.
 
-Rules:
+**Manual command block (equivalent, if you prefer to run it yourself):**
 
-- Isolation is the default: prepare a treehouse worktree for real runs; reserve `-NoIsolation` for trivial/read-only checks.
-- Run readiness for `$PROJECT_ROOT` with `$WORKSPACE_ROOT` passed separately; never target the workspace root or `pipelines/` parent.
-- Work only on a non-default feature branch.
-- Stop on any dirty path; never mutate work to make preflight pass.
-- Keep `scripts/validate-pipeline-layout.ps1` enforcement active.
-- No command in this skill starts detached work.
+```bash
+# 1. Register task
+tasks-axi add <slug> "<title>"
+tasks-axi start <slug>
+
+# 2. Worktree (optional — use for parallel streams or dep-heavy runs)
+# path=$(treehouse get --lease --lease-holder "gnhf-<slug>")
+# cd $path  # then run gnhf from there
+
+# 3. Launch — clean working tree required (git stash if dirty)
+gnhf "<full objective from Phase 2>" \
+  --max-iterations 30 \
+  --stop-when "<done condition from Phase 0 eval loop>"
+
+# 4. Morning review — open the published report first (URL is atop HANDOFF.md)
+head -n 8 HANDOFF.md          # published URL
+cat HANDOFF.secret.local      # password + update_key (never committed)
+git log --oneline gnhf/<slug>
+cat .gnhf/runs/*/notes.md
+
+# 5. Mark done
+tasks-axi done <slug>
+```
+
+**Model: always Opus/frontier (non-negotiable):**
+gnhf main agent = Opus. Cheaper models miss multi-step reasoning and produce cascading iteration failures.
+Enforced via `~/.gnhf/config.yml`:
+
+```yaml
+agentArgsOverride:
+  claude:
+    - "--model"
+    - "opus"
+```
+
+Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--max-iterations` instead.
+
+**Pre-flight checks (the launcher does these; verify manually if using the command block):**
+
+- `git config --global commit.gpgSign` — must be empty or `false` (gnhf commits unsigned)
+- Working tree clean — `git status` shows nothing (gnhf rejects dirty state)
+- `~/.gnhf/config.yml` — agent = `claude`, `agentArgsOverride.claude` = Opus model
+
+**Treehouse rules:**
+
+- Single stream → skip treehouse, run gnhf in repo root
+- Parallel streams or long-running lease → `treehouse get --lease --lease-holder "gnhf-<slug>"`
+- stdout = worktree path (use it), stderr = banners (ignore)
+- Return when done: `treehouse return $path`
 
 ---
 
 ## Reference Files
 
-| File                                 | Contents                                                                                                 |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `references/eval-loop-design.md`     | Phase 0 four questions, human-judgment flag, task-type lookup                                            |
-| `references/clarity-gate.md`         | Phase 0.5 branch bodies: `/grilling` vs `batch-grill-me` selection test; wayfinder routing test for large tasks |
-| `references/parallel-execution.md`   | Worktree isolation: treehouse pool, auto-lease on collision, lease lifecycle, manual parallel-stream commands |
-| `references/subagent-harness.md`     | Planner/maker/checker templates, budget allocation, checker independence rules                           |
-| `references/skill-routing.md`        | Task type → skill mappings, chaining patterns, quality bars per skill                                    |
-| `references/issue-tracker.md`        | Durable phase-slice tracking: `issues/NN-<slug>.md` schema, Status vocab, `/to-prd` intake, PLATEAU-vs-slice boundary |
-| `references/qa-checklist.md`         | Length gate, context verification, dry-run checks, quality floors, git cadence, full condition checklist |
-| `references/morning-report-specs.md` | HTML summary spec, Excalidraw JSON structure, color coding                                               |
-| `references/context-management.md`   | 170k threshold rationale, checkpoint protocol                                                            |
-| `references/execution-mode-routing.md` | Decide task shape before authoring: single-run, goal-loop, time-loop, dynamic-workflow. Decision order, interval guidance, mode-nesting patterns. |
-| `references/first-principles-generation.md` | Planner: decompose from observable outcomes. Maker: state reasoning (1-3 sentences) before code. |
-| `EXAMPLES.md`                        | Full worked example with Phase 0 design and output                                                       |
-| readiness CLI                        | `scripts/prepare-harness-run.ps1` - non-launching repository and isolation preflight                                    |
-| treehouse docs                       | `treehouse --help` - worktree pool; `treehouse.toml` in repo root for pool config                        |
-| tasks-axi docs                       | `tasks-axi --help` - persistent backlog; `.tasks.toml` for per-repo config                               |
+| File                                        | Contents                                                                                                                                          |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `references/eval-loop-design.md`            | Phase 0 four questions, human-judgment flag, task-type lookup                                                                                     |
+| `references/subagent-harness.md`            | Five-agent runtime, depth budget, protected execution, checker independence, shipping gate                                                        |
+| `references/clarity-gate.md`                | Route ambiguous intake through grilling, batch-grill-me, or Wayfinder                                                                              |
+| `references/issue-tracker.md`               | Durable `issues/NN-*.md` phase-slice contract                                                                                                      |
+| `references/parallel-execution.md`           | Isolated worktree preparation and lease lifecycle                                                                                                  |
+| `references/benchmark-intake.md`            | Benchmark-loop intake loaded only when a measurable optimization goal is detected                                                                  |
+| `references/skill-routing.md`               | Task type → skill mappings, chaining patterns, quality bars per skill                                                                             |
+| `references/qa-checklist.md`                | Length gate, context verification, dry-run checks, quality floors, git cadence, full condition checklist                                          |
+| `references/morning-report-specs.md`        | HTML summary spec, Excalidraw JSON structure, color coding                                                                                        |
+| `references/context-management.md`          | 170k threshold rationale, checkpoint protocol                                                                                                     |
+| `references/execution-mode-routing.md`      | Decide task shape before authoring: single-run, goal-loop, time-loop, dynamic-workflow. Decision order, interval guidance, mode-nesting patterns. |
+| `references/first-principles-generation.md` | Planner: decompose from observable outcomes. Maker: state reasoning (1-3 sentences) before code.                                                  |
+| `EXAMPLES.md`                               | Full worked example with Phase 0 design and output                                                                                                |
+| gnhf docs                                   | `gnhf --help` - autonomous loop CLI; `~/.gnhf/config.yml` for defaults; `scripts/launch-gnhf.ps1` for inline detached launch                      |
+| isolation policy                            | Workspace/repository worktree policy plus `references/parallel-execution.md`; never invent an out-of-repo location                                |
+| tasks-axi docs                              | `tasks-axi --help` - persistent backlog; `.tasks.toml` for per-repo config                                                                        |
 
 ---
 
 ## Execution Mode Routing
 
-Before writing a goal prompt, route the task to the right execution shape using `references/execution-mode-routing.md`. This is about _task shape_ (single-run vs goal-loop vs time-loop vs dynamic-workflow), not about harness infrastructure (attached session vs explicit treehouse isolation - see the "Execution Router" section above).
-
-**Benchmark detection runs first (ADR-0004).** Before task shape, apply the benchmark-detection key from `references/execution-mode-routing.md` ("Prior axis"): does the goal name a measurable benchmark — a metric plus a direction? If yes, this is a benchmarking goal, not a build goal — **offer to switch** to `/benchmarking-loop` and load `references/benchmark-intake.md` (the lazy branch; a plain build goal never loads it, so this stays lean). `/write-goal-prompt` and `/benchmarking-loop` are two front doors over one shared grill, so detection catches a mis-invoked door from either side. Only if the goal is a plain build goal (artifact + quality bar, no exogenous metric+direction) do you continue with the phases below.
+Before writing a goal prompt, route the task to the right execution shape using `references/execution-mode-routing.md`. This is about _task shape_ (single-run vs goal-loop vs time-loop vs dynamic-workflow), not about harness infrastructure (in-session vs gnhf — that is separate; see the "Execution Router" section above for infrastructure choice).
 
 The router decision tree is first-match-wins: walk the four questions top-down and stop at the first yes. Dynamic-workflow shape (for parallel verification, adversarial red-team, or 50+ item processing) is exemplified by `.claude/workflows/red-team.js`, which runs four attack roles in parallel, deduplicates findings by severity, and validates both per-role and merged output.
 
@@ -674,4 +648,4 @@ The router decision tree is first-match-wins: walk the four questions top-down a
 
 Planner reads `references/execution-mode-routing.md` as the first step after intake, and emits the chosen shape in PLAN.md's "Execution shape" section.
 
-**Note:** This section (task shape) is orthogonal to the "Execution Router" section near the top of this file (infrastructure choice: attached session or explicit treehouse isolation). Both axes inform a full execution plan, but they answer different questions - mode routing is shape, while the Router is infrastructure.
+**Note:** This section (task shape) is orthogonal to the "Execution Router" section near the top of this file (infrastructure choice: supported in-session harness, explicitly requested detached gnhf, or isolated parallel runs). Both axes inform a full execution plan.

@@ -1,28 +1,18 @@
 # QA Checklist Reference
 
-## Length Gate — TWO-SIDED, MEASURED, BLOCKING
+## Length Gate — HARD, MEASURED, BLOCKING
 
 `/goal` rejects any condition **≥4000 characters** outright ("Goal condition is limited to 4000 characters"). Emitting an over-length goal = failed deliverable. **Measure, never eyeball.**
 
-Write the candidate to a temp file via the Write tool, then measure with the gate script (Bash tool, Bun — works on Windows and Linux):
+Write the candidate to a temp file via the Write tool, then measure (Bash tool, Python — works on Windows and Linux):
 
 ```bash
-bun skills/write-goal-prompt/scripts/check-goal-length.ts temp/_goal-candidate.txt
+python -c "txt=open('temp/_goal-candidate.txt').read().rstrip('\n'); print(len(txt))"
 ```
 
-`/goal` strips one trailing newline before counting — the script replicates that exactly. Target **<3990** (≥10 char margin, exit non-zero at/above it = BLOCKED). The script also prints **WARN** (exit 0, not blocked) once the candidate clears a soft `--brevity` budget (default 1500, `--brevity 2500` for genuinely multi-phase tasks) — that WARN means run the Brevity Pass below before emitting. Include `[Measured: XXXX chars]` before emitting. No count shown = gate not run = failure.
+`/goal` strips one trailing newline before counting — this replicates that exactly. Target **<3990** (≥10 char margin). If result ≥4000 you are BLOCKED — compress and re-measure until it passes. Include `[Measured: XXXX chars]` before emitting. No count shown = gate not run = failure.
 
-These brevity budgets dropped from 2200/2800 once the ~6000 chars of standing protocol boilerplate moved out of the goal condition into HARNESS.md. A normal lean goal now lands around **1200-2500 chars** — task content + `[PARAMS]` + a one-paragraph `[HARNESS]` pointer. If a goal is much larger than that, protocol text has probably leaked back into the condition (see the invariant below).
-
-**Invariant — protocol lives in HARNESS.md, never inlined in the goal condition.** The goal condition carries task content, `[PARAMS]`, and the lean `[HARNESS]` pointer only. The standing protocol sections (`EXECUTION_PROTOCOL`, `EVAL_LOOP`, `BLOCKERS`, `PROOF_PROTOCOL`, `MORNING_REPORT`, `CONTEXT_MANAGEMENT`, `TURN_LIMIT`) live in HARNESS.md, read first. If you find EXECUTION_PROTOCOL / EVAL_LOOP / PROOF / MORNING_REPORT text (the 5-stage flow, the eval-loop steps, the proof format, the lavish-axi publish spec, the /compact rule, the turn-limit rule) inside the goal condition, move it to HARNESS.md — it does not belong in the measured prompt.
-
-Fallback if Bun is unavailable (note `encoding="utf-8"` — without it Python over-counts on Windows and falsely blocks valid prompts):
-
-```bash
-python -c "txt=open('temp/_goal-candidate.txt', encoding='utf-8').read().rstrip('\n'); print(len(txt))"
-```
-
-**Do NOT use `wc -m` — it does not work on Windows (PowerShell). Use the commands above always.**
+**Do NOT use `wc -m` — it does not work on Windows (PowerShell). Use the Python command above always.**
 
 To compress when over:
 
@@ -33,20 +23,6 @@ To compress when over:
    `"Read <path> before starting"` to [TASK]. This is preferred over cutting content.
 4. Re-check. If still over, the task is too complex for one goal — split into two
    sequential goals.
-
----
-
-## Brevity Pass — SUBTRACTIVE, runs even when under the cap
-
-Everything else in this checklist is additive ("did you INCLUDE X"). Left unchecked, that pushes every prompt to the ceiling — which is why prompts drift long. This pass is the counterweight. Run it whenever the length gate prints **WARN** (over the brevity budget), and ideally always. **4000 is the reject line; the target is the shortest prompt that still passes the dry-run self-check.**
-
-Go block by block and cut, don't add:
-
-1. **Every block earns its place.** If removing a block wouldn't change what the turn-1 agent does, remove it. Default-present blocks (fallbacks, quality floors, constraints) are only warranted when the task actually has that risk — a no-cost single-artifact task does not need a tiered-fallback ladder or a cost ceiling.
-2. **Inline only what changes turn-1 behavior.** Phase plans, rubrics, briefs, copy rules, brand pillars → a reference file in the task working dir, referenced by path. The goal carries the path, not the content. (HARNESS.md is already handled this way — apply the same rule to everything bulky.)
-3. **One statement per idea.** Collapse restated done criteria, merge overlapping constraints, kill "in order to / it is important that / make sure to" scaffolding.
-4. **No filler verbs or adjectives.** "implement a robust solution for" → "build". "comprehensive" / "seamless" / "properly" add chars, not meaning.
-5. **Re-measure.** If it's now under the brevity budget, emit. If it's still large *after* honest subtraction, that's a real signal the task is too big for one goal — split it, don't pad the gate margin.
 
 ---
 
@@ -74,11 +50,11 @@ Walk through the goal prompt as if you were the receiving agent on turn 1:
 
 1. Can I start working from [TASK] alone without asking questions? If not → add context.
 2. Is every done criterion machine-verifiable (file exists, command exits 0, grep returns)? If not → rewrite.
-3. Does HARNESS.md's standing BLOCKERS section (tiered fallbacks) cover the most likely failure mode, and does [TASK] name any task-specific "needs my decision" points? If a real decision point is missing → add it to [TASK].
+3. Does [BLOCKERS] cover the most likely failure mode? If not → add it.
 4. Are there enough fallbacks that the agent can produce _something_ even if every skill fails?
 5. Is the feature list explicit, or would the agent have to guess what to build? If guessing → add "Must include:" block.
 6. Is the quality bar stated? Without it the agent defaults to "done = exists" — the fastest path, not the best one.
-7. Does the task touch live data, shared infra, or a per-call cost API? If yes → the `[PARAMS]` constraint lines (Cost ceiling / Do NOT touch) must be present.
+7. Does the task touch live data, shared infra, or a per-call cost API? If yes → [CONSTRAINTS] block must be present.
 8. Are stretch goals clearly separated from required work? Mixed-in optionals cause the agent to deprioritize required items.
 9. Is the reward signal single and unambiguous? If it requires human judgment to compute — flag it to the user, offer the three options, do not silently proceed.
 10. Does the mechanical gate run in seconds without LLM involvement? If not, split into separate gates.
@@ -158,7 +134,7 @@ Before emitting, verify the condition:
 
 **Harness Awareness**
 
-- [ ] **Phase 1.5 ran** — 3 discovery agents fired in parallel before formatting
+- [ ] **Phase 1.5 ran** — 4 discovery agents completed before formatting
 - [ ] **[TOOLS] block populated** — relevant skills, agent types, and CLI tools from discovery; not guessed
 - [ ] **No tool hallucination** — every skill/agent name in [TOOLS] confirmed to exist by discovery agents
 - [ ] **[TOOLS] omitted if empty** — block not present if discovery returned nothing relevant
@@ -173,7 +149,7 @@ Before emitting, verify the condition:
 **Eval Loop**
 
 - [ ] **Phase 0 ran** — eval loop designed before intake, not after formatting
-- [ ] **[PARAMS] block present** — every goal prompt has one (reward signal, done threshold, max cycles, turn limit); the EVAL_LOOP mechanics live in HARNESS.md and consume these values, no exceptions
+- [ ] **[EVAL LOOP] block present** — every goal prompt has one, no exceptions
 - [ ] **Reward signal is single and programmatic** — no composite scores, no human-judgment required to compute
 - [ ] **Human-judgment flag surfaced if needed** — if any gate requires reading-and-deciding, user was shown the three options before goal was emitted
 - [ ] **Mechanical gate is fast and binary** — runs in seconds, no LLM, fails loudly
@@ -185,19 +161,21 @@ Before emitting, verify the condition:
 
 **Safety & Constraints**
 
-- [ ] **[PARAMS] constraint lines present** if task touches live data, shared infra, or per-call cost APIs — the `Cost ceiling` / `Do NOT touch` lines in `[PARAMS]`; the BLOCKERS section in HARNESS.md enforces them
-- [ ] **Cost ceiling stated** in `[PARAMS]` if any API calls will run in volume overnight
-- [ ] **Disruption risks named** — live tables, running jobs, shared sheets called out in the `[PARAMS]` `Do NOT touch` line
+- [ ] **Constraints block present** if task touches live data, shared infra, or per-call cost APIs
+- [ ] **Cost ceiling stated** if any API calls will run in volume overnight
+- [ ] **Disruption risks named** — live tables, running jobs, shared sheets explicitly called out with "read-only" or "do not touch" guards
 
 **Execution**
 
 - [ ] **Stated check** — how Claude proves done (test exit code, file exists, etc.)
-- [ ] **Standing protocol in HARNESS.md, not the goal** — CONTEXT_MANAGEMENT (compact at ~170k, not turn-based), MORNING_REPORT (HANDOFF.md + .html + .excalidraw, published PUBLIC via `lavish-axi share` with NO `--password`, update_key to gitignored HANDOFF.secret.local, no credentials/PII in the body), and TURN_LIMIT are standing sections written verbatim into HARNESS.md — confirm they are present there, NOT inlined in the goal condition
-- [ ] **Turn limit set** — `[PARAMS]` carries the value (default 80); the HARNESS.md TURN_LIMIT section consumes it
-- [ ] **[HARNESS] pointer present** — one paragraph naming the standing sections + the `[ROUTING_GUARD]` snippet; no protocol prose inlined
+- [ ] **Context-based compaction** at 170k tokens (not turn-based)
+- [ ] **Turn limit** included — default 80, never omit
+- [ ] **Morning report deliverables** — HANDOFF.md + HANDOFF.html + HANDOFF.excalidraw
+- [ ] **Current harness contract** — Planner writes BRIEF + PLAN + durable slices; Maker uses protected-work guards; Prover precedes Checker for running apps
+- [ ] **Shipping gate** — Checker PASS does not authorize shipping; Shipper requires separate explicit approval and never merges
+- [ ] **Report published** — `lavish-axi share HANDOFF.html --password …` step present; URL captured in HANDOFF.md; password + update_key saved to HANDOFF.secret.local (gitignored, never committed)
 - [ ] **Overnight framing** — reads as a handoff, not a command
 - [ ] **Total length** under 4000 characters (Phase 2.5 length gate passed)
-- [ ] **Brevity Pass run** — shortest prompt that passes the dry-run, not the longest that fits; if the gate printed WARN, the subtractive pass above was applied and every remaining block earns its place
 - [ ] No vague verbs like "implement" or "handle" without a measurable check
 - [ ] **Context verified** — all paths, skills, patterns confirmed to exist (Phase 2.5)
 - [ ] **Dry-run passed** — agent can start from [TASK] without asking questions

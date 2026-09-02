@@ -6,24 +6,40 @@ to invoke per phase and in what order.
 
 ---
 
+## Execution Mode Routing
+
+Apply this before selecting any skill:
+
+| Signal                                 | Mode                      | Output                                      |
+| -------------------------------------- | ------------------------- | ------------------------------------------- |
+| Task <1hr, decisions needed mid-run    | In-session harness        | /goal condition (Phases 0-3)                |
+| Task >1hr, fully specifiable           | gnhf overnight            | gnhf command block (gnhf Path section)      |
+| Multiple streams needed simultaneously | Parallel gnhf + treehouse | treehouse lease per stream + gnhf per lease |
+
+Rule: when in doubt between in-session and gnhf, check "could this run unattended overnight and produce reviewable output?" If yes -> gnhf.
+
+---
+
 ## Task Type → Skill Routing Table
 
-| Task type                 | Primary skill                        | Secondary skill                      | Notes                                     |
-| ------------------------- | ------------------------------------ | ------------------------------------ | ----------------------------------------- |
-| New feature (code)        | `/tdd`                               | `/feature-dev:feature-dev`           | Write failing tests first, then implement |
-| Ambiguous scope           | `/to-prd`                            | `/tdd` or `/feature-dev:feature-dev` | Spec before any code                      |
-| New system / architecture | `/codebase-design`                   | `/feature-dev:feature-dev`           | Design decision before implementation     |
-| Architecture refactor     | `/improve-codebase-architecture`     | `/tdd`                               | Matt Pocock — systematic refactor with tests |
-| Bug investigation         | `/diagnosing-bugs`                   | `/to-issues`                         | Root cause before fixing                  |
-| Blocker mid-phase         | `/diagnose`                          | `/to-issues`                         | Matt Pocock — Maker hits unknown blocker (runtime-registered skill — no local SKILL.md; verify via system-reminder available-skills before routing) |
-| Issue backlog             | `/to-issues`                         | —                                    | Convert findings to issues                |
-| PLATEAU escalation        | `/triage`                            | `/to-issues`                         | Matt Pocock — plateau → GitHub issue → triage queue |
-| Prototype / validate idea | `/prototype`                         | `/tdd`                               | Prove approach before full build          |
-| New skill creation        | `/write-a-skill`                     | —                                    | Skill authoring skill                     |
-| Content / copy            | `/cold-email-copywriter`             | `/writing-shape`                     | Write → shape → verify                    |
-| Goal prompt itself        | `/write-goal-prompt`                 | —                                    | Recursive                                 |
-| UI / frontend             | `/prototype`                         | `/codebase-design`                   | Visual validate early                     |
-| Re-plan after low score   | `/zoom-out`                          | —                                    | Matt Pocock — Checker scores < 3/5; step back before next Maker cycle (runtime-registered skill — no local SKILL.md; verify via system-reminder available-skills before routing) |
+| Task type                 | Primary skill                    | Secondary skill                               | Notes                                                                 |
+| ------------------------- | -------------------------------- | --------------------------------------------- | --------------------------------------------------------------------- |
+| New feature (code)        | `/tdd`                           | `/feature-dev:feature-dev`                    | Write failing tests first, then implement                             |
+| Ambiguous scope           | `/to-prd`                        | `/tdd` or `/feature-dev:feature-dev`          | Spec before any code                                                  |
+| New system / architecture | `/codebase-design`               | `/feature-dev:feature-dev`                    | Design decision before implementation                                 |
+| Architecture refactor     | `/improve-codebase-architecture` | `/tdd`                                        | Matt Pocock — systematic refactor with tests                          |
+| Bug investigation         | `/diagnosing-bugs`               | `/to-issues`                                  | Root cause before fixing                                              |
+| Blocker mid-phase         | `/diagnose`                      | `/to-issues`                                  | Matt Pocock — Maker hits unknown blocker                              |
+| Issue backlog             | `/to-issues`                     | —                                             | Convert findings to issues                                            |
+| PLATEAU escalation        | `/triage`                        | `/to-issues`                                  | Matt Pocock — plateau → GitHub issue → triage queue                   |
+| Prototype / validate idea | `/prototype`                     | `/tdd`                                        | Prove approach before full build                                      |
+| New skill creation        | `/write-a-skill`                 | —                                             | Skill authoring skill                                                 |
+| Content / copy (outbound) | `/cold-email-copywriter`         | `pipelines/outbound/skills/kg-client-refresh` | Outbound pipeline - scoped to `pipelines/outbound/skills/`            |
+| Content / writing         | `/content:write`                 | `pipelines/content/skills/content-writing`    | Tweet, LinkedIn, blog, course/SOP - scoped to content pipeline        |
+| Blog from raw pile        | `/content:write blog`            | `writing-shape`                               | Shape raw material in `pipelines/content/writing/drafts/blogs/`       |
+| Goal prompt itself        | `/write-goal-prompt`             | —                                             | Recursive                                                             |
+| UI / frontend             | `/prototype`                     | `/codebase-design`                            | Visual validate early                                                 |
+| Re-plan after low score   | `/zoom-out`                      | —                                             | Matt Pocock — Checker scores < 3/5; step back before next Maker cycle |
 
 **Matt Pocock skills** (`/tdd`, `/diagnose`, `/improve-codebase-architecture`, `/zoom-out`, `/to-prd`, `/to-issues`, `/triage`) require the repo to be configured via `setup-matt-pocock-skills` first. Configuration lives in `docs/agents/`. Confirm existence before routing.
 
@@ -109,12 +125,22 @@ Use when: Checker scores architecture dimension < 3/5 across 2 consecutive cycle
 
 ```
 1. research (nexus_search + web)
-2. /cold-email-copywriter or write-goal-prompt's voice ref
-3. /writing-shape    — structure and flow
+2. /cold-email-copywriter (pipelines/outbound/skills/) or write-goal-prompt's voice ref
+3. /writing-shape (pipelines/content/skills/) — structure and flow
 4. /leadgrow:push-content — publish
 ```
 
 Use when: producing external-facing copy, emails, or LinkedIn content.
+
+### Outbound Batch
+
+```
+1. kg-client-refresh (pipelines/outbound/skills/) — refresh client KG if stale
+2. /cold-email-copywriter (pipelines/outbound/skills/) — 3-email sequence + QA
+3. win-loss-rewind (pipelines/outbound/skills/) — post-campaign analysis (optional)
+```
+
+Use when: new client campaign copy or KG refresh before outbound.
 
 ---
 
@@ -151,17 +177,19 @@ discovering it doesn't exist.
 When the Maker invokes a skill, Checker rubric must encode the skill's quality bar —
 not just "output file exists."
 
-| Skill                              | Quality bar (for Checker rubric)                                                |
-| ---------------------------------- | ------------------------------------------------------------------------------- |
-| `/tdd`                             | Tests are failing before implementation; all pass after; no `skip` or `xfail`  |
-| `/prototype`                       | Prototype renders and shows the core interaction; no placeholder UI             |
-| `/to-prd`                          | PRD has problem statement, user stories, acceptance criteria, out-of-scope list |
-| `/codebase-design`                 | ADR has options considered, tradeoffs, decision, consequences                   |
-| `/diagnosing-bugs`                 | Root cause identified with reproduction steps; not just symptoms                |
-| `/diagnose`                        | Hypothesis confirmed with evidence; fix verified; not just "it works now"       |
-| `/improve-codebase-architecture`   | Before/after metrics cited; no regressions; ADR written for key decisions       |
-| `/zoom-out`                        | Re-plan produced; identifies *why* prior cycle scored low, not just what failed |
-| `/to-issues`                       | Issues created with acceptance criteria + `ready-for-agent` or `ready-for-human` label |
-| `/triage`                          | PLATEAU issue created in tracker; labeled `needs-triage`; cycle log path linked |
-| `/feature-dev:feature-dev`         | Feature works end-to-end; no TODOs in shipped paths                             |
-| `/write-a-skill`                   | SKILL.md has frontmatter, phases, reference files; under 100 lines              |
+| Skill                            | Quality bar (for Checker rubric)                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `/tdd`                           | Tests are failing before implementation; all pass after; no `skip` or `xfail`                    |
+| `/prototype`                     | Prototype renders and shows the core interaction; no placeholder UI                              |
+| `/to-prd`                        | PRD has problem statement, user stories, acceptance criteria, out-of-scope list                  |
+| `/codebase-design`               | ADR has options considered, tradeoffs, decision, consequences                                    |
+| `/diagnosing-bugs`               | Root cause identified with reproduction steps; not just symptoms                                 |
+| `/diagnose`                      | Hypothesis confirmed with evidence; fix verified; not just "it works now"                        |
+| `/improve-codebase-architecture` | Before/after metrics cited; no regressions; ADR written for key decisions                        |
+| `/zoom-out`                      | Re-plan produced; identifies _why_ prior cycle scored low, not just what failed                  |
+| `/to-issues`                     | Issues created with acceptance criteria + `ready-for-agent` or `ready-for-human` label           |
+| `/triage`                        | PLATEAU issue created in tracker; labeled `needs-triage`; cycle log path linked                  |
+| `/feature-dev:feature-dev`       | Feature works end-to-end; no TODOs in shipped paths                                              |
+| `/write-a-skill`                 | SKILL.md has frontmatter, phases, reference files; under 100 lines                               |
+| gnhf run                         | Commits every iteration; notes.md shows reasoning; morning git log has >=3 entries               |
+| treehouse                        | Worktree acquired with --lease; returned with treehouse return; no dirty worktrees on completion |

@@ -14,91 +14,21 @@ not its self-talk. Fresh eyes or it doesn't count.
 
 ## Agent Files (Canonical Definitions)
 
-The 5 harness agents are defined as proper Claude Code agents in `.claude/agents/`:
+The five build-loop agents are defined as proper Claude Code agents in `.claude/agents/`:
 
-| File                                | Role                             | tools                                | model            |
-| ----------------------------------- | -------------------------------- | ------------------------------------ | ---------------- |
-| `.claude/agents/harness-planner.md` | Decompose goal → BRIEF.md, PLAN.md | Read, Glob, Write                  | claude-sonnet-5  |
-| `.claude/agents/harness-maker.md`   | Execute phases, commit           | Read, Glob, Write, Edit, Bash, Agent | claude-haiku-4-5 |
-| `.claude/agents/harness-prover.md`  | Drive running app → PROOF verdict | Read, Bash                          | claude-sonnet-5  |
-| `.claude/agents/harness-checker.md` | Score artifacts, write CYCLE_LOG | Read, Glob, Write                    | claude-sonnet-5  |
-| `.claude/agents/harness-shipper.md` | Run `/no-mistakes` once after PASS → PR | Read, Bash                      | claude-sonnet-5  |
+| File                                | Role                                      | tools                                | model              |
+| ----------------------------------- | ----------------------------------------- | ------------------------------------ | ------------------ |
+| `.claude/agents/harness-planner.md` | Write BRIEF, PLAN, durable phase slices   | Read, Glob, Write                    | claude-sonnet-5    |
+| `.claude/agents/harness-maker.md`   | Execute approved slices, guard, commit    | Read, Glob, Write, Edit, Bash, Agent | claude-haiku-4-5   |
+| `.claude/agents/harness-prover.md`  | Binary running-app proof                  | Read, Bash                           | claude-sonnet-5    |
+| `.claude/agents/harness-checker.md` | Score artifacts, write CYCLE_LOG          | Read, Glob, Write                    | claude-sonnet-5    |
+| `.claude/agents/harness-shipper.md` | Approval-gated no-mistakes run and PR     | Read, Bash                           | claude-sonnet-5    |
 
 Checker's `tools: Read, Glob, Write` is **mechanical isolation** — it literally cannot run
 Bash, spawn subagents, or access anything the Maker produced via tool calls. Fresh by design.
 
-### Provider-Aware Model Resolution
-
-Before spawning any role subagent, resolve the model for that role using the provider-aware
-resolver. This ensures the harness runs model-agnostically: Claude Code native (default),
-GPT via claudex proxy, or GPT via codex CLI.
-
-```bash
-# Resolve the model for a role under the detected provider
-cd $PROJECT_ROOT
-RESOLVED=$(bun scripts/resolve-role-model.ts <role> --provider <native|claudex|codex>)
-# Extract model, provider, tier from JSON: {"model": "...", "provider": "...", "tier": "..."}
-MODEL=$(echo "$RESOLVED" | jq -r '.model')
-TIER=$(echo "$RESOLVED" | jq -r '.tier')
-```
-
-Then pass the resolved model as an explicit override where the invocation mechanism accepts it
-(e.g., Agent's model parameter if supported). If the invocation mechanism does not support
-per-call model overrides, the agent file's static frontmatter `model:` field (which equals the
-native resolution by construction from PLAN.md's fallback chain) is the enforced value; the
-resolver output is the audited intended value for this run logged in HARNESS.md's LOOP_TRACKER.
-
-The resolver is a pure function (zero I/O); provider detection is injected. For production use,
-call `detectProvider(getRealDetectionEnv())` from `scripts/detect-provider.ts` to probe the
-active session's providers and pass the result to the resolver.
-
-Invoke by name with resolved model: `Agent({subagent_type: "harness-planner", prompt: "...", model: "<resolved-model>"})`. 
-HARNESS.md supplies task-specific context plus the standing protocol (execution stages, eval loop, blockers, proof, morning report — moved out of the goal condition to keep it under the length gate); the agent files contain structural templates for each role.
-
-### Canonical install paths (agents are global; project state is not)
-
-Harness agents install to TWO locations — keep them in sync:
-
-```
-tools/agent/agent-harness/.claude/agents/harness-*.md   ← source of truth (loop-engineer repo)
-~/.claude/agents/harness-*.md                     ← installed, global, loaded at runtime for every repo
-```
-
-Agents are GLOBAL — there is no per-project agent copy (`~/.claude` is the one runtime location;
-on this machine it is a symlink to `Everything_CC/.claude`, so those are the same files, not a
-separate "project override"). What IS project-scoped lives under each project's `.harness/`:
-`skill-routing.md`, `goals/<slug>/` (this run's artifacts), and the per-project `.tasks.toml`
-backlog. `/setup-harness <repo-root>` installs the global agents and seeds that project's `.harness/`.
-
-Maker agents syncing harness files: use `bun -e "import{copyFileSync}from'fs';..."` or direct
-`cp` (not dotenv-adjacent, so hook won't block). `/setup-harness` script handles this automatically.
-
----
-
-## BRIEF.md — Product Brief
-
-**What it is:** Planner writes BRIEF.md as the first artifact (before PLAN.md). It anchors the goal at the product level — why this work matters and what success looks like from the user's perspective.
-
-**Format (3 sections):**
-
-```
-# Goal Brief — <task-slug>
-
-## Problem
-<one sentence — why this work matters, from the user's perspective>
-
-## Success criteria (product-level)
-- <what the user observes when done — not "tests pass", not "file exists">
-- <observable outcome 2>
-
-## Out of scope
-- <explicit exclusion 1 — things NOT being built>
-- <explicit exclusion 2>
-```
-
-**Why separate from PLAN.md:** PLAN.md is technical (phases, skill routing, checker dimensions). BRIEF.md is product — it answers "should we be doing this at all?" and "did we solve the right problem?" Checker uses BRIEF.md to detect scope drift. If Maker produces "all tests pass" but the brief's success criteria are unmet, Checker catches it.
-
-**Cross-reference:** PLAN.md checker rubric must align with BRIEF.md success criteria. If BRIEF.md says "user can generate reports in 2 clicks", the rubric should score UX/ease-of-use. If BRIEF.md excludes mobile, the rubric should not penalize "mobile responsive".
+Invoke by name: `Agent({subagent_type: "harness-planner", prompt: "..."})`. HARNESS.md
+supplies task-specific context; the agent files contain structural templates.
 
 ---
 
@@ -108,48 +38,46 @@ Claude Code enforces a 5-level agent depth limit. At depth 5, `Agent` tool is no
 
 | Level | Agent                          | Notes                            |
 | ----- | ------------------------------ | -------------------------------- |
-| 0     | Goal loop agent                | Spawns planner and maker         |
-| 1     | harness-planner                | Write-only phase; spawns nothing |
-| 2     | harness-maker                  | Can spawn skill agents (depth 3) |
-| 3     | Skill agents / harness-checker | Can spawn nothing below depth 4  |
-| 4     | Sub-skill agents (max)         | Final usable level               |
+| 0     | Goal loop agent                | Orchestrates the loop                    |
+| 1     | harness-planner / shipper      | Planner writes only; shipper is fresh    |
+| 2     | harness-maker                  | Can spawn skill agents                   |
+| 3     | harness-prover / skill agents  | Prover exercises the live feature        |
+| 4     | harness-checker                | Fresh-context evaluation                 |
+| 5     | Sub-skill agents (max)         | Final usable level                       |
 
-**Design rule:** Checker runs at depth 3 max. If verification needs a sub-verifier,
-run it at depth 4. Never design a harness that needs depth 5 — it silently loses the Agent tool.
+**Design rule:** Checker runs at depth 4. Never design a harness that requires depth 6.
 
 ---
 
-## The 4-Phase Runtime Harness
+## The 5-Agent Runtime Harness
 
-Every goal prompt runs four logical phases. Simple tasks collapse them; complex tasks
-keep them explicit. The Harness Architect agent (Phase 1.5 of the skill) customizes
-HARNESS.md for the specific task; the agent files contain the structural templates.
+Every build goal uses Planner → Maker → Prover (running apps only) → Checker, with
+Shipper available only after Checker PASS and separate explicit shipping approval.
+The Harness Architect customizes HARNESS.md; the agent files contain structural contracts.
 
 ---
 
 ### Phase 1: Planner
 
-**Role:** Decompose the goal into phases. Select the right skills. Write BRIEF.md (product brief)
-and the execution plan before any artifacts are produced. This is the only phase that reads the full spec.
+**Role:** Decompose the goal into phases. Select the right skills. Write the execution
+plan before any artifacts are produced. This is the only phase that reads the full spec.
 
-**Inputs:** Goal statement, [TASK] block, [TOOLS] block, HARNESS.md planner brief, and the exact `[SKILL_ROUTING_RESOLUTION]` JSON produced by the parent guard. A nonzero guard exit blocks Planner invocation.
+**Inputs:** Goal statement, [TASK] block, [TOOLS] block, HARNESS.md planner brief.
 
-**Output — BRIEF.md must contain (written first):**
-- Problem: one sentence on why this work matters
-- Success criteria: product-level observables (not technical)
-- Out of scope: explicit exclusions
+**Outputs — Planner must write:**
 
-**Output — PLAN.md must contain (written second):**
+- BRIEF.md with problem, product-level success criteria, and out-of-scope boundaries
+- One `issues/NN-*.md` durable slice for every PLAN phase
+- PLAN.md containing:
 
 - Phase list with names and ordering (e.g., Phase 1: Research, Phase 2: Draft, Phase 3: Finalize)
-- Skill-routing evidence: exact guard JSON plus selected source and fallback
 - Skill-per-phase routing: which skill or direct implementation step covers each phase
 - Checker rubric: exact dimensions the checker will score (1-5), threshold for PASS
 - Dependency graph: which phases can run in parallel vs. must be sequential
 - Turn budget allocation: estimated turns per phase
 
-**Constraint:** Planner writes BRIEF.md and PLAN.md, then stops. It does not produce task artifacts.
-Maker reads both files on its first turn. Checker reads BRIEF.md to detect scope drift.
+**Constraint:** Planner writes PLAN.md and stops. It does not produce task artifacts.
+Maker reads PLAN.md on its first turn.
 
 **Template prompt for PLAN.md:**
 
@@ -195,13 +123,21 @@ Planner's routing. Commit at each phase boundary.
 - Score its own work
 - Decide whether it's done enough — only the Checker decides PASS/ITERATE
 
+Maker must also capture and validate the protected-work baseline for every approved
+slice, stage only exact approved paths, and commit source + slice status + proof atomically.
+
 **Mechanical gate:** Maker runs the fast binary check after each phase (tests pass, file
 exists, lint clean). This is not eval — it's "is the artifact present and structurally
 valid." If mechanical gate fails, Maker fixes and re-runs before signaling Checker.
 
 ---
 
-### Phase 3: Checker
+### Phase 3: Prover (running-app goals only)
+
+**Role:** Exercise the browser UI, API, or CLI and return a binary `works | broken`
+verdict with raw command or screenshot evidence. Static artifact goals skip this phase.
+
+### Phase 4: Checker
 
 **Critical: Checker is a separate subagent. It does NOT inherit Maker's context.**
 
@@ -242,20 +178,11 @@ Scores without `evidence:` citations are invalid. "Looks good" is not evidence.
 
 ---
 
-### Phase 4: Ship
+### Phase 5: Shipper (separate approval only)
 
-Run this phase exactly once after Checker returns PASS. Spawn a fresh `harness-shipper`; never
-run the pipeline in the goal agent. Give the shipper the user's original objective, decisions,
-and constraints as the pipeline intent. The task changes must be committed on a feature branch.
-The shipper drives every pipeline gate until it returns a terminal outcome.
-
-- `checks-passed`: PR and green CI are ready for human review and merge. Record the PR URL and stop.
-- `passed`: record the completed outcome.
-- `failed` or `cancelled`: record the failure and do not claim the work is merge-ready.
-- `ITERATE` or `PLATEAU`: do not invoke `/no-mistakes`.
-
-Keep shipping outside the eval loop: pipeline fixes and CI are release validation, not another
-Checker reward cycle. Follow the installed `no-mistakes` skill for gate responses and escalation.
+Shipper never follows automatically from implementation approval or Checker PASS. After
+PASS, request separate explicit shipping approval. Only then spawn a fresh Shipper to run
+`no-mistakes` exactly once, prepare a PR, and return its URL. The harness never merges.
 
 ---
 
@@ -311,44 +238,3 @@ and defeat isolation. Checker always spawns fresh.
 The single most expensive failure mode: Maker outputs "I scored myself 8/10 on all dimensions"
 and Checker reads that, anchors on it, and confirms. This is not a checker. It's an echo.
 Checkers must derive scores from artifact evidence, not from Maker testimony.
-
----
-
-## Concurrent Role Dispatch (Optimization, Not Default)
-
-By default, harness phases are sequential: Planner → Maker → (Prover) → Checker → Shipper.
-However, when multiple roles must spawn in parallel (e.g., red-team workflow spawning four
-attack agents concurrently), use the resolver's spawn descriptor to fan out safely.
-
-**Safe-to-parallelize roles (no output/input dependency):**
-- Within a Prover run: red-team's four attack roles (hostile, careless, perf, security) run
-  in parallel via `.claude/workflows/red-team.js`, consuming the same PROOF intent.
-- Within a Checker run: multiple independent verification checks (if designed) can run in parallel.
-
-**Sequential boundaries (must complete before next role starts):**
-- Planner must complete before Maker starts (Maker reads PLAN.md).
-- Maker must complete before Prover starts (Prover reads task artifacts; running-app goals only).
-- Prover must complete before Checker starts (Checker reads PROOF verdict).
-- Checker must complete before Shipper starts (Shipper requires PASS verdict + shipping approval).
-
-The resolver's `{model, provider, tier}` output is the spawn descriptor — multiple roles can
-resolve their models in parallel and pass them to concurrent invocations without shared mutable
-state (the resolver is pure; detection is injected once per run).
-
-Example (future enhancement — not yet implemented in this repo). `resolveRoleModel` only accepts
-the five harness roles (planner/maker/prover/checker/shipper), not attack-agent `subagent_type`
-names — resolve once for the driving role (`prover`, since red-team runs within a Prover pass)
-and reuse the resolved model for each attack-agent spawn:
-```typescript
-const attackAgents = ["red-team-hostile", "red-team-careless", "red-team-perf", "red-team-security"];
-const resolved = resolveRoleModel("prover", detectedProvider);
-const spawns = await Promise.all(
-  attackAgents.map(subagentType =>
-    Agent({subagent_type: subagentType, prompt: "...", model: resolved.model})
-  )
-);
-```
-
-For now, use the existing `.claude/workflows/red-team.js` for adversarial verification.
-Future harness extensions can add explicit fan-out patterns by resolving the role descriptor
-for each parallel invocation and passing it through.
