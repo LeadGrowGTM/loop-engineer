@@ -104,6 +104,17 @@ On success pass stdout unchanged as:
 Insert the guard-generation stdout unchanged under `[ROUTING_GUARD]` in the goal.
 Execute it immediately before Planner; on nonzero, do not invoke the Planner.
 
+### Step 0.2 - Load the project overlay (if present)
+
+This skill is generic. A repo specializes it with one file:
+`$PROJECT_ROOT/.harness/write-goal-prompt.md`. If it exists, read it completely before
+Phase 0 and treat it as binding for this run. It may add: domain context and standing
+constraints, extra intake fields for Phase 1, extra discovery agents or HARNESS.md sections
+for Phase 1.5, extra `[CONSTRAINTS]` lines and QA checklist items for Phase 2 / 2.5, and
+task-type rows for `references/eval-loop-design.md` and `references/skill-routing.md`.
+The overlay never removes a gate from this file and never changes the length cap. If the
+file is absent, proceed with no overlay - do not look for repo-specific rules elsewhere.
+
 Determine execution mode first. Ask if not obvious from context. This is the **infrastructure** axis (where/how the harness runs); it is distinct from the _task-shape_ axis in the "Execution Mode Routing" section below (`references/execution-mode-routing.md`).
 
 | Task shape                                   | Mode                                              |
@@ -634,6 +645,7 @@ Never change this to Sonnet/Haiku for cost — if cost is a concern, reduce `--m
 | `EXAMPLES.md`                               | Full worked example with Phase 0 design and output                                                                                                |
 | gnhf docs                                   | `gnhf --help` - autonomous loop CLI; `~/.gnhf/config.yml` for defaults; `scripts/launch-gnhf.ps1` for inline detached launch                      |
 | isolation policy                            | Workspace/repository worktree policy plus `references/parallel-execution.md`; never invent an out-of-repo location                                |
+| `$PROJECT_ROOT/.harness/write-goal-prompt.md` | Optional project overlay (Step 0.2): domain context, extra intake, HARNESS.md sections, task-type rows, QA items. Binding when present     |
 | tasks-axi docs                              | `tasks-axi --help` - persistent backlog; `.tasks.toml` for per-repo config                                                                        |
 
 ---
