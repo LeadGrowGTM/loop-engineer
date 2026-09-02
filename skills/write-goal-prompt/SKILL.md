@@ -4,7 +4,7 @@ name: write-goal-prompt
 description: >
   Transforms a task description into a lean, restartable /goal pointer. Authoring and runtime
   state flow only through goal-lifecycle and its durable run records.
-version: 4.0.0
+version: 4.1.0
 maturity: validated
 triggers:
   - write a goal prompt
@@ -54,9 +54,12 @@ its own root is the target; the nested repository must not use a workspace or mo
 1. Run `goal-lifecycle start --repo <exact-target-repository-root> --task-id <slug> --title <one-line-title>`.
    Read its successful JSON and take `taskId`, `worktreePath`, `runDirectory`, and `manifestPath` as
    authoritative. The author must not select or derive a run path.
-2. Change into the returned absolute `worktreePath`. Unconditionally invoke `batch-grill-me`, even
-   when the opening request looks complete. Save its completed, redacted candidate receipt as
-   `<runDirectory>/candidate-GRILL.json`; a zero-question completed frontier is valid.
+2. Change into the returned absolute `worktreePath`. Load the project overlay if present (see
+   "Project overlay" below). Unconditionally invoke `batch-grill-me`, even when the opening request
+   looks complete. Save its completed, redacted candidate receipt as
+   `<runDirectory>/candidate-GRILL.json`; a zero-question completed frontier is valid. If the grill
+   reveals chained or investigative ambiguity, escalate as described in "Clarity Gate" below and
+   fold the outcome into the same receipt.
 3. Run `goal-lifecycle record-grill --run <RUN.json> --receipt <candidate-GRILL.json>`, using the
    absolute manifest path returned by `start`. Do not continue unless its JSON result is successful.
 4. Resolve routing from the manifest's `repositoryRoot` only after grill recording succeeds. Persist
@@ -69,6 +72,35 @@ its own root is the target; the nested repository must not use a workspace or mo
 
 The required authoring order is `start -> unconditional batch-grill-me -> record-grill -> durable
 artifacts -> emit restart pointer`.
+
+## Project overlay
+
+This skill is generic. A repository specializes it with one file at
+`<repositoryRoot>/.harness/write-goal-prompt.md`, where `repositoryRoot` is the value recorded in
+`RUN.json`. If the file exists, read it completely before the grill and treat it as binding for
+this run. It may add domain context and standing constraints, extra intake fields, extra
+`BRIEF.md` constraints or exclusions, and extra `HARNESS.md` sections. It is additive only: it
+never removes a lifecycle operation, reorders the authoring sequence, skips the grill, or changes
+the restart pointer contract. If the file is absent, proceed with no overlay and do not look for
+repository-specific rules elsewhere. This mirrors the project-local `.harness/skill-routing.md`
+pattern used by the routing resolver.
+
+## Clarity Gate
+
+`batch-grill-me` is the mandatory receipt and is never replaced. It asks the whole frontier of
+independent decisions in numbered rounds until the frontier is empty. Two escalations exist for
+ambiguity that a frontier cannot resolve. Both run inside step 2 and their settled decisions are
+recorded in the same candidate receipt before `record-grill`.
+
+| Signal from the grill | Escalation |
+| --- | --- |
+| Frontier is one question wide round after round: each answer decides the next question | Continue with `/grilling` for that chain, one question at a time, then return to the frontier |
+| Work spans more than one session, or the unknowns need investigation before they can be asked | Run `/wayfinder` to map investigation tickets; its resolved decisions become the brief's scope |
+
+Subagents discover facts; the user decides consequential preferences. Never ask the user for
+something a subagent can look up. If Wayfinder shows the work is too large for one goal, stop and
+emit the mapped sequence of tasks instead of forcing them into one restart pointer; each ticket
+then gets its own lifecycle `start`.
 
 ## Intake and brief
 
@@ -170,7 +202,8 @@ LIFECYCLE_VALIDATION: OK.
 
 | File | Use |
 | --- | --- |
-| `references/clarity-gate.md` | Mandatory grill receipt contract |
+| `references/clarity-gate.md` | Mandatory grill receipt contract and escalation routes |
+| `<repositoryRoot>/.harness/write-goal-prompt.md` | Optional project overlay: domain context, extra intake, brief and HARNESS.md additions. Binding when present |
 | `references/parallel-execution.md` | Lifecycle-only isolated-run and completion contract |
 | `references/context-management.md` | Durable restart checkpoint contract |
 | `references/skill-routing.md` | Post-validation planner routing |
