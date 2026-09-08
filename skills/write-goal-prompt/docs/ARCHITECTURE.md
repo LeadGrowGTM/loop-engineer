@@ -90,7 +90,8 @@ That verifier cannot spawn further.
 
 ```
 start
-  -> unconditional pinned grill
+  -> load project overlay (.harness/write-goal-prompt.md, if present)
+  -> unconditional pinned grill (escalate to /grilling or /wayfinder inside it when needed)
   -> record-grill
   -> persist RUN.json, GRILL.json, BRIEF.md, HARNESS.md
   -> emit lean pointer or clear context
