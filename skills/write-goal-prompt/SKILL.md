@@ -1,5 +1,5 @@
 ---
-disable-model-invocation: true
+disable-model-invocation: false
 name: write-goal-prompt
 description: >
   Transforms a task description into a ready-to-paste /goal command for Claude Code.
