@@ -1199,9 +1199,10 @@ function Get-TreehouseLeasedPathsFromJson([string]$StatusText) {
   $leases = @{}
   $payload = ([string]$StatusText).Trim()
   if (-not $payload.StartsWith('[')) { throw 'Treehouse status --json did not emit a JSON array.' }
-  try { $entries = @($payload | ConvertFrom-Json) }
+  try { $parsed = ('{"entries":' + $payload + '}') | ConvertFrom-Json }
   catch { throw "Treehouse status --json was unparseable: $($_.Exception.Message)" }
-  foreach ($entry in @($entries | Where-Object { $null -ne $_ })) {
+  if (-not ($parsed.entries -is [System.Array])) { throw 'Treehouse status --json did not emit a JSON array.' }
+  foreach ($entry in @($parsed.entries | Where-Object { $null -ne $_ })) {
     if (-not $entry.PSObject.Properties['path'] -or -not $entry.PSObject.Properties['status']) {
       throw 'Treehouse status --json contained an entry without an exact path and status.'
     }

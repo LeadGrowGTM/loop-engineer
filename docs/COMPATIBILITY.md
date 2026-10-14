@@ -26,18 +26,23 @@ repo-local skills under `.claude/skills/`. Do not assume terminal installation
 automatically populates a separate cloud environment. See the official
 [cloud session documentation](https://code.claude.com/docs/en/claude-code-on-the-web).
 
-Managed execution also requires the versioned **internal** `tasks-axi` and
-Treehouse CLIs and the bundled pinned grill; shipping requires `no-mistakes` and
-authenticated `gh`. See [DEPENDENCIES.md](DEPENDENCIES.md). Public plugin discovery
-works without those tools, but a managed goal cannot start without them. They
-must be provisioned by the workspace owner in a cloud environment; this public
-repository does not supply their installers. Missing tools fail readiness;
-there is no fallback that bypasses lifecycle isolation or approval gates.
+Managed execution also requires the version-pinned `tasks-axi` and Treehouse CLIs
+and the bundled pinned grill; shipping requires `no-mistakes` and authenticated
+`gh`. All four are public upstream tools — `npm install -g tasks-axi@0.2.6` (Node
+20+) and the checksum-verified
+[Treehouse v3.1.0 release](https://github.com/kunchenguid/treehouse/releases/tag/v3.1.0)
+asset; see [DEPENDENCIES.md](DEPENDENCIES.md) for every install command and the
+audited allowlist. This repository ships no installers of its own, so a cloud
+environment needs them provisioned before a session (workspace `/onboard` does
+this inside an existing LeadGrow workspace). Public plugin discovery works without
+those tools, but a managed goal cannot start without them. Missing or unaudited
+versions fail readiness; there is no fallback that bypasses lifecycle isolation or
+approval gates.
 
 ## Verification limits
 
 Plugin validation and local tests do not prove a live Anthropic-hosted cloud run,
-a proxy's model availability, or access to internal CLI packages. Verify those in
+a proxy's model availability, or a given host's CLI provisioning. Verify those in
 the intended provisioned environment before claiming end-to-end compatibility.
 
 The four build roles are sibling agent calls from the coordinator; their sequence
@@ -47,7 +52,7 @@ session so approval requests can be answered.
 ## Real CLI regression verification (2026-10-15)
 
 The opt-in `scripts/live-lifecycle.test.ts` executes the public setup/lifecycle
-commands against tasks-axi 0.2.6, Treehouse 3.1.0 and PowerShell 7.4.6. It uses a
+commands against Bun 1.4.2, tasks-axi 0.2.6, Treehouse 3.1.0 and PowerShell 7.4.6. It uses a
 fresh disposable repository and home directory; no production task or lease is
 touched. Run with `LOOP_ENGINEER_LIVE_CLI_TEST=1 bun test scripts/live-lifecycle.test.ts` after placing `pwsh` on PATH.
 

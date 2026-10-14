@@ -1576,6 +1576,44 @@ describe('prepare-harness-run CLI', () => {
     });
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
+  test('typed status pools of zero, one and many trees each reach the pre-existing lease set', () => {
+    const leasedEntry = 'ConvertTo-Json -InputObject ([pscustomobject]@{ path = $env:TREEHOUSE_LEASE; status = "leased"; lease_holder = "prior-task" }) -Compress';
+    const availableEntry = 'ConvertTo-Json -InputObject ([pscustomobject]@{ path = "/pool/unrelated"; status = "available" }) -Compress';
+    for (const probe of [
+      { statusBody: ['[Console]::Out.WriteLine("[]")', 'exit 0'], preexisting: false },
+      { statusBody: [`[Console]::Out.WriteLine("[" + (${leasedEntry}) + "]")`, 'exit 0'], preexisting: true },
+      {
+        statusBody: [
+          `[Console]::Out.WriteLine("[" + (${availableEntry}) + "," + (${leasedEntry}) + "]")`,
+          'exit 0',
+        ],
+        preexisting: true,
+      },
+    ]) {
+      const { workspace, repo } = createFeatureRepo();
+      const pool = configureCanonicalPool(repo);
+      const leasePath = join(pool, 'slot-1', 'repo');
+      const treehouse = fakeTreehouse(repo, probe.statusBody, undefined, 'main', leasePath);
+
+      const result = invokePrepareCommand(
+        repo,
+        workspace,
+        ['-PrepareIsolation', '-LeaseHolder', 'canonical-task', '-RunBranch', 'wt/canonical-task', '-RequiredPoolRoot', pool],
+        treehouse.env,
+      );
+
+      const readiness = JSON.parse(result.stdout.toString());
+      if (probe.preexisting) {
+        expect(result.exitCode).not.toBe(0);
+        expect(readiness.errorCodes).toContain('invalid_lease');
+        expect(readiness.errors.join(' ')).toContain('already leased before this invocation');
+      } else {
+        expect(result.exitCode).toBe(0);
+        expect(readiness).toMatchObject({ status: 'READY', leasePath, isolationPrepared: true });
+      }
+    }
+  }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
+
   test('status output that does not match the probed contract fails closed before any lease', () => {
     for (const probe of [
       { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("1 leased /pool/slot-1 (held by prior-task)")', 'exit 0'] },

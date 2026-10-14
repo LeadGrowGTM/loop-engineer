@@ -46,7 +46,7 @@ This performs the following steps:
 6. Installs the bundled pinned `batch-grill-me` skill to `~/.claude/skills/batch-grill-me/SKILL.md`, repairing drift byte-for-byte
 7. Creates the physical `.worktrees/` pool after rejecting unsafe paths, and adds `.worktrees/`, `.claude/backlog.md`, and `.claude/done-archive.md` to `.gitignore`; an old `.tmp/treehouse/` pool is repaired only after a read-only Treehouse status proves no active lease. Existing tracked files remain tracked, so a tracked backlog that becomes dirty still blocks readiness.
 8. Patches `CLAUDE.md` with `## Harness` block (install date, source SHA, readiness command, and explicit worktree preparation guidance)
-9. Runs smoke test, then verifies `tasks-axi`, Treehouse, and the installed pinned grill. Missing, broken, or unaudited CLI versions require workspace onboarding (see the [dependency contract](../../docs/DEPENDENCIES.md)); bundled grill drift is repaired by setup.
+9. Runs smoke test, then verifies `tasks-axi`, Treehouse, and the installed pinned grill. Missing, broken, or unaudited CLI versions require installing the pinned upstream version — or workspace `/onboard` in an existing LeadGrow workspace — per the [dependency contract](../../docs/DEPENDENCIES.md); bundled grill drift is repaired by setup.
 
 ### 4. Present smoke test results
 
