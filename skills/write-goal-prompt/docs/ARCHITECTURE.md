@@ -69,20 +69,14 @@ or any file the Maker wrote about its own process. Reading Maker self-assessment
 
 ## Depth Budget
 
-Claude Code enforces a 5-level agent depth limit. Design to stay within it.
+The coordinator invokes Planner, Maker, Prover, Checker and Shipper as separate
+fresh-context sibling calls at depth 1. Their phase order does not increase nesting
+depth. A Maker helper is depth 2; avoid further nesting unless the active runtime
+explicitly supports it. Do not assume a fixed five-level allowance.
 
-| Depth | Agent                          | Notes                            |
-| ----- | ------------------------------ | -------------------------------- |
-| 0     | Goal loop agent                | Spawns Planner + Maker + Prover + Checker + Shipper |
-| 1     | harness-planner                | Write-only phase; spawns nothing |
-| 2     | harness-maker                  | Can spawn skill agents (depth 3) |
-| 3     | harness-checker / skill agents | Checker runs here                |
-| 4     | Sub-skill agents               | Final usable depth               |
-
-**Never design a harness that needs depth 5** — Agent tool is not provided there.
-
-Checker at depth 3 can spawn a read-only verifier sub-agent at depth 4 (Proof Mode).
-That verifier cannot spawn further.
+Planner and Checker cannot delegate because their tool allowlists omit Agent.
+Prover supplies independent executable evidence; Checker reads that evidence and
+final artifacts with Read/Glob/Write only. Checker never spawns a verifier.
 
 ---
 

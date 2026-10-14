@@ -104,18 +104,14 @@ Maker agents syncing harness files: use `bun -e "import{copyFileSync}from'fs';..
 
 ## Depth Budget
 
-Claude Code enforces a 5-level agent depth limit. At depth 5, `Agent` tool is not provided.
+The coordinator invokes Planner, Maker, Prover, Checker and Shipper as separate
+fresh-context sibling calls at depth 1. Their phase order does not increase nesting
+depth. A Maker helper is depth 2; avoid further nesting unless the active runtime
+explicitly supports it. Do not assume a fixed five-level allowance.
 
-| Level | Agent                          | Notes                            |
-| ----- | ------------------------------ | -------------------------------- |
-| 0     | Goal loop agent                | Spawns planner and maker         |
-| 1     | harness-planner                | Write-only phase; spawns nothing |
-| 2     | harness-maker                  | Can spawn skill agents (depth 3) |
-| 3     | Skill agents / harness-checker | Can spawn nothing below depth 4  |
-| 4     | Sub-skill agents (max)         | Final usable level               |
-
-**Design rule:** Checker runs at depth 3 max. If verification needs a sub-verifier,
-run it at depth 4. Never design a harness that needs depth 5 — it silently loses the Agent tool.
+Planner and Checker cannot delegate because their tool allowlists omit Agent.
+Prover supplies independent executable evidence; Checker reads that evidence and
+final artifacts with Read/Glob/Write only. Checker never spawns a verifier.
 
 ---
 
