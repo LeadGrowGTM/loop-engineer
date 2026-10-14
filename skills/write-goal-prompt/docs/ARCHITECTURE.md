@@ -19,8 +19,9 @@ clear`, `validate` must succeed against that persisted identity before Planner o
 `finish` verifies task, branch, lease, and manifest identity before completing the durable task and
 returning the lease. A blocked or failed run retains its lease and evidence for recovery. `audit` is
 read-only: it may report `misplaced_worktree` evidence, but it never changes an existing checkout.
-`/setup-harness` seeds the repository configuration and verifies installed assets; workspace
-`/onboard` supplies required internal CLIs. Neither is a substitute for lifecycle start.
+`/setup-harness` seeds the repository configuration and verifies installed assets; the required
+public CLIs are installed per [DEPENDENCIES.md](../../../docs/DEPENDENCIES.md). Neither is a
+substitute for lifecycle start.
 
 ---
 
