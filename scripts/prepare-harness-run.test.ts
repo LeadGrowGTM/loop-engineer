@@ -359,6 +359,9 @@ if (process.platform === 'win32' && !WINDOWS_POWERSHELL) {
   throw new Error('Documented powershell.exe executable not found');
 }
 const windowsTest = process.platform === 'win32' ? test : test.skip;
+const JSON_NORMALIZATION_RUNTIMES = [
+  ...new Set(process.platform === 'win32' ? [POWERSHELL, WINDOWS_POWERSHELL!] : [POWERSHELL]),
+];
 
 // Loaded Windows measurements: 846 ms fixture setup, 289 ms worktree setup,
 // 340-1,054 ms PowerShell startup, 2,775 ms single readiness, and 6,707 ms for
@@ -1590,26 +1593,29 @@ describe('prepare-harness-run CLI', () => {
         preexisting: true,
       },
     ]) {
-      const { workspace, repo } = createFeatureRepo();
-      const pool = configureCanonicalPool(repo);
-      const leasePath = join(pool, 'slot-1', 'repo');
-      const treehouse = fakeTreehouse(repo, probe.statusBody, undefined, 'main', leasePath);
+      for (const powershell of JSON_NORMALIZATION_RUNTIMES) {
+        const { workspace, repo } = createFeatureRepo();
+        const pool = configureCanonicalPool(repo);
+        const leasePath = join(pool, 'slot-1', 'repo');
+        const treehouse = fakeTreehouse(repo, probe.statusBody, undefined, 'main', leasePath);
 
-      const result = invokePrepareCommand(
-        repo,
-        workspace,
-        ['-PrepareIsolation', '-LeaseHolder', 'canonical-task', '-RunBranch', 'wt/canonical-task', '-RequiredPoolRoot', pool],
-        treehouse.env,
-      );
+        const result = invokePrepareCommand(
+          repo,
+          workspace,
+          ['-PrepareIsolation', '-LeaseHolder', 'canonical-task', '-RunBranch', 'wt/canonical-task', '-RequiredPoolRoot', pool],
+          treehouse.env,
+          powershell,
+        );
 
-      const readiness = JSON.parse(result.stdout.toString());
-      if (probe.preexisting) {
-        expect(result.exitCode).not.toBe(0);
-        expect(readiness.errorCodes).toContain('invalid_lease');
-        expect(readiness.errors.join(' ')).toContain('already leased before this invocation');
-      } else {
-        expect(result.exitCode).toBe(0);
-        expect(readiness).toMatchObject({ status: 'READY', leasePath, isolationPrepared: true });
+        const readiness = JSON.parse(result.stdout.toString());
+        if (probe.preexisting) {
+          expect(result.exitCode).not.toBe(0);
+          expect(readiness.errorCodes).toContain('invalid_lease');
+          expect(readiness.errors.join(' ')).toContain('already leased before this invocation');
+        } else {
+          expect(result.exitCode).toBe(0);
+          expect(readiness).toMatchObject({ status: 'READY', leasePath, isolationPrepared: true });
+        }
       }
     }
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
@@ -1619,6 +1625,18 @@ describe('prepare-harness-run CLI', () => {
       { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("1 leased /pool/slot-1 (held by prior-task)")', 'exit 0'] },
       { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("[{""status"": ""leased""}]")', 'exit 0'] },
       { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("[{""path"": ""/pool/slot-1"", ""status"": ""frozen""}]")', 'exit 0'] },
+      { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("[null]")', 'exit 0'] },
+      { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("[{""path"": """", ""status"": ""available""}]")', 'exit 0'] },
+      { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("[{""path"": 7, ""status"": ""available""}]")', 'exit 0'] },
+      { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("[{""path"": ""/pool/slot-1"", ""status"": ""leased"", ""lease_holder"": 7}]")', 'exit 0'] },
+      { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("[] , ""x"": 1")', 'exit 0'] },
+      {
+        version: 'v3.1.0',
+        statusBody: [
+          '[Console]::Out.WriteLine("[{""path"": ""/pool/slot-1"", ""status"": ""leased"", ""lease_holder"": ""prior-task""}], ""entries"": []")',
+          'exit 0',
+        ],
+      },
       { version: 'v1.8.0', statusBody: ['[Console]::Out.WriteLine("  1  leased  /pool/slot-1")', 'exit 0'] },
       { version: 'v1.8.0', statusBody: ['[Console]::Out.WriteLine("1     frozen       /pool/slot-1")', 'exit 0'] },
       { version: 'v1.8.0', statusBody: ['exit 0'] },

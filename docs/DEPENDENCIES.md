@@ -46,7 +46,7 @@ public plugin installs no runtimes or CLIs of its own. See
 them. Install the audited versions from their own upstreams — the version checks are exact, so an
 unpinned install of a newer release fails readiness rather than running:
 
-- **`tasks-axi` 0.2.6** — `npm install -g tasks-axi@0.2.6`, or `npm install --prefix ~/.local tasks-axi@0.2.6`
+- **`tasks-axi` 0.2.6** — `npm install -g tasks-axi@0.2.6`, or `npm install -g --prefix ~/.local tasks-axi@0.2.6`
   and put `~/.local/bin` on PATH where a global install is not available. Needs Node 20 or newer
   ([official README](https://github.com/kunchenguid/tasks-axi#readme)).
 - **Treehouse v3.1.0** — download the platform asset from the

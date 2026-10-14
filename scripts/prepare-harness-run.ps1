@@ -1199,17 +1199,23 @@ function Get-TreehouseLeasedPathsFromJson([string]$StatusText) {
   $leases = @{}
   $payload = ([string]$StatusText).Trim()
   if (-not $payload.StartsWith('[')) { throw 'Treehouse status --json did not emit a JSON array.' }
-  try { $parsed = ('{"entries":' + $payload + '}') | ConvertFrom-Json }
+  try { $null = ConvertFrom-Json -InputObject $payload -ErrorAction Stop }
   catch { throw "Treehouse status --json was unparseable: $($_.Exception.Message)" }
+  $parsed = ConvertFrom-Json -InputObject ('{"entries":' + $payload + '}') -ErrorAction Stop
   if (-not ($parsed.entries -is [System.Array])) { throw 'Treehouse status --json did not emit a JSON array.' }
-  foreach ($entry in @($parsed.entries | Where-Object { $null -ne $_ })) {
-    if (-not $entry.PSObject.Properties['path'] -or -not $entry.PSObject.Properties['status']) {
+  foreach ($entry in $parsed.entries) {
+    if ($null -eq $entry) { throw 'Treehouse status --json contained an entry without an exact path and status.' }
+    $path = $entry.PSObject.Properties['path']
+    $status = $entry.PSObject.Properties['status']
+    if (-not $path -or $path.Value -isnot [string] -or $path.Value -eq '' -or -not $status -or $status.Value -isnot [string]) {
       throw 'Treehouse status --json contained an entry without an exact path and status.'
     }
-    if ((Assert-TreehousePoolStatus ([string]$entry.status)) -ne 'leased') { continue }
-    $holder = ([string]$entry.lease_holder).Trim()
-    if (-not $holder) { throw 'Treehouse status --json reported a leased entry without an exact holder.' }
-    $leases[(Resolve-TreehouseLeasedPath $entry.path).ToLowerInvariant()] = $holder
+    if ((Assert-TreehousePoolStatus $status.Value) -ne 'leased') { continue }
+    $holder = $entry.PSObject.Properties['lease_holder']
+    if (-not $holder -or $holder.Value -isnot [string] -or -not $holder.Value.Trim()) {
+      throw 'Treehouse status --json reported a leased entry without an exact holder.'
+    }
+    $leases[(Resolve-TreehouseLeasedPath $path.Value).ToLowerInvariant()] = $holder.Value.Trim()
   }
   return $leases
 }
