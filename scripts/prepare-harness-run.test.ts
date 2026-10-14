@@ -7,7 +7,7 @@ import { delimiter, dirname, join, resolve } from 'path';
 const SCRIPT = join(import.meta.dir, 'prepare-harness-run.ps1');
 const LAUNCHER = join(import.meta.dir, 'launch-gnhf.ps1');
 const README = join(import.meta.dir, '..', 'README.md');
-const REPO_INSTRUCTIONS = join(import.meta.dir, '..', 'CLAUDE.md');
+const REPO_INSTRUCTIONS = join(import.meta.dir, '..', 'AGENTS.md');
 const READINESS_INTERNAL_CONTRACT = 'diagnostic seam';
 const READINESS_NOT_OPERATOR_CONTRACT = 'not an operator pre-goal command';
 const WINDOWS_POWERSHELL = process.platform === 'win32' ? Bun.which('powershell.exe') : undefined;
@@ -651,13 +651,16 @@ function fakeTreehouse(
       '',
     ].join('\r\n'),
   );
+  if (process.platform !== 'win32') {
+    writeFileSync(join(bin, 'treehouse'), '#!/bin/sh\nexec pwsh -NoProfile -File "$(dirname "$0")/treehouse.ps1" "$@"\n', { mode: 0o755 });
+  }
   return {
     calls,
     cwdLog,
     lease,
     env: {
       ...process.env,
-      PATH: `${bin};${process.env.PATH ?? ''}`,
+      PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
       TREEHOUSE_CALLS: calls,
       TREEHOUSE_CWD: cwdLog,
       TREEHOUSE_LEASE: outputLeasePath ?? lease,
@@ -687,7 +690,7 @@ function fakeGnhf(): { env: Record<string, string | undefined>; marker: string }
     marker,
     env: {
       ...process.env,
-      PATH: `${bin};${process.env.PATH ?? ''}`,
+      PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
       HOME: home,
       USERPROFILE: home,
       GNHF_MARKER: marker,

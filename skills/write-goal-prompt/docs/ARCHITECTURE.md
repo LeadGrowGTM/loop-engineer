@@ -28,11 +28,11 @@ read-only: it may report `misplaced_worktree` evidence, but it never changes an 
 
 | Agent   | File                                | Role                           | Tools                                | Model            |
 | ------- | ----------------------------------- | ------------------------------ | ------------------------------------ | ---------------- |
-| Planner | `.claude/agents/harness-planner.md` | Decompose goal → PLAN.md       | Read, Glob, Write                    | claude-sonnet-5  |
-| Maker   | `.claude/agents/harness-maker.md`   | Execute phases, commit each    | Read, Glob, Write, Edit, Bash, Agent | claude-haiku-4-5 |
-| Prover  | `.claude/agents/harness-prover.md`  | Drive running app → PROOF verdict | Read, Bash                        | claude-sonnet-5  |
-| Checker | `.claude/agents/harness-checker.md` | Score artifacts → CYCLE_LOG.md | Read, Glob, Write                    | claude-sonnet-5  |
-| Shipper | `.claude/agents/harness-shipper.md` | `/no-mistakes` once after PASS → PR | Read, Bash                      | claude-sonnet-5  |
+| Planner | `.claude/agents/harness-planner.md` | Decompose goal → PLAN.md       | Read, Glob, Write                    | sonnet  |
+| Maker   | `.claude/agents/harness-maker.md`   | Execute phases, commit each    | Read, Glob, Write, Edit, Bash, Agent | haiku |
+| Prover  | `.claude/agents/harness-prover.md`  | Drive running app → PROOF verdict | Read, Bash                        | sonnet  |
+| Checker | `.claude/agents/harness-checker.md` | Score artifacts → CYCLE_LOG.md | Read, Glob, Write                    | sonnet  |
+| Shipper | `.claude/agents/harness-shipper.md` | `/no-mistakes` once after PASS → PR | Read, Bash                      | sonnet  |
 
 Under the provider-aware resolver (`scripts/resolve-role-model.ts`), these are the native-provider
 values; claudex/codex providers resolve differently. See `docs/adr/0007-provider-aware-model-orchestration.md`.

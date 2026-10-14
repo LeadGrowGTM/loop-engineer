@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { delimiter, join } from 'path';
 import {
   AGENT_FILES,
   GUARD_RELATIVE_PATH,
@@ -170,11 +170,15 @@ function lifecycleTestEnvironment(
       '',
     ].join('\r\n'),
   );
+  if (process.platform !== 'win32') {
+    writeFileSync(join(bin, 'tasks-axi'), `#!/bin/sh\necho 'tasks-axi 0.1.1'\nexit ${options.tasksAxiExit ?? 0}\n`, { mode: 0o755 });
+    writeFileSync(join(bin, 'treehouse'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo 'treehouse 1.8.0'; else echo '${options.treehouseStatus ?? 'NO_ACTIVE_LEASES'}'; fi\nexit ${options.treehouseExit ?? 0}\n`, { mode: 0o755 });
+  }
   return {
     ...process.env,
     HOME: home,
     USERPROFILE: home,
-    PATH: `${bin};${process.env.PATH ?? ''}`,
+    PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
   };
 }
 

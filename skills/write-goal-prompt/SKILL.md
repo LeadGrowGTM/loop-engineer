@@ -20,6 +20,16 @@ Turn a task into a `/goal` restart pointer. The pointer carries no conversationa
 describes repository preparation. The lifecycle owns task registration, dependency checks, isolated
 run acquisition, validation, completion, and read-only diagnostics.
 
+## Bundled command resolution
+
+In an installed plugin, `goal-lifecycle` below means
+`bun "${CLAUDE_PLUGIN_ROOT}/scripts/goal-lifecycle.ts"`; it is not a globally
+installed binary. Keep the target repository as the working directory and pass
+the absolute bundled script path. In a source checkout, use that checkout's
+absolute path instead of `${CLAUDE_PLUGIN_ROOT}`. Resolve `references/` relative
+to this skill's directory, never the target repository. Model-routing and other
+bundled scripts likewise live under the plugin root.
+
 ## Lifecycle interface
 
 These are the only supported lifecycle operations:

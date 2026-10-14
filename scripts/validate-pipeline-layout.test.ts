@@ -20,7 +20,7 @@ function git(cwd: string, args: string[]): string {
 
 function runValidator(repoRoot: string) {
   const result = spawnSync(
-    "powershell.exe",
+    Bun.which("pwsh") ?? Bun.which("powershell.exe") ?? "powershell",
     ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-RepoRoot", repoRoot],
     { encoding: "utf8" },
   );

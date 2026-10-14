@@ -678,6 +678,7 @@ if (import.meta.main) {
     const claudeMdPath = revalidated('CLAUDE.md', 'regular-file');
     if (existsSync(claudeMdPath)) {
       const sha = (() => {
+        if (!Bun.which('git')) return 'unknown';
         const result = Bun.spawnSync(
           ['git', '--no-optional-locks', '-C', import.meta.dir, 'rev-parse', '--short', 'HEAD'],
           { stdout: 'pipe', stderr: 'pipe' },
