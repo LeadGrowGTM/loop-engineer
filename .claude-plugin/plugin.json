@@ -1,0 +1,19 @@
+{
+  "name": "loop-engineer",
+  "version": "1.4.0",
+  "description": "Approval-gated goal loops for Claude Code with planner, maker, prover, checker and shipper agents.",
+  "author": {
+    "name": "LeadGrowGTM"
+  },
+  "repository": "https://github.com/LeadGrowGTM/loop-engineer",
+  "agents": [
+    "./.claude/agents/harness-checker.md",
+    "./.claude/agents/harness-inbounds-checker.md",
+    "./.claude/agents/harness-maker.md",
+    "./.claude/agents/harness-novelty-checker.md",
+    "./.claude/agents/harness-planner.md",
+    "./.claude/agents/harness-prover.md",
+    "./.claude/agents/harness-shipper.md"
+  ],
+  "commands": "./.claude/commands"
+}
