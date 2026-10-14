@@ -9,9 +9,13 @@ import {
   statSync,
   symlinkSync,
   writeFileSync,
+  realpathSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { tmpdir as systemTmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
+
+// Windows runners report the temp dir as its 8.3 alias (RUNNER~1); fixtures need the physical path.
+const tmpdir = () => realpathSync.native(systemTmpdir());
 
 const CLI_PATH = join(import.meta.dir, 'manage-pi-openai-server-compaction.ts');
 const SETUP_HARNESS_PATH = join(import.meta.dir, 'setup-harness.ts');

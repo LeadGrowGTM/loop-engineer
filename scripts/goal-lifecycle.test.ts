@@ -12,8 +12,8 @@ const CLI_PATH = join(import.meta.dir, "goal-lifecycle.ts");
 setDefaultTimeout(180_000);
 const PINNED_GRILL_BASE64 = 'LS0tCm5hbWU6IGJhdGNoLWdyaWxsLW1lCmRlc2NyaXB0aW9uOiBBIHJlbGVudGxlc3MgaW50ZXJ2aWV3IHRoYXQgYXNrcyBldmVyeSBmcm9udGllciBxdWVzdGlvbiBhdCBvbmNlLCByb3VuZCBieSByb3VuZC4KdXNlci1pbnZvY2FibGU6IHRydWUKLS0tCgo8IS0tIFZlbmRvcmVkIGZyb20gbWF0dHBvY29jay9za2lsbHMuIFNvdXJjZSBvZiB0cnV0aCAoZGlmZiBhZ2FpbnN0IHRoaXMgYmVmb3JlIGVkaXRpbmcpOgogICAgIGh0dHBzOi8vcmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbS9tYXR0cG9jb2NrL3NraWxscy9tYWluL3NraWxscy9pbi1wcm9ncmVzcy9iYXRjaC1ncmlsbC1tZS9TS0lMTC5tZAogICAgIFRoZSBib2R5IGJlbG93IGlzIFZFUkJBVElNIHVwc3RyZWFtIC0tIGFueSBjaGFuZ2UgdG8gaXQgaXMgZHJpZnQsIG5vdCBhIGZpeC4KCiAgICAgU29sZSBkZXZpYXRpb24sIGZyb250bWF0dGVyIG9ubHk6IHVwc3RyZWFtJ3MgZnJvbnRtYXR0ZXIgY2FycmllcyBhIGh1bWFuLW9ubHkgaW52b2NhdGlvbiBsb2NrCiAgICAgKHNlZSB0aGUgVVJMIGFib3ZlKSB3aG9zZSB3aG9sZSBwdXJwb3NlIGlzIHRoYXQgYSBtb2RlbCBjYW4gbmV2ZXIgaW52b2tlIHRoaXMgc2tpbGwgb24gaXRzIG93bi4KICAgICBsb29wLWVuZ2luZWVyJ3MgY2xhcml0eSBnYXRlIG11c3Qgcm91dGUgdG8gaXQgYXV0b21hdGljYWxseSAtLSBzZWUgQnJhbmNoIEEgb2YKICAgICBza2lsbHMvd3JpdGUtZ29hbC1wcm9tcHQvcmVmZXJlbmNlcy9jbGFyaXR5LWdhdGUubWQgLS0gc28gdGhhdCBsb2NrIGlzIGRyb3BwZWQgaGVyZSBhbmQKICAgICBgdXNlci1pbnZvY2FibGU6IHRydWVgIGlzIGFkZGVkIGluIGl0cyBwbGFjZS4gVHJhZGVkIGF3YXkga25vd2luZ2x5LCBub3Qgb3Zlcmxvb2tlZC4KICAgICAoVGhlIGxvY2sncyBsaXRlcmFsIGZsYWcgbmFtZSBpcyBzcGVsbGVkIG91dCBhdCB0aGUgc291cmNlIFVSTDsgaXQgaXMgbGVmdCB1bnNwZWxsZWQgaGVyZSBzbyB0aGUKICAgICBpbnN0YWxsIGdhdGUgYGdyZXAgLWNgIG92ZXIgdGhpcyBmaWxlIHN0YXlzIGNsZWFuLikgLS0+CgpJbnRlcnZpZXcgdGhlIHVzZXIgcmVsZW50bGVzc2x5IHVudGlsIHlvdSByZWFjaCBhIHNoYXJlZCB1bmRlcnN0YW5kaW5nLiBNYXAgdGhpcyBhcyBhICoqZGVzaWduIHRyZWUqKjogZXZlcnkgZGVjaXNpb24gYnJhbmNoZXMgaW50byB0aGUgZGVjaXNpb25zIHRoYXQgaGFuZyBvZmYgaXQuCgpXb3JrIHRoZSB0cmVlIGluICoqcm91bmRzKiouIFRoZSAqKmZyb250aWVyKiogaXMgZXZlcnkgZGVjaXNpb24gd2hvc2UgcHJlcmVxdWlzaXRlcyBhcmUgYWxyZWFkeSBzZXR0bGVkIOKAlCB0aGUgcXVlc3Rpb25zIHlvdSBjYW4gYXNrICpub3cqIHdpdGhvdXQgZ3Vlc3NpbmcgYXQgYW5zd2VycyB5b3UgaGF2ZW4ndCBoZWFyZCB5ZXQuIEFzayB0aGUgd2hvbGUgZnJvbnRpZXIgaW4gb25lIHJvdW5kOiBudW1iZXIgZWFjaCBxdWVzdGlvbiBhbmQgZ2l2ZSB5b3VyIHJlY29tbWVuZGVkIGFuc3dlci4gVGhlbiB3YWl0IGZvciB0aGUgdXNlcidzIGFuc3dlcnMgYmVmb3JlIHRoZSBuZXh0IHJvdW5kLgoKRWFjaCByb3VuZCB0aGUgdXNlciBhbnN3ZXJzIHJlc2hhcGVzIHRoZSB0cmVlIOKAlCBzZXR0bGVkIGRlY2lzaW9ucyBwdXNoIHRoZSBmcm9udGllciBvdXR3YXJkIGFuZCB1bmJsb2NrIHF1ZXN0aW9ucyB0aGF0IGRlcGVuZGVkIG9uIHRoZW0uIFJlY29tcHV0ZSB0aGUgZnJvbnRpZXIgYW5kIGFzayB0aGUgbmV4dCByb3VuZC4gQSBxdWVzdGlvbiB3aG9zZSBhbnN3ZXIgZGVwZW5kcyBvbiBhbm90aGVyIHF1ZXN0aW9uIHN0aWxsIG9wZW4gaW4gdGhpcyByb3VuZCBiZWxvbmdzIHRvIGEgKmxhdGVyKiByb3VuZCwgbm90IHRoaXMgb25lLgoKRmluZGluZyAqZmFjdHMqIGlzIHlvdXIgam9iLCBuZXZlciB0aGUgdXNlcidzLiBXaGVuIGEgZnJvbnRpZXIgcXVlc3Rpb24gbmVlZHMgYSBmYWN0IGZyb20gdGhlIGVudmlyb25tZW50IChmaWxlc3lzdGVtLCB0b29scywgZXRjLiksIGRpc3BhdGNoIGEgc3ViLWFnZW50IHRvIGZpbmQgaXQg4oCUIGRvbid0IGFzayB0aGUgdXNlciBmb3IgYW55dGhpbmcgeW91IGNvdWxkIGxvb2sgdXAgeW91cnNlbGYuIERvbid0IGJsb2NrIG9uIGl0OiBhIHJ1bm5pbmcgZXhwbG9yYXRpb24gaXMgYW4gdW5zZXR0bGVkIHByZXJlcXVpc2l0ZSwgc28gb25seSB0aGUgcXVlc3Rpb25zIGRvd25zdHJlYW0gb2YgaXQgd2FpdCBmb3IgdGhlIHN1Yi1hZ2VudCB0byByZXBvcnQg4oCUIGFzayB0aGUgcmVzdCBvZiB0aGUgZnJvbnRpZXIgbm93LiBUaGUgKmRlY2lzaW9ucyogYXJlIHRoZSB1c2VyJ3Mg4oCUIHB1dCBlYWNoIHRvIHRoZW0gYW5kIHdhaXQuCgpUaGUgc2Vzc2lvbiBpcyBkb25lIHdoZW4gdGhlIGZyb250aWVyIGlzIGVtcHR5OiBldmVyeSBicmFuY2ggb2YgdGhlIGRlc2lnbiB0cmVlIHZpc2l0ZWQsIG5vdGhpbmcgbGVmdCBzaWxlbnRseSBhc3N1bWVkLiBEbyBub3QgYWN0IG9uIGl0IHVudGlsIHRoZSB1c2VyIGNvbmZpcm1zIHlvdSBoYXZlIHJlYWNoZWQgYSBzaGFyZWQgdW5kZXJzdGFuZGluZy4K';
 
-function invokeLifecycle(args: string[], env: Record<string, string | undefined> = process.env, cwd?: string) {
-  const result = Bun.spawnSync([process.execPath, CLI_PATH, ...args], {
+function invokeLifecycle(args: string[], env: Record<string, string | undefined> = process.env, cwd?: string, preload?: string) {
+  const result = Bun.spawnSync([process.execPath, ...(preload ? ['--preload', preload] : []), CLI_PATH, ...args], {
     env,
     cwd,
     stdout: "pipe",
@@ -297,14 +297,14 @@ function completedRunFixture(fixture: ReturnType<typeof createLifecycleFixture>)
 function finishFixture(
   fixture: ReturnType<typeof createLifecycleFixture>,
   manifestPath: string,
-  options: { outcome?: 'success' | 'blocked' | 'failed'; pr?: string } = {},
+  options: { outcome?: 'success' | 'blocked' | 'failed'; pr?: string; preload?: string } = {},
 ) {
   fixture.env.TREEHOUSE_STATUS_MODE = 'validate';
   const args = ['finish', '--run', manifestPath];
   if (options.outcome) args.push('--outcome', options.outcome);
   if (options.pr) args.push('--pr', options.pr);
   const cwd = existsSync(fixture.treehouse.returned) || existsSync(join(readRunManifest(manifestPath).runDirectory, 'COMPLETION.json')) ? fixture.repo : readRunManifest(manifestPath).worktreePath;
-  return invokeLifecycle(args, fixture.env, cwd);
+  return invokeLifecycle(args, fixture.env, cwd, options.preload);
 }
 
 function driftCanonicalGrillSkill(manifestPath: string, field: 'name' | 'version' | 'sourceHash', value: string): void {
@@ -314,34 +314,32 @@ function driftCanonicalGrillSkill(manifestPath: string, field: 'name' | 'version
   writeFileSync(receiptPath, JSON.stringify(receipt));
 }
 
-function omitGitWorktreeRegistration(fixture: ReturnType<typeof createLifecycleFixture>): void {
-  const realGit = Bun.which('git');
-  if (!realGit) throw new Error('test fixture requires git');
-  const bin = fixture.env.PATH!.split(delimiter)[0];
-  writeFileSync(join(bin, 'git.cmd'), '@echo off\r\nnode %~dp0\\git-fake.cjs %*\r\n');
-  writeFileSync(join(bin, 'git-fake.cjs'), Buffer.from('Y29uc3QgYz1yZXF1aXJlKCdub2RlOmNoaWxkX3Byb2Nlc3MnKTtjb25zdCBhPXByb2Nlc3MuYXJndi5zbGljZSgyKS5tYXAoeD0+eD09PSdIRUFEe2NvbW1pdH0nPydIRUFEXntjb21taXR9Jzp4KTtpZihwcm9jZXNzLmVudi5HSVRfV09SS1RSRUVfTElTVF9NT0RFPT09J29taXQnKXtpZihhLmluY2x1ZGVzKCd3b3JrdHJlZScpKXtpZihhLmluY2x1ZGVzKCdsaXN0Jykpe2lmKGEuaW5jbHVkZXMoJy0tcG9yY2VsYWluJykpe3Byb2Nlc3Muc3Rkb3V0LndyaXRlKCd3b3JrdHJlZSAnK3Byb2Nlc3MuZW52LkdJVF9SRUdJU1RSQVRJT05fUk9PVCsnXG4nKTtwcm9jZXNzLmV4aXQoMCl9fX19Y29uc3Qgcj1jLnNwYXduU3luYyhwcm9jZXNzLmVudi5SRUFMX0dJVCxhLHtzdGRpbzonaW5oZXJpdCd9KTtwcm9jZXNzLmV4aXQoci5zdGF0dXM9PT1udWxsPzE6ci5zdGF0dXMpOwo=', 'base64'));
-  if (process.platform !== 'win32') writeFileSync(join(bin, 'git'), '#!/bin/sh\nexec node "$(dirname "$0")/git-fake.cjs" "$@"\n', { mode: 0o755 });
-  fixture.env.REAL_GIT = realGit;
-  fixture.env.GIT_REGISTRATION_ROOT = fixture.repo;
-  fixture.env.GIT_WORKTREE_LIST_MODE = 'omit';
+// Real Git state, not a PATH shim: Windows runs .cmd shims through cmd.exe, which re-parses argv.
+function gitWorktreeRegistrationFile(worktreePath: string): string {
+  return join(runGit(['rev-parse', '--absolute-git-dir'], worktreePath), 'gitdir');
 }
 
-function forceLifecycleGitFailure(fixture: ReturnType<typeof createLifecycleFixture>, operation: 'add' | 'commit'): void {
-  const realGit = Bun.which('git');
-  if (!realGit) throw new Error('test fixture requires git');
-  const bin = fixture.env.PATH!.split(delimiter)[0];
-  writeFileSync(join(bin, 'git.cmd'), '@echo off\r\nnode %~dp0\\git-finish-fake.cjs %*\r\n');
-  writeFileSync(join(bin, 'git-finish-fake.cjs'), [
-    'const c=require(String.fromCharCode(110,111,100,101,58,99,104,105,108,100,95,112,114,111,99,101,115,115)); const a=process.argv.slice(2).map((v)=>v===String.fromCharCode(72,69,65,68,123,99,111,109,109,105,116,125)?String.fromCharCode(72,69,65,68,94,123,99,111,109,109,105,116,125):v);',
-    'const add=a.includes(String.fromCharCode(97,100,100))&&a.includes(String.fromCharCode(46,104,97,114,110,101,115,115,47,103,111,97,108,115,47,99,97,110,111,110,105,99,97,108,45,103,111,97,108,47,67,79,77,80,76,69,84,73,79,78,46,106,115,111,110));',
-    'if(process.env.GIT_FINISH_FAILURE===String.fromCharCode(97,100,100)&&add){ process.exit(1); }',
-    'const commit=a.includes(String.fromCharCode(99,111,109,109,105,116))&&a.includes(String.fromCharCode(103,111,97,108,45,108,105,102,101,99,121,99,108,101,32,99,111,109,112,108,101,116,105,111,110,32,105,110,116,101,110,116,32,99,97,110,111,110,105,99,97,108,45,103,111,97,108));',
-    'const r=c.spawnSync(process.env.REAL_GIT,a,{stdio:String.fromCharCode(105,110,104,101,114,105,116)});',
-    'if(process.env.GIT_FINISH_FAILURE===String.fromCharCode(99,111,109,109,105,116)&&commit&&r.status===0){ process.exit(1); } process.exit(r.status??1);',
+function removeGitWorktreeRegistration(worktreePath: string): void {
+  writeFileSync(gitWorktreeRegistrationFile(worktreePath), join(dirname(worktreePath), 'removed-registration', '.git') + '\n');
+}
+
+// Injects the Git failure inside the lifecycle process (bun --preload) so no cmd.exe shim sits between it and Git.
+function forceLifecycleGitFailure(fixture: ReturnType<typeof createLifecycleFixture>, operation: 'add' | 'commit'): string {
+  const preload = join(fixture.root, 'git-failure-preload.ts');
+  writeFileSync(preload, [
+    `const operation = ${JSON.stringify(operation)};`,
+    "const intent = '.harness/goals/canonical-goal/COMPLETION.json';",
+    "const message = 'goal-lifecycle completion intent canonical-goal';",
+    'const spawn = Bun.spawn;',
+    'Bun.spawn = ((command: string[], options?: object) => {',
+    "  const git = command[0] === 'git';",
+    "  if (git && operation === 'add' && command.includes('add') && command.includes(intent)) return spawn(['git', '--injected-add-failure'], options as never);",
+    '  const child = spawn(command, options as never);',
+    "  if (!git || operation !== 'commit' || !command.includes('commit') || !command.includes(message)) return child;",
+    '  return { stdout: child.stdout, stderr: child.stderr, kill: () => child.kill(), exited: child.exited.then((code) => (code === 0 ? 1 : code)) };',
+    '}) as unknown as typeof Bun.spawn;',
   ].join('\n'));
-  if (process.platform !== 'win32') writeFileSync(join(bin, 'git'), '#!/bin/sh\nexec node "$(dirname "$0")/git-finish-fake.cjs" "$@"\n', { mode: 0o755 });
-  fixture.env.REAL_GIT = realGit;
-  fixture.env.GIT_FINISH_FAILURE = operation;
+  return preload;
 }
 
 function expectSafeRemediation(result: { remediation?: unknown }): void {
@@ -653,8 +651,8 @@ test('finish commit-intent failure removes only its created artifact and restore
 test('finish add failure removes only its created completion artifact and restores the index', () => {
   const fixture = createLifecycleFixture();
   const completed = completedRunFixture(fixture);
-  forceLifecycleGitFailure(fixture, 'add');
-  const result = finishFixture(fixture, completed.manifestPath);
+  const preload = forceLifecycleGitFailure(fixture, 'add');
+  const result = finishFixture(fixture, completed.manifestPath, { preload });
   expect(result.json).toMatchObject({ code: 'FINISH_PRECONDITION_FAILED' });
   expect(existsSync(join(completed.run.runDirectory, 'COMPLETION.json'))).toBe(false);
   expect(runGit(['status', '--porcelain=v1', '--untracked-files=all'], completed.run.worktreePath)).toBe('');
@@ -664,8 +662,8 @@ test('finish add failure removes only its created completion artifact and restor
 test('finish accepts an ambiguous completion commit result when HEAD proves the exact intent', () => {
   const fixture = createLifecycleFixture();
   const completed = completedRunFixture(fixture);
-  forceLifecycleGitFailure(fixture, 'commit');
-  const result = finishFixture(fixture, completed.manifestPath);
+  const preload = forceLifecycleGitFailure(fixture, 'commit');
+  const result = finishFixture(fixture, completed.manifestPath, { preload });
   expect(result.exitCode).toBe(0);
   expect(existsSync(join(completed.run.runDirectory, 'COMPLETION.json'))).toBe(true);
   expect(readFileSync(fixture.treehouse.calls, 'utf8')).toContain('return ' + completed.run.worktreePath);
@@ -1335,7 +1333,7 @@ test('validate fails closed for every persisted restart invariant', () => {
     },
     {
       name: 'removed Git worktree registration',
-      mutate: (fixture) => omitGitWorktreeRegistration(fixture),
+      mutate: (_fixture, manifestPath) => removeGitWorktreeRegistration(readRunManifest(manifestPath).worktreePath),
       cwd: (_fixture, manifestPath) => readRunManifest(manifestPath).worktreePath,
       code: 'LEASE_IDENTITY_MISMATCH',
     },
@@ -1393,6 +1391,8 @@ test('validate fails closed for every persisted restart invariant', () => {
   const canonicalManifest = readFileSync(recorded.manifestPath, 'utf8');
   const canonicalReceipt = readFileSync(readRunManifest(recorded.manifestPath).grillReceiptPath, 'utf8');
   const canonicalTaskState = readFileSync(fixture.tasks.stateFile, 'utf8');
+  const registrationFile = gitWorktreeRegistrationFile(readRunManifest(recorded.manifestPath).worktreePath);
+  const canonicalRegistration = readFileSync(registrationFile, 'utf8');
 
   for (const scenario of cases) {
     rmSync(readRunManifest(recorded.manifestPath).grillReceiptPath, { force: true });
@@ -1400,7 +1400,7 @@ test('validate fails closed for every persisted restart invariant', () => {
     writeFileSync(readRunManifest(recorded.manifestPath).grillReceiptPath, canonicalReceipt);
     writeFileSync(fixture.tasks.stateFile, canonicalTaskState);
     fixture.env.TREEHOUSE_HOLDER = fixture.taskId;
-    fixture.env.GIT_WORKTREE_LIST_MODE = undefined;
+    writeFileSync(registrationFile, canonicalRegistration);
     scenario.mutate(fixture, recorded.manifestPath);
 
     const result = validateFixture(fixture, recorded.manifestPath, scenario.cwd(fixture, recorded.manifestPath));

@@ -1,8 +1,18 @@
 import { describe, expect, test } from 'bun:test';
 import { randomUUID } from 'crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
+import { realpathSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'fs';
+import { tmpdir as systemTmpdir } from 'os';
 import { delimiter, dirname, join, resolve } from 'path';
+
+// Windows runners report the temp dir as its 8.3 alias (RUNNER~1); fixtures need the physical path.
+const tmpdir = () => realpathSync.native(systemTmpdir());
+
+// Windows env names are case-insensitive: spreading process.env keeps its `Path` beside a new `PATH`,
+// so a PowerShell child sees the original search path or rejects the duplicate. Keep exactly one.
+function envWithPath(path: string, extra: Record<string, string | undefined> = {}): Record<string, string | undefined> {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toUpperCase() !== 'PATH'));
+  return { ...env, PATH: path, ...extra };
+}
 
 const SCRIPT = join(import.meta.dir, 'prepare-harness-run.ps1');
 const LAUNCHER = join(import.meta.dir, 'launch-gnhf.ps1');
@@ -369,15 +379,19 @@ const JSON_NORMALIZATION_RUNTIMES = [
 // 5-second ceiling on four named readiness seams at 5,047-5,188 ms. Attempt 09
 // measured the full clean READY path at 11,812 ms. Attempt 11 measured the Job
 // Object dirty-tree seam at 10,016 ms. Only those measured seams get explicit
-// outer bounds; no global timeout is widened.
-const CLEAN_READY_TEST_TIMEOUT_MS = 20_000;
+// outer bounds; no global timeout is widened. Hosted windows-latest run
+// 38637647386 exhausted the 20 s clean, 20 s default-branch-pair, 10 s
+// Treehouse-status and Bun-default 5 s unborn bounds (one pwsh prepare took
+// 12-15 s there), so those seams carry the hosted bound below.
+const CLEAN_READY_TEST_TIMEOUT_MS = 40_000;
+const SINGLE_READINESS_TEST_TIMEOUT_MS = 30_000;
 const DIRTY_TREE_TEST_TIMEOUT_MS = 20_000;
 const THREE_ROOT_VALIDATION_TEST_TIMEOUT_MS = 15_000;
 const MODE_VALIDATION_TEST_TIMEOUT_MS = 10_000;
-const TREEHOUSE_STATUS_TEST_TIMEOUT_MS = 10_000;
+const TREEHOUSE_STATUS_TEST_TIMEOUT_MS = 30_000;
 // Unknown-default plus explicit-default readiness measured 15,344 ms, so this
 // two-call seam gets its own bound without weakening other readiness tests.
-const DEFAULT_BRANCH_PAIR_TEST_TIMEOUT_MS = 20_000;
+const DEFAULT_BRANCH_PAIR_TEST_TIMEOUT_MS = 45_000;
 // Readiness-suite replay measured isolation preparation at 22,094 ms after the
 // process-cleanup tests, including one in-wrapper interop compile per command.
 const ISOLATION_PREPARATION_TEST_TIMEOUT_MS = 30_000;
@@ -663,13 +677,11 @@ function fakeTreehouse(
     calls,
     cwdLog,
     lease,
-    env: {
-      ...process.env,
-      PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+    env: envWithPath(`${bin}${delimiter}${process.env.PATH ?? ''}`, {
       TREEHOUSE_CALLS: calls,
       TREEHOUSE_CWD: cwdLog,
       TREEHOUSE_LEASE: outputLeasePath ?? lease,
-    },
+    }),
   };
 }
 
@@ -693,13 +705,11 @@ function fakeGnhf(): { env: Record<string, string | undefined>; marker: string }
   writeFileSync(join(bin, 'gnhf.cmd'), '@echo off\r\necho called>>"%GNHF_MARKER%"\r\n');
   return {
     marker,
-    env: {
-      ...process.env,
-      PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+    env: envWithPath(`${bin}${delimiter}${process.env.PATH ?? ''}`, {
       HOME: home,
       USERPROFILE: home,
       GNHF_MARKER: marker,
-    },
+    }),
   };
 }
 
@@ -711,7 +721,7 @@ function withoutTreehouseEnv(): Record<string, string | undefined> {
     .split(delimiter)
     .filter((entry) => resolve(entry).toLowerCase() !== treehouseDir)
     .join(delimiter);
-  return { ...process.env, PATH: path };
+  return envWithPath(path);
 }
 
 describe('prepare-harness-run CLI', () => {
@@ -827,8 +837,7 @@ describe('prepare-harness-run CLI', () => {
       'utf16le',
     ).toString('base64');
     const env = {
-      ...process.env,
-      PATH: `${git.bin}${delimiter}${process.env.PATH ?? ''}`,
+      ...envWithPath(`${git.bin}${delimiter}${process.env.PATH ?? ''}`),
       HARNESS_REAL_GIT: git.realGit,
       HARNESS_EVENT_POWERSHELL: WINDOWS_POWERSHELL!,
       HARNESS_EVENT_COMMAND: eventCommand,
@@ -958,7 +967,7 @@ describe('prepare-harness-run CLI', () => {
 
     expect(result.exitCode).not.toBe(0);
     expect(JSON.parse(result.stdout.toString()).errors.join(' ')).toContain('committed HEAD');
-  });
+  }, SINGLE_READINESS_TEST_TIMEOUT_MS);
 
   test('unrelated WorkspaceRoot cannot bypass root and layout gates', () => {
     const repo = createRootRepo();

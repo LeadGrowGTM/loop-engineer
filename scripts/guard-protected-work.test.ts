@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { realpathSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir as systemTmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+
+// Windows runners report the temp dir as its 8.3 alias (RUNNER~1); fixtures need the physical path.
+const tmpdir = () => realpathSync.native(systemTmpdir());
 
 const GUARD_PATH = join(import.meta.dir, 'guard-protected-work.ts');
 

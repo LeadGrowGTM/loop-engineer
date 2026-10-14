@@ -7,8 +7,9 @@ import {
   rmSync,
   symlinkSync,
   writeFileSync,
+  realpathSync,
 } from 'fs';
-import { tmpdir } from 'os';
+import { tmpdir as systemTmpdir } from 'os';
 import { delimiter, join } from 'path';
 import {
   AGENT_FILES,
@@ -19,6 +20,9 @@ import {
   seedRoutingTable,
   smokeTest,
 } from './setup-harness';
+
+// Windows runners report the temp dir as its 8.3 alias (RUNNER~1); fixtures need the physical path.
+const tmpdir = () => realpathSync.native(systemTmpdir());
 
 // ── test fixtures ──────────────────────────────────────────────────────────
 
