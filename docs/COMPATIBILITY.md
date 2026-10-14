@@ -49,13 +49,11 @@ session so approval requests can be answered.
 The opt-in `scripts/live-lifecycle.test.ts` executes the public setup/lifecycle
 commands against tasks-axi 0.2.6, Treehouse 3.1.0 and PowerShell 7.4.6. It uses a
 fresh disposable repository and home directory; no production task or lease is
-touched. Run with `LOOP_ENGINEER_LIVE_CLI_TEST=1 bun test` after placing `pwsh` on PATH.
+touched. Run with `LOOP_ENGINEER_LIVE_CLI_TEST=1 bun test scripts/live-lifecycle.test.ts` after placing `pwsh` on PATH.
 
-Setup and start share an explicit audited CLI-version allowlist. Unknown versions
-fail readiness instead of being assumed compatible. Setup creates and checks the
-physical pool and ignores generated project-local backlog/archive state. It does
-not untrack existing files: a previously tracked backlog that becomes dirty still
-blocks readiness. Restart validation reads the authoritative task from the source
+See [DEPENDENCIES.md](DEPENDENCIES.md) for the CLI-version contract and the
+[setup guide](../skills/setup-harness/SKILL.md) for pool creation and generated
+backlog handling. Restart validation reads the authoritative task from the source
 repository rather than an independently copied worktree backlog. Treehouse status
 parsing accepts the newer optional branch annotation while preserving exact lease
 path and holder checks.

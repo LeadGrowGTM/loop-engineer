@@ -36,16 +36,17 @@ Run the bundled install script. For a source checkout, substitute its absolute p
 bun "${CLAUDE_PLUGIN_ROOT}/scripts/setup-harness.ts" install <repo-root>
 ```
 
-This does atomically:
+This performs the following steps:
+
 1. Copies `harness-planner.md`, `harness-maker.md`, `harness-prover.md`, `harness-checker.md`, `harness-shipper.md` → `~/.claude/agents/`
 2. Copies `guard-protected-work.ts` → `<repo-root>/scripts/guard-protected-work.ts`
 3. Scans `<repo-root>` for SKILL.md files
 4. Seeds `.harness/skill-routing.md` from `routing-template.md` + repo-specific skills, and `.harness/goals/` (working dir for goal runs)
 5. Seeds a per-project `.tasks.toml` (tasks-axi backlog → `.claude/backlog.md`) and `treehouse.toml` (worktree pool at `.worktrees/`), if not already present
 6. Installs the bundled pinned `batch-grill-me` skill to `~/.claude/skills/batch-grill-me/SKILL.md`, repairing drift byte-for-byte
-7. Adds `.worktrees/` to `.gitignore`; an old `.tmp/treehouse/` pool is repaired only after a read-only Treehouse status proves no active lease
+7. Creates the physical `.worktrees/` pool after rejecting unsafe paths, and adds `.worktrees/`, `.claude/backlog.md`, and `.claude/done-archive.md` to `.gitignore`; an old `.tmp/treehouse/` pool is repaired only after a read-only Treehouse status proves no active lease. Existing tracked files remain tracked, so a tracked backlog that becomes dirty still blocks readiness.
 8. Patches `CLAUDE.md` with `## Harness` block (install date, source SHA, readiness command, and explicit worktree preparation guidance)
-9. Runs smoke test, then verifies `tasks-axi`, Treehouse, and the installed pinned grill. Missing or broken CLIs require workspace onboarding; bundled grill drift is repaired by setup.
+9. Runs smoke test, then verifies `tasks-axi`, Treehouse, and the installed pinned grill. Missing, broken, or unaudited CLI versions require workspace onboarding (see the [dependency contract](../../docs/DEPENDENCIES.md)); bundled grill drift is repaired by setup.
 
 ### 4. Present smoke test results
 

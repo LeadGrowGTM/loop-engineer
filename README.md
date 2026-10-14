@@ -29,7 +29,7 @@ agent-harness/
 │   ├── harness-planner.md   — decomposes goal → PLAN.md (sonnet, Read/Glob/Write only)
 │   ├── harness-maker.md     — executes phases, commits (haiku, full tools)
 │   ├── harness-prover.md    — runs live feature (sonnet, Read/Bash only) for running-app goals
-│   ├── harness-checker.md   — scores artifacts fresh (sonnet, Read/Glob only)
+│   ├── harness-checker.md   — scores artifacts fresh (sonnet, Read/Glob/Write only)
 │   └── harness-shipper.md   ← runs /no-mistakes once after PASS + separate shipping approval → PR (sonnet, Read/Bash only)
 └── skills/write-goal-prompt/ ← authoring skill (lives at .claude/skills/ for discovery)
     ├── SKILL.md
@@ -58,16 +58,16 @@ Fix: **harness-checker** has `tools: Read, Glob, Write` only. It cannot run Bash
 
 ```
 Goal agent (depth 0)
-  └── harness-planner (depth 1)  → PLAN.md
-  └── harness-maker   (depth 2)  → artifacts + PROGRESS.md (with proof)
-  └── harness-prover  (depth 3)  → PROOF verdict (running-app goals only)
-  └── harness-checker (depth 4)  → CYCLE_LOG.md (scores + verdict)
-  └── harness-shipper (depth 1)  → /no-mistakes once, after PASS + separate shipping approval → PR URL
+  └── harness-planner (phase 1)  → PLAN.md
+  └── harness-maker   (phase 2)  → artifacts + PROGRESS.md (with proof)
+  └── harness-prover  (phase 3)  → PROOF verdict (running-app goals only)
+  └── harness-checker (phase 4)  → CYCLE_LOG.md (scores + verdict)
+  └── harness-shipper (phase 5)  → /no-mistakes once, after PASS + separate shipping approval → PR URL
        ↑ repeat until PASS or plateau (max 3 cycles)
   PASS + shipping approval → /no-mistakes → review/test/lint/push/PR/CI → PR ready for human merge
 ```
 
-Depth budget: goal=0, planner=1, maker=2, prover=3, checker=4, sub-skills max=5. Never need depth 6.
+See [compatibility](docs/COMPATIBILITY.md) for agent invocation constraints.
 
 **Prover role:** For goals that produce a running application (browser UI, API, CLI), Prover drives the live feature and returns a binary works/broken verdict before Checker scores. For static artifact goals (docs, code, analysis), skip Prover and go directly to Checker.
 
@@ -89,7 +89,7 @@ After every start, run the required grill even when the request appears fully sp
 
 `finish` is safe completion: it confirms the task, branch, lease, and persisted run identity before marking the durable task complete and returning the lease. A blocked or failed run retains its lease and durable evidence for recovery; it is never silently returned. `audit` is read-only. It reports lifecycle state and layout evidence, including `misplaced_worktree` checkouts, but never repairs, removes, returns, or otherwise changes an existing misplaced worktree. Audit any reported owner first and perform any later cleanup deliberately outside the lifecycle command.
 
-Before a managed `start`, setup/onboarding must have established its dependencies and repository configuration. `/setup-harness` seeds the project-local `.tasks.toml`, `treehouse.toml`, `.worktrees/` ignore rule, and harness files; workspace `/onboard` provisions the internal CLIs. Setup also installs and verifies the pinned grill. It does not take a task lease or start a goal.
+Before a managed `start`, setup/onboarding must have established its dependencies and repository configuration. `/setup-harness` prepares the project-local configuration, physical pool, ignore rules, and harness files (see the [setup guide](skills/setup-harness/SKILL.md)); workspace `/onboard` provisions the internal CLIs. Setup also installs and verifies the pinned grill. It does not take a task lease or start a goal.
 
 `scripts/prepare-harness-run.ps1` is an internal bounded readiness implementation and diagnostic seam for lifecycle `start`, not an operator pre-goal command or lifecycle bypass. Lifecycle `start` invokes it to fail safely for an invalid repository or pipeline layout, missing committed `HEAD`, detached or default branch, hidden index state, dirty working tree, or unsafe pool; only the lifecycle result authorizes continuation.
 
