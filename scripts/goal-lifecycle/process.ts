@@ -81,7 +81,12 @@ export async function runProcess(
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("timeoutMs must be positive");
   if (!Number.isInteger(outputLimitBytes) || outputLimitBytes < 0) throw new Error("outputLimitBytes must be a non-negative integer");
 
-  const child = Bun.spawn([command, ...args], {
+  // Windows PowerShell is named powershell; PowerShell 7 uses pwsh on Unix.
+  // Keep the legacy fallback for compatible environments and test shims.
+  const executable = command === 'powershell'
+    ? resolvePowerShell(process.platform, (name) => Bun.which(name, { PATH: options.env?.PATH ?? process.env.PATH }))
+    : command;
+  const child = Bun.spawn([executable, ...args], {
     cwd: options.cwd,
     env: options.env,
     stdout: "pipe",
@@ -116,4 +121,13 @@ export async function runProcess(
   } finally {
     clearTimeout(timer);
   }
+}
+
+export function resolvePowerShell(platform: string, which: (name: string) => string | null): string {
+  const candidates = platform === 'win32' ? ['powershell', 'pwsh'] : ['pwsh', 'powershell'];
+  for (const name of candidates) {
+    const found = which(name);
+    if (found) return found;
+  }
+  throw new Error('PowerShell is required for managed lifecycle readiness. Provision PowerShell 7 (pwsh) in the cloud environment.');
 }

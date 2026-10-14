@@ -1,7 +1,7 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { readRunManifest, writeRunManifest } from "./goal-lifecycle/manifest";
 import { runProcess } from "./goal-lifecycle/process";
 import { lifecycleFailure } from './goal-lifecycle/contracts';
@@ -102,6 +102,9 @@ function createTasksAxiFake(
       '',
     ].join('\n'),
   );
+  if (process.platform !== 'win32') {
+    writeFileSync(join(bin, 'tasks-axi'), '#!/bin/sh\nexec node "$(dirname "$0")/tasks-axi-fake.cjs" "$@"\n', { mode: 0o755 });
+  }
   return { calls, details, stateFile };
 }
 
@@ -162,6 +165,9 @@ function createTreehouseFake(
       '',
     ].join('\r\n'),
   );
+  if (process.platform !== 'win32') {
+    writeFileSync(join(bin, 'treehouse'), '#!/bin/sh\nexec pwsh -NoProfile -File "$(dirname "$0")/treehouse.ps1" "$@"\n', { mode: 0o755 });
+  }
   return { calls, lease: outputLease, returned };
 }
 
@@ -186,7 +192,7 @@ function createLifecycleFixture(options: LifecycleFixtureOptions = {}) {
   const treehouse = createTreehouseFake(bin, root, repo, options.treehouseMode ?? 'valid');
   const env: Record<string, string | undefined> = {
     ...process.env,
-    PATH: `${bin};${process.env.PATH ?? ''}`,
+    PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
     HOME: userHome,
     USERPROFILE: userHome,
     PSModuleAnalysisCachePath: join(root, 'powershell-module-cache'),
@@ -300,9 +306,10 @@ function driftCanonicalGrillSkill(manifestPath: string, field: 'name' | 'version
 function omitGitWorktreeRegistration(fixture: ReturnType<typeof createLifecycleFixture>): void {
   const realGit = Bun.which('git');
   if (!realGit) throw new Error('test fixture requires git');
-  const bin = fixture.env.PATH!.split(';')[0];
+  const bin = fixture.env.PATH!.split(delimiter)[0];
   writeFileSync(join(bin, 'git.cmd'), '@echo off\r\nnode %~dp0\\git-fake.cjs %*\r\n');
   writeFileSync(join(bin, 'git-fake.cjs'), Buffer.from('Y29uc3QgYz1yZXF1aXJlKCdub2RlOmNoaWxkX3Byb2Nlc3MnKTtjb25zdCBhPXByb2Nlc3MuYXJndi5zbGljZSgyKS5tYXAoeD0+eD09PSdIRUFEe2NvbW1pdH0nPydIRUFEXntjb21taXR9Jzp4KTtpZihwcm9jZXNzLmVudi5HSVRfV09SS1RSRUVfTElTVF9NT0RFPT09J29taXQnKXtpZihhLmluY2x1ZGVzKCd3b3JrdHJlZScpKXtpZihhLmluY2x1ZGVzKCdsaXN0Jykpe2lmKGEuaW5jbHVkZXMoJy0tcG9yY2VsYWluJykpe3Byb2Nlc3Muc3Rkb3V0LndyaXRlKCd3b3JrdHJlZSAnK3Byb2Nlc3MuZW52LkdJVF9SRUdJU1RSQVRJT05fUk9PVCsnXG4nKTtwcm9jZXNzLmV4aXQoMCl9fX19Y29uc3Qgcj1jLnNwYXduU3luYyhwcm9jZXNzLmVudi5SRUFMX0dJVCxhLHtzdGRpbzonaW5oZXJpdCd9KTtwcm9jZXNzLmV4aXQoci5zdGF0dXM9PT1udWxsPzE6ci5zdGF0dXMpOwo=', 'base64'));
+  if (process.platform !== 'win32') writeFileSync(join(bin, 'git'), '#!/bin/sh\nexec node "$(dirname "$0")/git-fake.cjs" "$@"\n', { mode: 0o755 });
   fixture.env.REAL_GIT = realGit;
   fixture.env.GIT_REGISTRATION_ROOT = fixture.repo;
   fixture.env.GIT_WORKTREE_LIST_MODE = 'omit';
@@ -311,7 +318,7 @@ function omitGitWorktreeRegistration(fixture: ReturnType<typeof createLifecycleF
 function forceLifecycleGitFailure(fixture: ReturnType<typeof createLifecycleFixture>, operation: 'add' | 'commit'): void {
   const realGit = Bun.which('git');
   if (!realGit) throw new Error('test fixture requires git');
-  const bin = fixture.env.PATH!.split(';')[0];
+  const bin = fixture.env.PATH!.split(delimiter)[0];
   writeFileSync(join(bin, 'git.cmd'), '@echo off\r\nnode %~dp0\\git-finish-fake.cjs %*\r\n');
   writeFileSync(join(bin, 'git-finish-fake.cjs'), [
     'const c=require(String.fromCharCode(110,111,100,101,58,99,104,105,108,100,95,112,114,111,99,101,115,115)); const a=process.argv.slice(2).map((v)=>v===String.fromCharCode(72,69,65,68,123,99,111,109,109,105,116,125)?String.fromCharCode(72,69,65,68,94,123,99,111,109,109,105,116,125):v);',
@@ -321,6 +328,7 @@ function forceLifecycleGitFailure(fixture: ReturnType<typeof createLifecycleFixt
     'const r=c.spawnSync(process.env.REAL_GIT,a,{stdio:String.fromCharCode(105,110,104,101,114,105,116)});',
     'if(process.env.GIT_FINISH_FAILURE===String.fromCharCode(99,111,109,109,105,116)&&commit&&r.status===0){ process.exit(1); } process.exit(r.status??1);',
   ].join('\n'));
+  if (process.platform !== 'win32') writeFileSync(join(bin, 'git'), '#!/bin/sh\nexec node "$(dirname "$0")/git-finish-fake.cjs" "$@"\n', { mode: 0o755 });
   fixture.env.REAL_GIT = realGit;
   fixture.env.GIT_FINISH_FAILURE = operation;
 }

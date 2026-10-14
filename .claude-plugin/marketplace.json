@@ -1,0 +1,17 @@
+{
+  "name": "loop-engineer",
+  "owner": {
+    "name": "LeadGrowGTM"
+  },
+  "plugins": [
+    {
+      "name": "loop-engineer",
+      "source": "./",
+      "version": "1.4.0",
+      "description": "Approval-gated goal loops for Claude Code with planner, maker, prover, checker and shipper agents."
+    }
+  ],
+  "metadata": {
+    "description": "Approval-gated Loop Engineer skills and agents for Claude Code."
+  }
+}

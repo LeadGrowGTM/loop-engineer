@@ -32,24 +32,17 @@ The model that wrote the code grades its own homework generously. Five-agent loo
 
 ## Supported execution
 
-Runs stay in the active Claude Code session so approval gates remain visible. Before work starts, run `scripts/prepare-harness-run.ps1 -CheckOnly`. The `-CheckOnly` mode does not start task execution and does not mutate Git state. It fails fast on an unsafe repository, default or detached branch, dirty tree, invalid pipeline layout, or unprepared required isolation.
-
-**Treehouse isolation is the default.** Every run requires an isolated worktree unless the caller opts out with `-NoIsolation` for trivial, read-only, or throwaway work. Because isolation is default-on, a plain `-CheckOnly` reports `isolationRequired: true` and is not READY until you rerun with `-PrepareIsolation`. The `-PrepareIsolation` mode acquires a Treehouse lease and creates a unique derived `runBranch` at the checked source `HEAD` before returning READY. Run the in-session harness from the returned worktree path, commit only on `runBranch`, and verify that branch before returning the lease. `-NoIsolation` runs on the current clean feature branch with no worktree; it cannot be combined with `-PrepareIsolation`/`-Parallel`, and canonical monorepo pipelines reject it (they always require isolation). With isolation default-on, missing Treehouse fails readiness for any run that did not opt out.
+Use the managed `goal-lifecycle` operations documented in README.md. The readiness
+script is an internal diagnostic seam for lifecycle start, not an operator
+pre-goal command or lifecycle bypass. Managed runs require the project-local
+backlog, verified Treehouse isolation and pinned grill; no direct-Git or manual
+execution fallback is supported. Linux/cloud environments need `pwsh` on PATH.
+See docs/COMPATIBILITY.md for public installation and environment prerequisites.
 
 ## Key commands
 
-```powershell
-powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
-  -RepoPath C:\path\to\repo -CheckOnly
-
-# Opt out of default isolation (trivial / read-only run on the current feature branch)
-powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
-  -RepoPath C:\path\to\repo -CheckOnly -NoIsolation
-
-# Prepare the default treehouse isolation (leases a worktree + derived runBranch)
-powershell -NoProfile -File scripts/prepare-harness-run.ps1 `
-  -RepoPath C:\path\to\repo -PrepareIsolation -Parallel `
-  -LeaseHolder harness-my-task
+```bash
+bun /absolute/path/to/loop-engineer/scripts/goal-lifecycle.ts audit --repo /absolute/path/to/repo
 ```
 
 ```bash

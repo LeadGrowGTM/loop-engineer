@@ -12,6 +12,13 @@ does NOT re-author one. Authoring lives in the shared grill + the lazy
 
 Use the exact vocabulary of root `CONTEXT.md`. Trace every branch below to an ADR.
 
+## Bundled paths
+
+Resolve `skills/`, `docs/`, `CONTEXT.md`, and `.claude/workflows/` from
+`${CLAUDE_PLUGIN_ROOT}` (or the absolute source checkout path). Keep specs,
+`.harness/`, ledgers, and snapshots in the target repository. For example:
+`bun "${CLAUDE_PLUGIN_ROOT}/.claude/workflows/benchmark-sweep.js" <absolute-spec.json>`.
+
 ## Three invocation modes
 
 Dispatch on `$ARGUMENTS`, first-match-wins:

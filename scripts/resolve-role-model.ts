@@ -18,11 +18,11 @@ export interface ResolvedModel {
 // Policy table from PLAN.md (5 roles × 3 providers = 15 combinations)
 const POLICY: Record<Provider, Record<Role, ResolvedModel>> = {
   native: {
-    planner: { model: "claude-sonnet-5", provider: "native", tier: "standard" },
-    maker: { model: "claude-haiku-4-5", provider: "native", tier: "fast" },
-    prover: { model: "claude-sonnet-5", provider: "native", tier: "standard" },
-    checker: { model: "claude-sonnet-5", provider: "native", tier: "standard" },
-    shipper: { model: "claude-sonnet-5", provider: "native", tier: "standard" },
+    planner: { model: "sonnet", provider: "native", tier: "standard" },
+    maker: { model: "haiku", provider: "native", tier: "fast" },
+    prover: { model: "sonnet", provider: "native", tier: "standard" },
+    checker: { model: "sonnet", provider: "native", tier: "standard" },
+    shipper: { model: "sonnet", provider: "native", tier: "standard" },
   },
   claudex: {
     planner: { model: "claude-sonnet-5", provider: "claudex", tier: "standard" },

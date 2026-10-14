@@ -29,6 +29,14 @@ leases a worktree. Run the lifecycle's bounded readiness check, then use the ver
 | **`harness-*` agents** | Bundled | The in-session loop itself: `harness-planner`, `harness-maker`, `harness-prover`, `harness-checker`, `harness-shipper` in `.claude/agents/`. Task execution stays attached to the current Claude Code session. `setup-harness.ts` installs these five (`AGENT_FILES`) into a target repo. | `ls .claude/agents/` | Nothing to install. Note: `harness-inbounds-checker` and `harness-novelty-checker` also live in `.claude/agents/` but are **not** in `AGENT_FILES`. They serve the benchmarking climb loop and are not installed into target repos by `setup-harness.ts`. |
 | **Red-team workflow** | Bundled | `.claude/workflows/red-team.js` — spawns four parallel attack roles (hostile user, careless user, performance, security) for the verify phase of a goal loop. | `ls .claude/workflows/red-team.js` | Nothing to install. Skipped for static-artifact and internal-tooling goals, where there is no user-facing flow to attack. |
 
+## PowerShell on Linux/cloud hosts
+
+Managed lifecycle subprocesses require PowerShell. On Linux and macOS they prefer
+PowerShell 7's `pwsh`; on Windows they prefer `powershell` with a `pwsh` fallback.
+Provision the executable on the environment PATH before managed execution. The
+public plugin does not install runtimes or internal CLIs. See
+[COMPATIBILITY.md](COMPATIBILITY.md) for the supported paths and verification limits.
+
 ## Installing the workspace CLIs
 
 `tasks-axi`, `treehouse`, `lavish-axi`, and `no-mistakes` are LeadGrow-internal tools rather than
@@ -43,7 +51,8 @@ pinned grill; do not create a worktree, alter an existing lease, or clean up a m
 model IDs (so Claude Code sends full prompts, tool schemas, and skill descriptions —
 these are trimmed for any model ID the harness does not recognize). The proxy maps a
 **fixed set** of IDs; a subagent pinned to any other ID gets an unrecognized-model
-session and runs degraded. Every `.claude/agents/*.md` `model:` field must be one of:
+session and runs degraded. Native `.claude/agents/*.md` definitions use `sonnet` and `haiku` aliases.
+Explicit claudex model overrides from `resolve-role-model.ts` must be one of:
 
 | `model:` frontmatter | Resolves under claudex to |
 | --- | --- |
@@ -53,7 +62,7 @@ session and runs degraded. Every `.claude/agents/*.md` `model:` field must be on
 
 Rules for adding or editing an agent:
 
-- Use only the three IDs above — **undated**. A dated pin (`claude-haiku-4-5-20251001`)
+- For explicit claudex overrides, use only the three IDs above — **undated**. A dated pin (`claude-haiku-4-5-20251001`)
   will not match the proxy alias and breaks under claudex.
 - The mapping lives in `~/.cliproxyapi/cliproxyapi.conf` and the claudex repo's
   `config/cliproxyapi.conf.template`. Adding a new tier means adding an alias there too.

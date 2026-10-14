@@ -18,7 +18,7 @@ Understand the current state before touching anything:
 - Does `.harness/skill-routing.md` already exist? If yes — show the user what's there, ask before overwriting.
 - Does `CLAUDE.md` exist? Where will the `## Harness` block go?
 - Are harness agents already in `~/.claude/agents/`? Which version (check the comment block)?
-- Run: `bun scripts/setup-harness.ts scan <repo-root>` — show the user how many skills were found.
+- Run: `bun "${CLAUDE_PLUGIN_ROOT}/scripts/setup-harness.ts" scan <repo-root>` — show the user how many skills were found.
 
 ### 2. Present findings
 
@@ -30,10 +30,10 @@ Then ask one question: **"Install or update?"** Default: install. If everything 
 
 ### 3. Install
 
-Run the install script from the agent-harness repo:
+Run the bundled install script. For a source checkout, substitute its absolute path for `${CLAUDE_PLUGIN_ROOT}`:
 
 ```bash
-bun C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\setup-harness.ts install <repo-root>
+bun "${CLAUDE_PLUGIN_ROOT}/scripts/setup-harness.ts" install <repo-root>
 ```
 
 This does atomically:
@@ -54,7 +54,7 @@ If all 8 checks pass - done. Tell the user which engineering workflows are now a
 If any check fails — show the failing line, diagnose, fix manually, re-run smoke:
 
 ```bash
-bun C:\Users\mitch\Everything_CC\tools\agent\agent-harness\scripts\setup-harness.ts smoke <repo-root> ~/.claude/agents
+bun "${CLAUDE_PLUGIN_ROOT}/scripts/setup-harness.ts" smoke <repo-root> ~/.claude/agents
 ```
 
 ### 5. Done
@@ -68,7 +68,7 @@ Tell the user:
 
 ## Reference
 
-- Script: `tools/agent/agent-harness/scripts/setup-harness.ts`
-- Protected-work guard: `tools/agent/agent-harness/scripts/guard-protected-work.ts`
-- Routing seed: `tools/agent/agent-harness/skills/setup-harness/routing-template.md`
-- Harness agents: `tools/agent/agent-harness/.claude/agents/harness-*.md` (source of truth)
+- Script: `${CLAUDE_PLUGIN_ROOT}/scripts/setup-harness.ts`
+- Protected-work guard: `${CLAUDE_PLUGIN_ROOT}/scripts/guard-protected-work.ts`
+- Routing seed: `${CLAUDE_PLUGIN_ROOT}/skills/setup-harness/routing-template.md`
+- Harness agents: `${CLAUDE_PLUGIN_ROOT}/.claude/agents/harness-*.md` (source of truth)

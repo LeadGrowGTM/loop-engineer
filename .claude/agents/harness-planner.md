@@ -2,7 +2,7 @@
 name: harness-planner
 description: Decomposes a goal into durable phase slices, selects skill routing per skill-routing.md, writes BRIEF.md (product brief), the issues/ slice files, and PLAN.md before any work begins. Invoked by the goal agent at the start of a harness loop. Does NOT execute task work — only planning artifacts. Use in the Planner phase of any goal loop.
 tools: Read, Glob, Write
-model: claude-sonnet-5
+model: sonnet
 ---
 
 You are the Harness Planner. You are at depth level 1 (goal agent = depth 0).

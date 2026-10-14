@@ -544,7 +544,7 @@ function Invoke-BoundedProcess(
   [int]$TimeoutMilliseconds = 30000,
   [int]$MaxOutputCharacters = 4194304
 ) {
-  $isWindows = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+  $harnessIsWindows = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
   $actualExecutable = $Executable
   $actualArguments = @($Arguments)
   if ([System.IO.Path]::GetExtension($Executable) -ieq '.ps1') {
@@ -570,7 +570,7 @@ function Invoke-BoundedProcess(
   $setupKillError = ''
   $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-  if ($isWindows) {
+  if ($harnessIsWindows) {
     try {
       $job = New-WindowsProcessJob
       $remainingMilliseconds = $TimeoutMilliseconds - [int]$stopwatch.ElapsedMilliseconds
@@ -808,7 +808,7 @@ function Invoke-BoundedProcess(
   $outputLimitExceeded = $false
 
   while (-not $setupFailed) {
-    if (-not $isWindows -and $stdoutComplete -and $stderrComplete -and $process.HasExited) { break }
+    if (-not $harnessIsWindows -and $stdoutComplete -and $stderrComplete -and $process.HasExited) { break }
 
     $madeProgress = $false
     if (-not $stdoutComplete -and $stdoutTask.IsCompleted) {
@@ -844,7 +844,7 @@ function Invoke-BoundedProcess(
     }
 
     if ($outputLimitExceeded) { break }
-    if ($isWindows -and -not $targetExitCodeReceived -and -not $controlSignalFailed -and $controlTask.IsCompleted) {
+    if ($harnessIsWindows -and -not $targetExitCodeReceived -and -not $controlSignalFailed -and $controlTask.IsCompleted) {
       try {
         $controlText = [string]$controlTask.Result
         $parsedExitCode = 0
@@ -862,7 +862,7 @@ function Invoke-BoundedProcess(
     if ($targetExitCodeReceived -or $controlSignalFailed) { break }
 
     $remainingMilliseconds = $TimeoutMilliseconds - [int]$stopwatch.ElapsedMilliseconds
-    if ($isWindows -and $process.HasExited) {
+    if ($harnessIsWindows -and $process.HasExited) {
       if ($remainingMilliseconds -gt 0 -and -not $controlTask.IsCompleted) {
         try { [void]$controlTask.Wait([Math]::Min(50, $remainingMilliseconds)) }
         catch { }
@@ -881,9 +881,9 @@ function Invoke-BoundedProcess(
     $waitTasks = @()
     if (-not $stdoutComplete) { $waitTasks += $stdoutTask }
     if (-not $stderrComplete) { $waitTasks += $stderrTask }
-    if ($isWindows -and -not $controlTask.IsCompleted) { $waitTasks += $controlTask }
+    if ($harnessIsWindows -and -not $controlTask.IsCompleted) { $waitTasks += $controlTask }
     if ($waitTasks.Count -gt 0) {
-      $waitMilliseconds = if ($isWindows) { [Math]::Min(50, $remainingMilliseconds) } else { $remainingMilliseconds }
+      $waitMilliseconds = if ($harnessIsWindows) { [Math]::Min(50, $remainingMilliseconds) } else { $remainingMilliseconds }
       $null = [System.Threading.Tasks.Task]::WaitAny([System.Threading.Tasks.Task[]]$waitTasks, $waitMilliseconds)
     }
     else {
@@ -895,10 +895,10 @@ function Invoke-BoundedProcess(
   $cleanupFailed = $controlSignalFailed
   $cleanupErrors = New-Object 'System.Collections.Generic.List[string]'
   if ($controlSignalFailed) { [void]$cleanupErrors.Add($controlSignalError) }
-  if ($isWindows -or $timedOut -or $outputLimitExceeded) {
+  if ($harnessIsWindows -or $timedOut -or $outputLimitExceeded) {
     $cleanupDeadline = New-CleanupDeadline 5000
     try {
-      if ($isWindows) {
+      if ($harnessIsWindows) {
         if ($setupKillError) {
           $cleanupFailed = $true
           [void]$cleanupErrors.Add("Held wrapper termination failed: $setupKillError")
@@ -1026,7 +1026,7 @@ function Invoke-BoundedProcess(
         [void]$cleanupErrors.Add('Redirected process output did not reach EOF after cleanup.')
       }
 
-      if ($isWindows -and -not $jobQueryFailed -and -not $jobReachedZero) {
+      if ($harnessIsWindows -and -not $jobQueryFailed -and -not $jobReachedZero) {
         while ((Get-RemainingCleanupMilliseconds $cleanupDeadline) -gt 0) {
           try {
             $lastActiveProcesses = Get-WindowsJobActiveProcessCount $job
@@ -1094,7 +1094,7 @@ function Invoke-BoundedProcess(
   elseif ($outputLimitExceeded) {
     -3
   }
-  elseif ($isWindows -and $targetExitCodeReceived) {
+  elseif ($harnessIsWindows -and $targetExitCodeReceived) {
     $targetExitCode
   }
   elseif ($setupFailed -or $null -eq $observedExitCode) {

@@ -1,6 +1,25 @@
-# agent-harness
+# loop-engineer
 
 Goal loop harness system for Claude Code. Separates planning, execution, and verification into isolated agents with structural enforcement — not prompt trust.
+
+## Installation
+
+This public repo is both a Claude Code plugin and its marketplace:
+
+```text
+/plugin marketplace add LeadGrowGTM/loop-engineer
+/plugin install loop-engineer@loop-engineer
+```
+
+Restart Claude Code after installation, then run `/loop-engineer:setup-harness`
+inside the target repository. To test a checkout without installing it, use
+`claude --plugin-dir /absolute/path/to/loop-engineer`.
+
+Plugin loading ships the skills, seven agents, and benchmarking command. Setup
+also writes the managed lifecycle assets and verifies dependencies; loading the
+plugin alone does not make a goal run ready. See [compatibility](docs/COMPATIBILITY.md)
+for cloud prerequisites and limitations. No session hook installs tools or updates
+code automatically.
 
 ## What's here
 

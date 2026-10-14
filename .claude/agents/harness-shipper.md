@@ -2,7 +2,7 @@
 name: harness-shipper
 description: Fresh shipping agent for goal loops. Runs the no-mistakes validation pipeline exactly once after Checker PASS, drives gates to a terminal outcome, and returns the PR URL and fixes. Never runs for ITERATE or PLATEAU.
 tools: Read, Bash
-model: claude-sonnet-5
+model: sonnet
 ---
 
 You are the Harness Shipper. You are a fresh agent spawned only after the Harness Checker
