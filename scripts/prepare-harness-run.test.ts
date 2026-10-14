@@ -382,7 +382,9 @@ const JSON_NORMALIZATION_RUNTIMES = [
 // outer bounds; no global timeout is widened. Hosted windows-latest run
 // 38637647386 exhausted the 20 s clean, 20 s default-branch-pair, 10 s
 // Treehouse-status and Bun-default 5 s unborn bounds (one pwsh prepare took
-// 12-15 s there), so those seams carry the hosted bound below.
+// 12-15 s there), so those seams carry the hosted bound below. Hosted run
+// 38643458002 measured single isolation preparations at 25-30 s under pwsh and
+// exhausted the 30 s isolation, 40 s canonical and 15 s output-flood bounds.
 const CLEAN_READY_TEST_TIMEOUT_MS = 40_000;
 const SINGLE_READINESS_TEST_TIMEOUT_MS = 30_000;
 const DIRTY_TREE_TEST_TIMEOUT_MS = 20_000;
@@ -394,10 +396,10 @@ const TREEHOUSE_STATUS_TEST_TIMEOUT_MS = 30_000;
 const DEFAULT_BRANCH_PAIR_TEST_TIMEOUT_MS = 45_000;
 // Readiness-suite replay measured isolation preparation at 22,094 ms after the
 // process-cleanup tests, including one in-wrapper interop compile per command.
-const ISOLATION_PREPARATION_TEST_TIMEOUT_MS = 30_000;
+const ISOLATION_PREPARATION_TEST_TIMEOUT_MS = 60_000;
 // Full-suite replay measured the two-call canonical worktree path at 29,344 ms.
 // Keep a bounded margin without weakening unrelated readiness tests.
-const CANONICAL_ISOLATION_TEST_TIMEOUT_MS = 40_000;
+const CANONICAL_ISOLATION_TEST_TIMEOUT_MS = 80_000;
 // The two-call default-branch and default/detached seams measured 15,344 ms and
 // 16,360 ms under load, so both share the measured double-readiness bound.
 const DOUBLE_READINESS_TEST_TIMEOUT_MS = 25_000;
@@ -424,7 +426,7 @@ const OUTPUT_LIMIT_PROMPT_LIMIT_MS = 12_000;
 const INHERITED_OUTPUT_PROMPT_LIMIT_MS = 20_000;
 // Attempt 13 measured normal-success stream-closed settlement at 12,359 ms.
 const NORMAL_SUCCESS_DAEMON_PROMPT_LIMIT_MS = 20_000;
-const OUTPUT_LIMIT_CLEANUP_TEST_TIMEOUT_MS = 15_000;
+const OUTPUT_LIMIT_CLEANUP_TEST_TIMEOUT_MS = 30_000;
 const INHERITED_OUTPUT_TEST_TIMEOUT_MS = 25_000;
 const NORMAL_SUCCESS_DAEMON_TEST_TIMEOUT_MS = 25_000;
 
@@ -1210,6 +1212,7 @@ describe('prepare-harness-run CLI', () => {
       '$timer = [System.Diagnostics.Stopwatch]::StartNew()',
       'while (-not (Test-Path -LiteralPath $env:TREEHOUSE_EVENT_READY) -and $timer.ElapsedMilliseconds -lt 5000) { Start-Sleep -Milliseconds 20 }',
       "if (-not (Test-Path -LiteralPath $env:TREEHOUSE_EVENT_READY)) { throw 'Grandchild event was not ready.' }",
+      '[Console]::Out.WriteLine("[]")',
       '[Environment]::Exit(0)',
     ]);
     const eventName = `prepare-harness-${randomUUID()}`;
@@ -1260,6 +1263,7 @@ describe('prepare-harness-run CLI', () => {
       '$timer = [System.Diagnostics.Stopwatch]::StartNew()',
       'while (-not (Test-Path -LiteralPath $env:TREEHOUSE_EVENT_READY) -and $timer.ElapsedMilliseconds -lt 5000) { Start-Sleep -Milliseconds 20 }',
       "if (-not (Test-Path -LiteralPath $env:TREEHOUSE_EVENT_READY)) { throw 'Inherited-stream grandchild event was not ready.' }",
+      '[Console]::Out.WriteLine("[]")',
       '[Environment]::Exit(0)',
     ]);
     const eventName = `prepare-harness-${randomUUID()}`;

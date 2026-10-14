@@ -283,6 +283,31 @@ function writeFakeExecutable(
   chmodSync(executablePath, 0o755);
 }
 
+// Windows runs a .cmd fake through cmd.exe, which re-parses quoted arguments and
+// splits a path at '&'. Real git is a native executable, so metacharacter paths
+// need a compiled fake to exercise the CLI rather than cmd.exe.
+function writeNativeFakeExecutable(
+  bin: string,
+  parent: string,
+  name: 'git',
+  executable: FakeExecutable,
+): void {
+  const sourcePath = join(parent, `native-fake-${name}.ts`);
+  writeFileSync(
+    sourcePath,
+    `import { appendFileSync } from 'node:fs';
+appendFileSync(process.env.VERSION_ARGV_LOG!, [${JSON.stringify(name)}, ...process.argv.slice(2)].join('\\t') + '\\n');
+process.stdout.write(${JSON.stringify(executable.stdout ?? '')});
+process.exitCode = ${executable.exitCode ?? 0};
+`,
+  );
+  const build = Bun.spawnSync(
+    [process.execPath, 'build', '--compile', sourcePath, '--outfile', join(bin, process.platform === 'win32' ? `${name}.exe` : name)],
+    { stdout: 'pipe', stderr: 'pipe' },
+  );
+  if (build.exitCode !== 0) throw new Error(`Native fake ${name} build failed: ${build.stderr.toString()}`);
+}
+
 function writeAttackerExecutable(
   bin: string,
   name: 'node' | 'pi' | 'git',
@@ -412,6 +437,7 @@ interface SetupScenario {
   nodeExecutableShape?: 'directory';
   symlinkExecutableDirectory?: boolean;
   omitGitExecutable?: boolean;
+  nativeGit?: boolean;
   managedPathSwap?: 'pi' | 'clone-parent' | 'package';
   swapPiAfterNode?: boolean;
   swapGitAfterUpdate?: boolean;
@@ -580,12 +606,14 @@ function runSetupScenario(scenario: SetupScenario = {}): HappySetupRun {
     writeFakeExecutable(traps.bin, 'node', { stdout: 'v22.0.0\n' });
   }
   if (!scenario.omitGitExecutable) {
-    writeFakeExecutable(traps.bin, 'git', {
+    const git: FakeExecutable = {
       stdout: scenario.gitOutputBytes
         ? 'x'.repeat(scenario.gitOutputBytes)
         : `${scenario.gitHead ?? PINNED_COMMIT}\n`,
       exitCode: scenario.gitExitCode,
-    });
+    };
+    if (scenario.nativeGit) writeNativeFakeExecutable(traps.bin, parent, 'git', git);
+    else writeFakeExecutable(traps.bin, 'git', git);
   }
   const updateSettingsSnapshot = writeHappyPiExecutable(
     traps.bin,
@@ -1954,11 +1982,11 @@ describe('manage-pi-openai-server-compaction CLI', () => {
   });
 
   test('setup treats spaces, quotes, and metacharacters as literal path characters', () => {
-    const run = runSetupScenario({ projectName: "project space 'quote' & meta" });
+    const run = runSetupScenario({ projectName: "project space 'quote' & meta", nativeGit: true });
 
     expectReadySetup(run);
     expect(run.argv).toEqual(expectedHappyArgv(run));
-  });
+  }, 30_000);
 
   test('check reports READY from a validated successful setup without processes or mutation', () => {
     const setupRun = runHappySetup();
@@ -2660,7 +2688,8 @@ describe('manage-pi-openai-server-compaction CLI', () => {
       ],
       {
         env: {
-          ...process.env,
+          // Windows keeps process.env's 'Path'; PowerShell must see only the trapped PATH.
+          ...Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toUpperCase() !== 'PATH')),
           PATH: `${traps.bin}${delimiter}${process.env.PATH ?? ''}`,
           PROCESS_TRAP_HITS: traps.hits,
           VERSION_ARGV_LOG: argvLog,
