@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { realpathSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir as systemTmpdir } from "node:os";
+
+// Windows runners report the temp dir as its 8.3 alias (RUNNER~1); fixtures need the physical path.
+const tmpdir = () => realpathSync.native(systemTmpdir());
 
 const scriptPath = join(import.meta.dir, "validate-pipeline-layout.ps1");
 const fixtures: string[] = [];

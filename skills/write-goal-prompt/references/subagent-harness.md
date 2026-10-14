@@ -104,18 +104,14 @@ Maker agents syncing harness files: use `bun -e "import{copyFileSync}from'fs';..
 
 ## Depth Budget
 
-Claude Code enforces a 5-level agent depth limit. At depth 5, `Agent` tool is not provided.
+The coordinator invokes Planner, Maker, Prover, Checker and Shipper as separate
+fresh-context sibling calls at depth 1. Their phase order does not increase nesting
+depth. A Maker helper is depth 2; avoid further nesting unless the active runtime
+explicitly supports it. Do not assume a fixed five-level allowance.
 
-| Level | Agent                          | Notes                            |
-| ----- | ------------------------------ | -------------------------------- |
-| 0     | Goal loop agent                | Spawns planner and maker         |
-| 1     | harness-planner                | Write-only phase; spawns nothing |
-| 2     | harness-maker                  | Can spawn skill agents (depth 3) |
-| 3     | Skill agents / harness-checker | Can spawn nothing below depth 4  |
-| 4     | Sub-skill agents (max)         | Final usable level               |
-
-**Design rule:** Checker runs at depth 3 max. If verification needs a sub-verifier,
-run it at depth 4. Never design a harness that needs depth 5 — it silently loses the Agent tool.
+Planner and Checker cannot delegate because their tool allowlists omit Agent.
+Prover supplies independent executable evidence; Checker reads that evidence and
+final artifacts with Read/Glob/Write only. Checker never spawns a verifier.
 
 ---
 
@@ -149,6 +145,16 @@ and the execution plan before any artifacts are produced. This is the only phase
 - Turn budget allocation: estimated turns per phase
 
 **Constraint:** Planner writes BRIEF.md and PLAN.md, then stops. It does not produce task artifacts.
+Before Maker starts, the coordinator persists an approved planning checkpoint:
+commit only the exact BRIEF.md, PLAN.md and issue-slice paths that Planner just
+produced, from the recorded worktree. The checkpoint needs explicit task-scoped
+local-commit authorization in HARNESS.md; it never authorizes shipping. Never
+stage an entire directory or unrelated changes. Re-run lifecycle validation after
+the checkpoint. If the checkpoint is not authorized or these paths overlap
+unrelated work, stop before invoking Maker. This leaves the Planner artifacts
+clean for Maker's protected-work baseline rather than pretending pre-existing
+uncommitted work belongs to the next phase.
+
 Maker reads both files on its first turn. Checker reads BRIEF.md to detect scope drift.
 
 **Template prompt for PLAN.md:**

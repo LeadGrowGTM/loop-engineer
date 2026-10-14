@@ -1,3 +1,4 @@
+import { LIFECYCLE_DEPENDENCY_VERSIONS, supportedDependencyVersion } from '../lifecycle-dependencies';
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -20,8 +21,6 @@ import {
   verifyManagedWorktree,
 } from './repository';
 
-export const TASKS_AXI_VERSION = '0.1.1';
-export const TREEHOUSE_VERSION = 'v1.8.0';
 export const PINNED_BATCH_GRILL_VERSION = '1.0.0';
 export const PINNED_BATCH_GRILL_SHA256 = '92a426f9ed319ca6f54ecf8fabe8c57f82e42dd71e7e5a2d11415fb6f903557f';
 
@@ -52,6 +51,11 @@ const TREEHOUSE_VERSION_PROBE = [
   'exit $LASTEXITCODE',
 ].join('; ');
 
+function versionDetail(name: keyof typeof LIFECYCLE_DEPENDENCY_VERSIONS, reported: string): string {
+  const observed = reported.trim() || 'no version output';
+  return `${observed}; expected one of the audited versions ${LIFECYCLE_DEPENDENCY_VERSIONS[name].join(', ')}`;
+}
+
 function dependencyFailure(name: string, detail: string): LifecycleCommandError {
   return new LifecycleCommandError(
     'DEPENDENCY_SETUP_REQUIRED',
@@ -68,8 +72,8 @@ async function doctorDependencies(repositoryRoot: string): Promise<void> {
   } catch (error) {
     throw dependencyFailure('tasks-axi', error instanceof Error ? error.message : 'launcher failed');
   }
-  if (!processSucceeded(tasks) || tasks.stdout.trim() !== TASKS_AXI_VERSION) {
-    throw dependencyFailure('tasks-axi', (tasks.stderr || tasks.stdout).trim() || `expected ${TASKS_AXI_VERSION}`);
+  if (!processSucceeded(tasks) || !supportedDependencyVersion('tasks-axi', tasks.stdout)) {
+    throw dependencyFailure('tasks-axi', versionDetail('tasks-axi', tasks.stderr || tasks.stdout));
   }
 
   const treehouse = await runProcess(
@@ -77,8 +81,8 @@ async function doctorDependencies(repositoryRoot: string): Promise<void> {
     ['-NoProfile', '-NonInteractive', '-Command', TREEHOUSE_VERSION_PROBE],
     { cwd: repositoryRoot, timeoutMs: 10_000 },
   );
-  if (!processSucceeded(treehouse) || treehouse.stdout.trim() !== TREEHOUSE_VERSION) {
-    throw dependencyFailure('Treehouse', (treehouse.stderr || treehouse.stdout).trim() || `expected ${TREEHOUSE_VERSION}`);
+  if (!processSucceeded(treehouse) || !supportedDependencyVersion('treehouse', treehouse.stdout)) {
+    throw dependencyFailure('Treehouse', versionDetail('treehouse', treehouse.stderr || treehouse.stdout));
   }
 
   const userHome = process.env.USERPROFILE || process.env.HOME;
@@ -212,7 +216,7 @@ function readinessFailure(readiness: ReadinessResult, processResult: ProcessResu
   if (codes.includes('invalid_lease') && /different repository|Git identity|common/i.test(detail)) {
     return new LifecycleCommandError('LEASE_IDENTITY_MISMATCH', detail);
   }
-  if (codes.includes('invalid_treehouse_output') || codes.includes('treehouse_lease_failed')) {
+  if (codes.includes('invalid_treehouse_output') || codes.includes('invalid_treehouse_status') || codes.includes('treehouse_lease_failed')) {
     return new LifecycleCommandError('TREEHOUSE_LEASE_FAILED', detail);
   }
   return new LifecycleCommandError('REPOSITORY_NOT_READY', detail, ['Resolve the readiness errors and retry lifecycle start.']);

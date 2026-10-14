@@ -9,16 +9,11 @@ import {
 } from './contracts';
 import { readRunManifest, writeJsonAtomic, type RunManifestV1 } from './manifest';
 import { processSucceeded, runProcess } from './process';
-import { assertNoReparsePath, pathInside, resolveRepository, runGit, samePath } from './repository';
+import { assertNoReparsePath, pathInside, resolveRepository, runGit, samePath, samePhysicalPath } from './repository';
 import { decodeTaskDetail } from './tasks-axi';
+import { readTreehouseLeases, type TreehouseLease } from './treehouse';
 
 const OPERATION = 'finish';
-const TREEHOUSE_PROBE = [
-  '$command = Get-Command treehouse -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1',
-  'if (-not $command -or -not $command.Source) { exit 127 }',
-  '& $command.Source status',
-  'exit $LASTEXITCODE',
-].join('; ');
 const TREEHOUSE_RETURN = [
   '$command = Get-Command treehouse -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1',
   'if (-not $command -or -not $command.Source) { exit 127 }',
@@ -101,16 +96,15 @@ async function assertCleanCommittedDescendant(run: RunManifestV1): Promise<void>
 type LeaseState = 'exact_holder' | 'absent' | 'conflicting_holder';
 
 async function leaseState(run: Pick<RunManifestV1, 'repositoryRoot' | 'worktreePath' | 'leaseHolder'>): Promise<LeaseState> {
-  const result = await runProcess('powershell', ['-NoProfile', '-NonInteractive', '-Command', TREEHOUSE_PROBE], { cwd: run.repositoryRoot });
-  if (!processSucceeded(result)) throw finishError('LEASE_IDENTITY_MISMATCH', 'Treehouse status could not verify the recorded lease.');
+  let leases: TreehouseLease[];
+  try {
+    leases = await readTreehouseLeases(run.repositoryRoot);
+  } catch {
+    throw finishError('LEASE_IDENTITY_MISMATCH', 'Treehouse status could not verify the recorded lease.');
+  }
   let state: LeaseState = 'absent';
-  for (const line of result.stdout.split(/\r?\n/).filter(Boolean)) {
-    const match = /^\s*\d+\s+leased\s+(.+?)\s+\(held by ([^)]+)\)\s*$/.exec(line);
-    if (!match) {
-      if (/\bleased\b/i.test(line)) throw finishError('LEASE_IDENTITY_MISMATCH', 'Treehouse status is malformed.');
-      continue;
-    }
-    if (samePath(match[1], run.worktreePath)) state = match[2] === run.leaseHolder ? 'exact_holder' : 'conflicting_holder';
+  for (const lease of leases) {
+    if (samePhysicalPath(lease.path, run.worktreePath)) state = lease.holder === run.leaseHolder ? 'exact_holder' : 'conflicting_holder';
   }
   return state;
 }

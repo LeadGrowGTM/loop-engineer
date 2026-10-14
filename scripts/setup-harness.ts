@@ -22,6 +22,9 @@ import {
 } from 'fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'path';
 
+import { supportedDependencyVersion } from './lifecycle-dependencies';
+import { parseTreehouseLeases, treehouseStatusArgs, treehouseStatusContract } from './goal-lifecycle/treehouse';
+
 // ── types ──────────────────────────────────────────────────────────────────
 
 export interface SkillEntry {
@@ -336,6 +339,7 @@ type InstallPaths = {
 // the global agents directory - is untrusted, before any mkdir/copy/write runs.
 function validateInstallPaths(targetDir: string): InstallPaths {
   const trustedTargetDir = trustedTargetDirectory(targetDir);
+  trustedContainedPath(trustedTargetDir, '.worktrees', 'directory');
   return {
     targetDir: trustedTargetDir,
     agentsDir: trustedContainedPath(trustedHomeDirectory(), '.claude/agents', 'directory'),
@@ -362,7 +366,7 @@ function validateInstallPaths(targetDir: string): InstallPaths {
 function commandIsUsable(command: string, cwd: string): boolean {
   try {
     const result = Bun.spawnSync([command, '--version'], { cwd, stdout: 'pipe', stderr: 'pipe' });
-    return result.exitCode === 0;
+    return result.exitCode === 0 && supportedDependencyVersion(command as 'tasks-axi' | 'treehouse', result.stdout.toString());
   } catch {
     return false;
   }
@@ -406,10 +410,13 @@ export function doctorLifecycleDependencies(targetDir: string): LifecycleDepende
 
 function treehouseProvesNoActiveLeases(targetDir: string): boolean {
   try {
-    const result = Bun.spawnSync(['treehouse', 'status'], { cwd: targetDir, stdout: 'pipe', stderr: 'pipe' });
-    if (result.exitCode !== 0) return false;
-    const status = result.stdout.toString().trim();
-    return /^(?:NO_ACTIVE_LEASES|no active leases|no leases)$/i.test(status);
+    const probe = (args: string[]) => Bun.spawnSync(['treehouse', ...args], { cwd: targetDir, stdout: 'pipe', stderr: 'pipe' });
+    const version = probe(['--version']);
+    if (version.exitCode !== 0) return false;
+    const contract = treehouseStatusContract(version.stdout.toString());
+    const status = probe(treehouseStatusArgs(contract));
+    if (status.exitCode !== 0) return false;
+    return parseTreehouseLeases({ stdout: status.stdout.toString(), stderr: status.stderr.toString() }, contract).length === 0;
   } catch {
     return false;
   }
@@ -666,7 +673,9 @@ if (import.meta.main) {
 
     // Keep the project-local worktree pool out of git.
     const gitignorePath = revalidated('.gitignore', 'regular-file');
-    const ignoreLines = ['.worktrees/'];
+    // Lifecycle verifies the physical pool before acquiring its first lease.
+    mkdirSync(revalidated('.worktrees', 'directory'), { recursive: true });
+    const ignoreLines = ['.worktrees/', '/.worktrees/.treehouse', '.claude/backlog.md', '.claude/done-archive.md'];
     const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
     const missing = ignoreLines.filter((l) => !existingIgnore.split(/\r?\n/).includes(l));
     if (missing.length) {

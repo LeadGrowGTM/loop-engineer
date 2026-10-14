@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import {
   LifecycleCommandError,
   lifecycleFailure,
@@ -7,16 +7,11 @@ import {
   type LifecycleContext,
   type LifecycleResult,
 } from './contracts';
-import { pathInside, resolveRepository, runGit, samePath } from './repository';
-import { processSucceeded, runProcess } from './process';
+import { pathInside, physicalPath, resolveRepository, runGit, samePhysicalPath } from './repository';
+import { processSucceeded } from './process';
+import { readTreehouseSlots } from './treehouse';
 
 const OPERATION = 'audit';
-const TREEHOUSE_STATUS = [
-  '$command = Get-Command treehouse -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1',
-  'if (-not $command -or -not $command.Source) { exit 127 }',
-  '& $command.Source status',
-  'exit $LASTEXITCODE',
-].join('; ');
 
 export interface AuditLifecycleInput { repo: string; }
 export interface AuditRow {
@@ -51,15 +46,13 @@ function auditError(message: string): LifecycleCommandError {
   return new LifecycleCommandError('AUDIT_FAILED', message, ['Resolve the repository inspection error, then retry goal-lifecycle audit.']);
 }
 
-async function treehouseLeases(repositoryRoot: string): Promise<Set<string>> {
-  const result = await runProcess('powershell', ['-NoProfile', '-NonInteractive', '-Command', TREEHOUSE_STATUS], { cwd: repositoryRoot });
-  if (!processSucceeded(result)) throw auditError('Treehouse status could not be read without mutation.');
-  const leases = new Set<string>();
-  for (const line of result.stdout.split(/\r?\n/)) {
-    const match = /^\s*\d+\s+leased\s+(.+?)\s+\(held by [^)]+\)\s*$/.exec(line);
-    if (match) leases.add(resolve(match[1]).toLowerCase());
+// Every slot Treehouse reports (leased, available, dirty, in-use, ...) is manager-owned, not only active leases.
+async function treehouseSlotPaths(repositoryRoot: string): Promise<string[]> {
+  try {
+    return (await readTreehouseSlots(repositoryRoot)).map((slot) => slot.path);
+  } catch {
+    throw auditError('Treehouse status could not be read without mutation.');
   }
-  return leases;
 }
 
 function quotePowerShell(path: string): string {
@@ -67,14 +60,16 @@ function quotePowerShell(path: string): string {
   return quote + path.replaceAll(quote, quote + quote) + quote;
 }
 
-async function collectRow(entry: WorktreeEntry, repoRoot: string, poolRoot: string, leases: Set<string>): Promise<AuditRow> {
+async function collectRow(entry: WorktreeEntry, repoRoot: string, poolRoot: string, slotPaths: string[]): Promise<AuditRow> {
   const status = await runGit(['status', '--porcelain=v1', '--untracked-files=all'], entry.path);
   const ancestor = await runGit(['merge-base', '--is-ancestor', entry.head, 'HEAD'], repoRoot);
   if (!processSucceeded(status) || (ancestor.exitCode !== 0 && ancestor.exitCode !== 1)) {
     throw auditError('Git could not inspect a registered worktree without mutation.');
   }
-  const primary = samePath(entry.path, repoRoot);
-  const managed = !primary && pathInside(poolRoot, entry.path) && leases.has(resolve(entry.path).toLowerCase());
+  const physical = physicalPath(entry.path);
+  const primary = samePhysicalPath(physical, repoRoot);
+  // Managed iff physically inside the pool AND listed by Treehouse; any other worktree stays MISPLACED.
+  const managed = !primary && pathInside(physicalPath(poolRoot), physical) && slotPaths.some((slot) => samePhysicalPath(slot, physical));
   const dirty = status.stdout.trim().length > 0;
   const reachable = ancestor.exitCode === 0;
   const classification: AuditRow['classification'] = primary
@@ -101,11 +96,11 @@ async function auditUnsafe(input: AuditLifecycleInput, context: LifecycleContext
   const repository = await resolveRepository(input.repo, context.cwd);
   const listed = await runGit(['worktree', 'list', '--porcelain'], repository.root);
   if (!processSucceeded(listed)) throw auditError('Git could not list registered worktrees.');
-  const leases = await treehouseLeases(repository.root);
+  const slotPaths = await treehouseSlotPaths(repository.root);
   const rows: AuditRow[] = [];
   for (const entry of parseWorktrees(listed.stdout)) {
     if (!existsSync(entry.path)) throw auditError('A registered worktree path is unavailable for read-only audit.');
-    rows.push(await collectRow(entry, repository.root, resolve(repository.root, '.worktrees'), leases));
+    rows.push(await collectRow(entry, repository.root, resolve(repository.root, '.worktrees'), slotPaths));
   }
   return lifecycleSuccess(OPERATION, 'Audited ' + rows.length + ' registered worktrees without mutation.', { rows });
 }

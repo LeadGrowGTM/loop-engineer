@@ -1165,26 +1165,118 @@ function Get-OutputLines([string]$Text) {
   return @($Text -split '\r?\n' | Where-Object { $_ -ne '' })
 }
 
-function Get-TreehouseLeasedPaths([string]$StatusText) {
+function Get-TreehouseStatusContract([string]$VersionText) {
+  $version = ([string]$VersionText).Trim() -replace '^treehouse\s+', '' -replace '^v', ''
+  switch ($version) {
+    '1.8.0' { return 'text' }
+    '3.1.0' { return 'json' }
+  }
+  $reported = if ($version) { $version } else { 'reported no version' }
+  throw "Treehouse $reported has no audited status contract."
+}
+
+function Resolve-TreehouseLeasedPath([string]$Reported) {
+  $reportedPath = ([string]$Reported).Trim()
+  if ($reportedPath.StartsWith('~\') -or $reportedPath.StartsWith('~/')) {
+    $reportedPath = Join-Path $HOME $reportedPath.Substring(2)
+  }
+  if (-not [System.IO.Path]::IsPathRooted($reportedPath) -or $reportedPath.StartsWith('\\')) {
+    throw "Treehouse status reported a non-local leased path: $reportedPath"
+  }
+  return [System.IO.Path]::GetFullPath($reportedPath)
+}
+
+function Get-TreehousePoolStatuses {
+  return @('available', 'dirty', 'in-use', 'leased', "you're here", 'damaged', 'unverified')
+}
+
+function Assert-TreehousePoolStatus([string]$Status) {
+  if ((Get-TreehousePoolStatuses) -notcontains $Status) { throw "Treehouse status reported unaudited pool status '$Status'." }
+  return $Status
+}
+
+function Get-TreehouseLeasedPathsFromJson([string]$StatusText) {
   $leases = @{}
-  foreach ($line in (Get-OutputLines $StatusText)) {
-    if ($line -match '^\s*\d+\s+leased\s+(.+)\s+\(held by ([^)]+)\)\s*$') {
-      $reportedPath = $Matches[1].Trim()
-      if ($reportedPath.StartsWith('~\') -or $reportedPath.StartsWith('~/')) {
-        $reportedPath = Join-Path $HOME $reportedPath.Substring(2)
-      }
-      if (-not [System.IO.Path]::IsPathRooted($reportedPath) -or $reportedPath.StartsWith('\\')) {
-        throw "Treehouse status reported a non-local leased path: $reportedPath"
-      }
-      $fullPath = [System.IO.Path]::GetFullPath($reportedPath)
-      $leases[$fullPath.ToLowerInvariant()] = $Matches[2].Trim()
-      continue
+  $payload = ([string]$StatusText).Trim()
+  if (-not $payload.StartsWith('[')) { throw 'Treehouse status --json did not emit a JSON array.' }
+  try { $null = ConvertFrom-Json -InputObject $payload -ErrorAction Stop }
+  catch { throw "Treehouse status --json was unparseable: $($_.Exception.Message)" }
+  $parsed = ConvertFrom-Json -InputObject ('{"entries":' + $payload + '}') -ErrorAction Stop
+  if (-not ($parsed.entries -is [System.Array])) { throw 'Treehouse status --json did not emit a JSON array.' }
+  foreach ($entry in $parsed.entries) {
+    if ($null -eq $entry) { throw 'Treehouse status --json contained an entry without an exact path and status.' }
+    $path = $entry.PSObject.Properties['path']
+    $status = $entry.PSObject.Properties['status']
+    if (-not $path -or $path.Value -isnot [string] -or $path.Value -eq '' -or -not $status -or $status.Value -isnot [string]) {
+      throw 'Treehouse status --json contained an entry without an exact path and status.'
     }
-    if ($line -match '\bleased\b') {
-      throw "Treehouse status contained an unparseable leased entry: $line"
+    if ((Assert-TreehousePoolStatus $status.Value) -ne 'leased') { continue }
+    $holder = $entry.PSObject.Properties['lease_holder']
+    if (-not $holder -or $holder.Value -isnot [string] -or -not $holder.Value.Trim()) {
+      throw 'Treehouse status --json reported a leased entry without an exact holder.'
     }
+    $leases[(Resolve-TreehouseLeasedPath $path.Value).ToLowerInvariant()] = $holder.Value.Trim()
   }
   return $leases
+}
+
+function Get-TreehouseLeasedPathsFromText([string]$StatusText, [string]$StderrText) {
+  $leases = @{}
+  $rows = @($StatusText -split '\r?\n' | Where-Object { $_.Trim() -ne '' })
+  if ($rows.Count -eq 0) {
+    if (([string]$StderrText).IndexOf('No worktrees in pool.') -lt 0) {
+      throw 'Treehouse status reported no pool rows without the audited empty-pool message.'
+    }
+    return $leases
+  }
+  $slotSeen = $false
+  foreach ($row in $rows) {
+    $columns = [regex]::Match($row, '^\s*\d+\s+(' + ((Get-TreehousePoolStatuses) -join '|') + ')\s+(\S.*)$')
+    if (-not $columns.Success) {
+      if ((-not $slotSeen) -or ($row -notmatch '^\s{2,}\S')) {
+        throw 'Treehouse status reported a line that is neither an audited pool row nor indented slot detail.'
+      }
+      continue
+    }
+    $slotSeen = $true
+    if ($columns.Groups[1].Value -ne 'leased') { continue }
+    $leased = [regex]::Match($columns.Groups[2].Value, '^(\S.*?)\s+\(held by ([^)]+)\)\s*$')
+    $holder = if ($leased.Success) { $leased.Groups[2].Value.Trim() } else { '' }
+    if (-not $leased.Success -or -not $holder) {
+      throw 'Treehouse status reported a leased entry without an exact path and holder.'
+    }
+    $leases[(Resolve-TreehouseLeasedPath $leased.Groups[1].Value).ToLowerInvariant()] = $holder
+  }
+  return $leases
+}
+
+function Get-TreehouseLeasedPaths([string]$StatusText, [string]$StderrText, [string]$Contract) {
+  if ($Contract -eq 'json') { return Get-TreehouseLeasedPathsFromJson $StatusText }
+  return Get-TreehouseLeasedPathsFromText $StatusText $StderrText
+}
+
+function Read-TreehouseLeasedPaths([string]$Executable, [string]$WorkingDirectory, [int]$TimeoutMilliseconds) {
+  $version = Invoke-BoundedProcess $Executable @('--version') $WorkingDirectory $false $TimeoutMilliseconds
+  if ($version.TimedOut -or $version.OutputLimitExceeded -or $version.ExitCode -ne 0) {
+    return @{
+      ok = $false
+      code = 'treehouse_not_ready'
+      message = ("Treehouse version probe failed from '$WorkingDirectory': " + (($version.Stderr + ' ' + $version.Stdout).Trim()))
+    }
+  }
+  try { $contract = Get-TreehouseStatusContract $version.Stdout }
+  catch { return @{ ok = $false; code = 'invalid_treehouse_status'; message = $_.Exception.Message } }
+  $statusArguments = if ($contract -eq 'json') { @('status', '--json') } else { @('status') }
+  $status = Invoke-BoundedProcess $Executable $statusArguments $WorkingDirectory $false $TimeoutMilliseconds
+  if ($status.TimedOut -or $status.OutputLimitExceeded -or $status.ExitCode -ne 0) {
+    return @{
+      ok = $false
+      code = 'treehouse_not_ready'
+      message = ("Treehouse status failed from '$WorkingDirectory': " + (($status.Stderr + ' ' + $status.Stdout).Trim()))
+    }
+  }
+  try { return @{ ok = $true; leases = (Get-TreehouseLeasedPaths $status.Stdout $status.Stderr $contract) } }
+  catch { return @{ ok = $false; code = 'invalid_treehouse_status'; message = $_.Exception.Message } }
 }
 
 function Resolve-GitPath([string]$WorkingDirectory, [string]$Value) {
@@ -1509,9 +1601,9 @@ try {
   }
 
   if ($CheckOnly -and $result.isolationRequired) {
-    $treehouseStatus = Invoke-BoundedProcess $treehouse @('status') $gitInspectionRoot $false $InternalTreehouseStatusTimeoutMilliseconds
-    if ($treehouseStatus.TimedOut -or $treehouseStatus.OutputLimitExceeded -or $treehouseStatus.ExitCode -ne 0) {
-      Add-ReadinessError 'treehouse_not_ready' ("Treehouse status failed from '$gitInspectionRoot': " + (($treehouseStatus.Stderr + ' ' + $treehouseStatus.Stdout).Trim()))
+    $treehouseStatus = Read-TreehouseLeasedPaths $treehouse $gitInspectionRoot $InternalTreehouseStatusTimeoutMilliseconds
+    if (-not $treehouseStatus.ok) {
+      Add-ReadinessError $treehouseStatus.code $treehouseStatus.message
       Complete-Readiness 1
     }
     Add-ReadinessError 'isolation_not_prepared' 'Isolation is required and available but not prepared. Rerun with -PrepareIsolation and use the returned runPath.'
@@ -1525,18 +1617,12 @@ try {
       Complete-Readiness 1
     }
 
-    $preAcquisitionStatus = Invoke-BoundedProcess $treehouse @('status') $gitInspectionRoot $false $InternalTreehouseStatusTimeoutMilliseconds
-    if ($preAcquisitionStatus.TimedOut -or $preAcquisitionStatus.OutputLimitExceeded -or $preAcquisitionStatus.ExitCode -ne 0) {
-      Add-ReadinessError 'treehouse_not_ready' ("Treehouse pre-acquisition status failed from '$gitInspectionRoot': " + (($preAcquisitionStatus.Stderr + ' ' + $preAcquisitionStatus.Stdout).Trim()))
+    $preAcquisitionStatus = Read-TreehouseLeasedPaths $treehouse $gitInspectionRoot $InternalTreehouseStatusTimeoutMilliseconds
+    if (-not $preAcquisitionStatus.ok) {
+      Add-ReadinessError $preAcquisitionStatus.code $preAcquisitionStatus.message
       Complete-Readiness 1
     }
-    try {
-      $preexistingLeasePaths = Get-TreehouseLeasedPaths $preAcquisitionStatus.Stdout
-    }
-    catch {
-      Add-ReadinessError 'invalid_treehouse_status' $_.Exception.Message
-      Complete-Readiness 1
-    }
+    $preexistingLeasePaths = $preAcquisitionStatus.leases
 
     $lease = Invoke-BoundedProcess $treehouse @('get', '--lease', '--lease-holder', $LeaseHolder) $gitInspectionRoot $false 60000
     if ($lease.TimedOut -or $lease.OutputLimitExceeded -or $lease.ExitCode -ne 0) {

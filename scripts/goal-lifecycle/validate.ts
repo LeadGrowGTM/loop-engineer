@@ -10,16 +10,11 @@ import {
 import { validateCanonicalGrillReceipt } from './grill';
 import { readRunManifest, writeRunManifest, type RunManifestV1 } from './manifest';
 import { processSucceeded, runProcess } from './process';
-import { assertNoReparsePath, pathInside, resolveRepository, samePath, verifyManagedWorktree } from './repository';
+import { assertNoReparsePath, pathInside, resolveRepository, samePath, samePhysicalPath, verifyManagedWorktree } from './repository';
 import { decodeTaskDetail } from './tasks-axi';
+import { readTreehouseLeases, type TreehouseLease } from './treehouse';
 
 const OPERATION = 'validate';
-const TREEHOUSE_STATUS_PROBE = [
-  '$command = Get-Command treehouse -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1',
-  'if (-not $command -or -not $command.Source) { exit 127 }',
-  '& $command.Source status',
-  'exit $LASTEXITCODE',
-].join('; ');
 
 export interface ValidateLifecycleInput {
   runPath: string;
@@ -81,7 +76,7 @@ function assertCurrentWorktree(context: LifecycleContext, run: RunManifestV1): v
 }
 
 async function assertActiveTask(run: RunManifestV1): Promise<void> {
-  const result = await runProcess('tasks-axi', ['show', run.taskId, '--full'], { cwd: run.worktreePath });
+  const result = await runProcess('tasks-axi', ['show', run.taskId, '--full'], { cwd: run.repositoryRoot });
   if (!processSucceeded(result)) {
     throw restartInvalid(`The durable task ${run.taskId} is not available as an active lifecycle task.`);
   }
@@ -104,28 +99,17 @@ async function assertRepositoryAndWorktree(run: RunManifestV1): Promise<void> {
   if (repository.sourceHead !== run.sourceHead) {
     throw new LifecycleCommandError('LEASE_IDENTITY_MISMATCH', 'The persisted source commit no longer matches Git.');
   }
-  await verifyManagedWorktree(repository, run.worktreePath, run.poolRoot, `wt/${run.taskId}`);
+  await verifyManagedWorktree(repository, run.worktreePath, run.poolRoot, `wt/${run.taskId}`, true);
 }
 
 async function assertTreehouseLease(run: RunManifestV1): Promise<void> {
-  const result = await runProcess(
-    'powershell',
-    ['-NoProfile', '-NonInteractive', '-Command', TREEHOUSE_STATUS_PROBE],
-    { cwd: run.worktreePath, timeoutMs: 10_000 },
-  );
-  if (!processSucceeded(result)) {
+  let leases: TreehouseLease[];
+  try {
+    leases = await readTreehouseLeases(run.repositoryRoot, 10_000);
+  } catch {
     throw new LifecycleCommandError('LEASE_IDENTITY_MISMATCH', 'Treehouse status could not verify the persisted lease holder.');
   }
-  const expected = realpathSync.native(run.worktreePath);
-  const matching = result.stdout.split(/\r?\n/).some((line) => {
-    const match = /^\s*\d+\s+leased\s+(.+?)\s+\(held by ([^)]+)\)\s*$/.exec(line);
-    if (!match || match[2] !== run.leaseHolder) return false;
-    try {
-      return samePath(realpathSync.native(match[1]), expected);
-    } catch {
-      return false;
-    }
-  });
+  const matching = leases.some((lease) => lease.holder === run.leaseHolder && samePhysicalPath(lease.path, run.worktreePath));
   if (!matching) {
     throw new LifecycleCommandError('LEASE_IDENTITY_MISMATCH', 'Treehouse status does not report the persisted lease and exact holder.');
   }
