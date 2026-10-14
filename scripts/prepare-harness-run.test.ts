@@ -1533,10 +1533,15 @@ describe('prepare-harness-run CLI', () => {
   test('the older audited Treehouse reads pre-existing leases from its tabular status', () => {
     const { workspace, repo } = createFeatureRepo();
     const statusBody = [
-      '[Console]::Out.WriteLine("  1  leased  " + $env:TREEHOUSE_LEASE + "  (held by prior-task)")',
+      '[Console]::Out.WriteLine("1     leased       " + $env:TREEHOUSE_LEASE + "  (held by prior-task)")',
+      '[Console]::Out.WriteLine("                   bash (4242), bun (4243)")',
       'exit 0',
     ];
-    const treehouse = fakeTreehouse(repo, statusBody, undefined, 'HEAD', undefined, undefined, 'v1.8.0');
+    const treehouse = fakeTreehouse(repo, statusBody, [
+      '[Console]::Out.WriteLine($env:TREEHOUSE_LEASE)',
+      '[Console]::Out.WriteLine("unexpected banner")',
+      'exit 0',
+    ], 'HEAD', undefined, undefined, 'v1.8.0');
 
     const result = invokePrepareCommand(repo, workspace, ['-PrepareIsolation', '-Parallel'], treehouse.env);
 
@@ -1547,11 +1552,38 @@ describe('prepare-harness-run CLI', () => {
     expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version', 'status', 'get']);
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
+  test('the older audited Treehouse proves an empty pool from its no-pool notice on stderr', () => {
+    const { workspace, repo } = createFeatureRepo();
+    const pool = configureCanonicalPool(repo);
+    const sourceHead = run(['git', 'rev-parse', 'HEAD'], repo);
+    const leasePath = join(pool, 'slot-1', 'repo');
+    const statusBody = ['[Console]::Error.WriteLine("No worktrees in pool.")', 'exit 0'];
+    const treehouse = fakeTreehouse(repo, statusBody, undefined, 'main', leasePath, undefined, 'v1.8.0');
+
+    const result = invokePrepareCommand(
+      repo,
+      workspace,
+      ['-PrepareIsolation', '-LeaseHolder', 'canonical-task', '-RunBranch', 'wt/canonical-task', '-RequiredPoolRoot', pool],
+      treehouse.env,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout.toString())).toMatchObject({
+      status: 'READY',
+      leasePath,
+      leaseHolder: 'canonical-task',
+      checkedHead: sourceHead,
+    });
+  }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
+
   test('status output that does not match the probed contract fails closed before any lease', () => {
     for (const probe of [
       { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("1 leased /pool/slot-1 (held by prior-task)")', 'exit 0'] },
       { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("[{""status"": ""leased""}]")', 'exit 0'] },
+      { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("[{""path"": ""/pool/slot-1"", ""status"": ""frozen""}]")', 'exit 0'] },
       { version: 'v1.8.0', statusBody: ['[Console]::Out.WriteLine("  1  leased  /pool/slot-1")', 'exit 0'] },
+      { version: 'v1.8.0', statusBody: ['[Console]::Out.WriteLine("1     frozen       /pool/slot-1")', 'exit 0'] },
+      { version: 'v1.8.0', statusBody: ['exit 0'] },
       { version: 'v2.0.0', statusBody: ['[Console]::Out.WriteLine("[]")', 'exit 0'] },
     ]) {
       const { workspace, repo } = createFeatureRepo();

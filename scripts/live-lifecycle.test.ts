@@ -68,7 +68,7 @@ test.skipIf(process.env.LOOP_ENGINEER_LIVE_CLI_TEST !== '1')('real CLI setup, st
   const blocked = await lifecycle(['finish', '--run', run, '--outcome', 'blocked'], cwd);
   expect(blocked.body.ok).toBe(true);
   const contract = treehouseStatusContract((await command(['treehouse', '--version'])).stdout);
-  const poolStatus = async () => parseTreehouseLeases((await command(['treehouse', ...treehouseStatusArgs(contract)])).stdout, contract);
+  const poolStatus = async () => parseTreehouseLeases(await command(['treehouse', ...treehouseStatusArgs(contract)]), contract);
   expect((await poolStatus()).some((lease) => lease.path === cwd && lease.holder === 'live-proof')).toBe(true);
   await git(['add', '.harness'], cwd); await git(['commit', '-m', 'recovery fixture'], cwd);
   expect((await lifecycle(['finish', '--run', run], cwd)).body.ok).toBe(true);

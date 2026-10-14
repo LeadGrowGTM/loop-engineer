@@ -161,7 +161,7 @@ function createTreehouseFake(
       'if ($command -eq "return") { exit 0 }',
       'if ($command -eq "status") {',
       '  if ($env:TREEHOUSE_CONTRACT -eq "text") {',
-      '    if ($env:TREEHOUSE_STATUS_MODE -eq "validate") { [Console]::Out.WriteLine("  1  leased  " + $env:TREEHOUSE_LEASE + "  (held by " + $env:TREEHOUSE_HOLDER + ")") } else { [Console]::Out.WriteLine("treehouse pool .worktrees/ (0 trees)") }',
+      '    if ($env:TREEHOUSE_STATUS_MODE -eq "validate") { [Console]::Out.WriteLine("1     leased       " + $env:TREEHOUSE_LEASE + "  (held by " + $env:TREEHOUSE_HOLDER + ")") } else { [Console]::Error.WriteLine("No worktrees in pool.") }',
       '    exit 0',
       '  }',
       '  $entries = @()',

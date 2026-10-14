@@ -56,11 +56,16 @@ See [DEPENDENCIES.md](DEPENDENCIES.md) for the CLI-version contract and the
 backlog handling. Restart validation reads the authoritative task from the source
 repository rather than an independently copied worktree backlog. Lease recognition
 probes `treehouse --version` and selects that version's audited status contract at
-one shared boundary: Treehouse 3.1.0 is read from typed `status --json` records
-(`path`, `status`, `lease_holder`), and Treehouse 1.8.0 — which has no `--json`
-status — from its tabular `status` rows. An unaudited version, a status payload
-that does not match the probed contract, and a leased entry without an exact path
-and holder all fail closed before any lease is acquired or verified.
+one shared boundary: Treehouse 3.1.0 is read from the typed `status --json`
+records (`path`, `status`, `lease_holder`) it writes to stdout, and Treehouse
+1.8.0 — which has no `--json` status — from its tabular `status` rows. Treehouse
+prints its update banner and its `No worktrees in pool.` notice to stderr, so an
+empty pool is only accepted from stdout with no rows plus that exact notice. An
+unaudited version, a status payload that does not match the probed contract, a
+pool status outside Treehouse's own set, and a leased entry without an exact path
+and holder all fail closed before any lease is acquired or verified. Lease
+identity is probed from the owning repository root, which is where Treehouse
+reports its pool.
 
 Deterministic `bun test` runs on `ubuntu-24.04` and `windows-latest` under `pwsh`
 through `.github/workflows/tests.yml`, which executes the Windows-specific tests

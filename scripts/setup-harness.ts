@@ -416,7 +416,7 @@ function treehouseProvesNoActiveLeases(targetDir: string): boolean {
     const contract = treehouseStatusContract(version.stdout.toString());
     const status = probe(treehouseStatusArgs(contract));
     if (status.exitCode !== 0) return false;
-    return parseTreehouseLeases(status.stdout.toString(), contract).length === 0;
+    return parseTreehouseLeases({ stdout: status.stdout.toString(), stderr: status.stderr.toString() }, contract).length === 0;
   } catch {
     return false;
   }

@@ -156,6 +156,12 @@ function lifecycleTestEnvironment(
   const home = join(root, 'home');
   mkdirSync(bin, { recursive: true });
   mkdirSync(home, { recursive: true });
+  const batchStatus = options.treehouseStatus === undefined
+    ? 'echo No worktrees in pool. 1>&2'
+    : `echo ${options.treehouseStatus}`;
+  const shellStatus = options.treehouseStatus === undefined
+    ? "echo 'No worktrees in pool.' 1>&2"
+    : `echo '${options.treehouseStatus}'`;
   writeFileSync(
     join(bin, 'tasks-axi.cmd'),
     `@echo off\r\nif "%1"=="--version" (echo tasks-axi ${options.tasksAxiVersion ?? '0.1.1'} & exit /b ${options.tasksAxiExit ?? 0})\r\nexit /b 0\r\n`,
@@ -168,14 +174,14 @@ function lifecycleTestEnvironment(
       `echo treehouse ${options.treehouseVersion ?? '1.8.0'}`,
       `exit /b ${options.treehouseExit ?? 0}`,
       ':status',
-      `echo ${options.treehouseStatus ?? 'treehouse pool .worktrees/ (0 trees)'}`,
+      batchStatus,
       `exit /b ${options.treehouseExit ?? 0}`,
       '',
     ].join('\r\n'),
   );
   if (process.platform !== 'win32') {
     writeFileSync(join(bin, 'tasks-axi'), `#!/bin/sh\necho 'tasks-axi ${options.tasksAxiVersion ?? '0.1.1'}'\nexit ${options.tasksAxiExit ?? 0}\n`, { mode: 0o755 });
-    writeFileSync(join(bin, 'treehouse'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo 'treehouse ${options.treehouseVersion ?? '1.8.0'}'; else echo '${options.treehouseStatus ?? 'treehouse pool .worktrees/ (0 trees)'}'; fi\nexit ${options.treehouseExit ?? 0}\n`, { mode: 0o755 });
+    writeFileSync(join(bin, 'treehouse'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo 'treehouse ${options.treehouseVersion ?? '1.8.0'}'; else ${shellStatus}; fi\nexit ${options.treehouseExit ?? 0}\n`, { mode: 0o755 });
   }
   return {
     ...process.env,
@@ -753,19 +759,19 @@ describe('lifecycle dependency setup', () => {
     expect(readFileSync(legacyLease, 'utf8')).toBe('lease remains owned by treehouse');
   });
 
-  test('refuses legacy pool repair when Treehouse reports active leases', () => {
-    const root = mkdtempSync(join(tmpdir(), 'setup-harness-lifecycle-active-lease-'));
-    const target = join(root, 'target');
-    const legacy = 'max_trees = 16\nroot = ".tmp/treehouse/"\n';
-    mkdirSync(target, { recursive: true });
-    writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
-    writeFileSync(join(target, 'treehouse.toml'), legacy);
-    const result = runInstall(target, lifecycleTestEnvironment(root, {
-      treehouseStatus: '  1  leased  /pool/slot-1/repository  (held by C24)',
-    }));
-    expect(result.exitCode).toBe(1);
-    expect(readFileSync(join(target, 'treehouse.toml'), 'utf8')).toBe(legacy);
-    expect(result.stdout.toString()).toContain('treehouse.toml repair blocked by active or unknown leases');
+  test('refuses legacy pool repair for an active lease or an unproven empty pool', () => {
+    for (const treehouseStatus of ['  1  leased  /pool/slot-1/repository  (held by C24)', '']) {
+      const root = mkdtempSync(join(tmpdir(), 'setup-harness-lifecycle-active-lease-'));
+      const target = join(root, 'target');
+      const legacy = 'max_trees = 16\nroot = ".tmp/treehouse/"\n';
+      mkdirSync(target, { recursive: true });
+      writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+      writeFileSync(join(target, 'treehouse.toml'), legacy);
+      const result = runInstall(target, lifecycleTestEnvironment(root, { treehouseStatus }));
+      expect(result.exitCode).toBe(1);
+      expect(readFileSync(join(target, 'treehouse.toml'), 'utf8')).toBe(legacy);
+      expect(result.stdout.toString()).toContain('treehouse.toml repair blocked by active or unknown leases');
+    }
   });
 
   test('legacy pool repair reads the typed status contract on the newer audited Treehouse', () => {

@@ -105,7 +105,7 @@ async function assertRepositoryAndWorktree(run: RunManifestV1): Promise<void> {
 async function assertTreehouseLease(run: RunManifestV1): Promise<void> {
   let leases: TreehouseLease[];
   try {
-    leases = await readTreehouseLeases(run.worktreePath, 10_000);
+    leases = await readTreehouseLeases(run.repositoryRoot, 10_000);
   } catch {
     throw new LifecycleCommandError('LEASE_IDENTITY_MISMATCH', 'Treehouse status could not verify the persisted lease holder.');
   }

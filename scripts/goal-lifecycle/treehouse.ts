@@ -8,6 +8,25 @@ export interface TreehouseLease {
   holder: string;
 }
 
+export interface TreehouseStatusOutput {
+  stdout: string;
+  stderr: string;
+}
+
+const TREEHOUSE_POOL_STATUSES = [
+  'available',
+  'dirty',
+  'in-use',
+  'leased',
+  "you're here",
+  'damaged',
+  'unverified',
+] as const;
+
+const TREEHOUSE_EMPTY_POOL_MESSAGE = 'No worktrees in pool.';
+
+const TREEHOUSE_STATUS_ROW = new RegExp(`^\\s*\\d+\\s+(${TREEHOUSE_POOL_STATUSES.join('|')})\\s+(\\S.*)$`);
+
 function probe(args: readonly string[]): string {
   return [
     '$command = Get-Command treehouse -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1',
@@ -28,11 +47,19 @@ export function treehouseStatusArgs(contract: TreehouseStatusContract): string[]
   return contract === 'json' ? ['status', '--json'] : ['status'];
 }
 
+function auditedStatus(status: string): (typeof TREEHOUSE_POOL_STATUSES)[number] {
+  const audited = TREEHOUSE_POOL_STATUSES.find((candidate) => candidate === status);
+  if (!audited) throw new Error(`Treehouse status reported unaudited pool status "${status}".`);
+  return audited;
+}
+
 function parseJsonLeases(stdout: string): TreehouseLease[] {
-  const lines = stdout.split(/\r?\n/);
-  const start = lines.findIndex((line) => line.trimStart().startsWith('['));
-  if (start < 0) throw new Error('Treehouse status --json did not emit a JSON array.');
-  const entries: unknown = JSON.parse(lines.slice(start).join('\n'));
+  let entries: unknown;
+  try {
+    entries = JSON.parse(stdout);
+  } catch {
+    throw new Error('Treehouse status --json did not emit a JSON array.');
+  }
   if (!Array.isArray(entries)) throw new Error('Treehouse status --json did not emit a JSON array.');
   const leases: TreehouseLease[] = [];
   for (const entry of entries) {
@@ -40,7 +67,7 @@ function parseJsonLeases(stdout: string): TreehouseLease[] {
     if (typeof record?.path !== 'string' || record.path.length === 0 || typeof record?.status !== 'string') {
       throw new Error('Treehouse status --json contained an entry without an exact path and status.');
     }
-    if (record.status !== 'leased') continue;
+    if (auditedStatus(record.status) !== 'leased') continue;
     if (typeof record.lease_holder !== 'string' || record.lease_holder.trim().length === 0) {
       throw new Error('Treehouse status --json reported a leased entry without an exact holder.');
     }
@@ -49,20 +76,36 @@ function parseJsonLeases(stdout: string): TreehouseLease[] {
   return leases;
 }
 
-function parseTextLeases(stdout: string): TreehouseLease[] {
+function parseTextLeases(output: TreehouseStatusOutput): TreehouseLease[] {
+  const rows = output.stdout.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (rows.length === 0) {
+    if (!output.stderr.includes(TREEHOUSE_EMPTY_POOL_MESSAGE)) {
+      throw new Error('Treehouse status reported no pool rows without the audited empty-pool message.');
+    }
+    return [];
+  }
   const leases: TreehouseLease[] = [];
-  for (const line of stdout.split(/\r?\n/)) {
-    if (!/\bleased\b/.test(line)) continue;
-    const match = /^\s*\d+\s+leased\s+(\S.*?)\s+\(held by ([^)]+)\)\s*$/.exec(line);
-    const holder = match?.[2].trim();
-    if (!match || !holder) throw new Error('Treehouse status reported a leased entry without an exact path and holder.');
-    leases.push({ path: match[1], holder });
+  let slotSeen = false;
+  for (const row of rows) {
+    const columns = TREEHOUSE_STATUS_ROW.exec(row);
+    if (!columns) {
+      if (!slotSeen || !/^\s{2,}\S/.test(row)) {
+        throw new Error('Treehouse status reported a line that is neither an audited pool row nor indented slot detail.');
+      }
+      continue;
+    }
+    slotSeen = true;
+    if (columns[1] !== 'leased') continue;
+    const leased = /^(\S.*?)\s+\(held by ([^)]+)\)\s*$/.exec(columns[2]);
+    const holder = leased?.[2].trim();
+    if (!leased || !holder) throw new Error('Treehouse status reported a leased entry without an exact path and holder.');
+    leases.push({ path: leased[1], holder });
   }
   return leases;
 }
 
-export function parseTreehouseLeases(stdout: string, contract: TreehouseStatusContract): TreehouseLease[] {
-  return contract === 'json' ? parseJsonLeases(stdout) : parseTextLeases(stdout);
+export function parseTreehouseLeases(output: TreehouseStatusOutput, contract: TreehouseStatusContract): TreehouseLease[] {
+  return contract === 'json' ? parseJsonLeases(output.stdout) : parseTextLeases(output);
 }
 
 export async function readTreehouseLeases(cwd: string, timeoutMs?: number): Promise<TreehouseLease[]> {
@@ -74,5 +117,5 @@ export async function readTreehouseLeases(cwd: string, timeoutMs?: number): Prom
   const contract = treehouseStatusContract(version.stdout);
   const status = await run(treehouseStatusArgs(contract));
   if (!processSucceeded(status)) throw new Error('Treehouse status could not be read without mutation.');
-  return parseTreehouseLeases(status.stdout, contract);
+  return parseTreehouseLeases(status, contract);
 }

@@ -1186,28 +1186,26 @@ function Resolve-TreehouseLeasedPath([string]$Reported) {
   return [System.IO.Path]::GetFullPath($reportedPath)
 }
 
+function Get-TreehousePoolStatuses {
+  return @('available', 'dirty', 'in-use', 'leased', "you're here", 'damaged', 'unverified')
+}
+
+function Assert-TreehousePoolStatus([string]$Status) {
+  if ((Get-TreehousePoolStatuses) -notcontains $Status) { throw "Treehouse status reported unaudited pool status '$Status'." }
+  return $Status
+}
+
 function Get-TreehouseLeasedPathsFromJson([string]$StatusText) {
   $leases = @{}
-  $lines = @($StatusText -split '\r?\n')
-  $start = -1
-  for ($index = 0; $index -lt $lines.Count; $index++) {
-    if ($lines[$index].TrimStart().StartsWith('[')) { $start = $index; break }
-  }
-  if ($start -lt 0) { throw 'Treehouse status --json did not emit a JSON array.' }
-  try {
-    $parsed = ($lines[$start..($lines.Count - 1)] -join "`n") | ConvertFrom-Json
-  }
-  catch {
-    throw "Treehouse status --json was unparseable: $($_.Exception.Message)"
-  }
-  if (($parsed -is [string]) -or (($null -ne $parsed) -and -not ($parsed -is [System.Collections.IEnumerable]))) {
-    throw 'Treehouse status --json did not emit a JSON array.'
-  }
-  foreach ($entry in @($parsed | Where-Object { $null -ne $_ })) {
+  $payload = ([string]$StatusText).Trim()
+  if (-not $payload.StartsWith('[')) { throw 'Treehouse status --json did not emit a JSON array.' }
+  try { $entries = @($payload | ConvertFrom-Json) }
+  catch { throw "Treehouse status --json was unparseable: $($_.Exception.Message)" }
+  foreach ($entry in @($entries | Where-Object { $null -ne $_ })) {
     if (-not $entry.PSObject.Properties['path'] -or -not $entry.PSObject.Properties['status']) {
       throw 'Treehouse status --json contained an entry without an exact path and status.'
     }
-    if ([string]$entry.status -ne 'leased') { continue }
+    if ((Assert-TreehousePoolStatus ([string]$entry.status)) -ne 'leased') { continue }
     $holder = ([string]$entry.lease_holder).Trim()
     if (-not $holder) { throw 'Treehouse status --json reported a leased entry without an exact holder.' }
     $leases[(Resolve-TreehouseLeasedPath $entry.path).ToLowerInvariant()] = $holder
@@ -1215,23 +1213,39 @@ function Get-TreehouseLeasedPathsFromJson([string]$StatusText) {
   return $leases
 }
 
-function Get-TreehouseLeasedPathsFromText([string]$StatusText) {
+function Get-TreehouseLeasedPathsFromText([string]$StatusText, [string]$StderrText) {
   $leases = @{}
-  foreach ($line in @($StatusText -split '\r?\n')) {
-    if ($line -notmatch '\bleased\b') { continue }
-    $match = [regex]::Match($line, '^\s*\d+\s+leased\s+(\S.*?)\s+\(held by ([^)]+)\)\s*$')
-    $holder = if ($match.Success) { $match.Groups[2].Value.Trim() } else { '' }
-    if (-not $match.Success -or -not $holder) {
+  $rows = @($StatusText -split '\r?\n' | Where-Object { $_.Trim() -ne '' })
+  if ($rows.Count -eq 0) {
+    if (([string]$StderrText).IndexOf('No worktrees in pool.') -lt 0) {
+      throw 'Treehouse status reported no pool rows without the audited empty-pool message.'
+    }
+    return $leases
+  }
+  $slotSeen = $false
+  foreach ($row in $rows) {
+    $columns = [regex]::Match($row, '^\s*\d+\s+(' + ((Get-TreehousePoolStatuses) -join '|') + ')\s+(\S.*)$')
+    if (-not $columns.Success) {
+      if ((-not $slotSeen) -or ($row -notmatch '^\s{2,}\S')) {
+        throw 'Treehouse status reported a line that is neither an audited pool row nor indented slot detail.'
+      }
+      continue
+    }
+    $slotSeen = $true
+    if ($columns.Groups[1].Value -ne 'leased') { continue }
+    $leased = [regex]::Match($columns.Groups[2].Value, '^(\S.*?)\s+\(held by ([^)]+)\)\s*$')
+    $holder = if ($leased.Success) { $leased.Groups[2].Value.Trim() } else { '' }
+    if (-not $leased.Success -or -not $holder) {
       throw 'Treehouse status reported a leased entry without an exact path and holder.'
     }
-    $leases[(Resolve-TreehouseLeasedPath $match.Groups[1].Value).ToLowerInvariant()] = $holder
+    $leases[(Resolve-TreehouseLeasedPath $leased.Groups[1].Value).ToLowerInvariant()] = $holder
   }
   return $leases
 }
 
-function Get-TreehouseLeasedPaths([string]$StatusText, [string]$Contract) {
+function Get-TreehouseLeasedPaths([string]$StatusText, [string]$StderrText, [string]$Contract) {
   if ($Contract -eq 'json') { return Get-TreehouseLeasedPathsFromJson $StatusText }
-  return Get-TreehouseLeasedPathsFromText $StatusText
+  return Get-TreehouseLeasedPathsFromText $StatusText $StderrText
 }
 
 function Read-TreehouseLeasedPaths([string]$Executable, [string]$WorkingDirectory, [int]$TimeoutMilliseconds) {
@@ -1254,7 +1268,7 @@ function Read-TreehouseLeasedPaths([string]$Executable, [string]$WorkingDirector
       message = ("Treehouse status failed from '$WorkingDirectory': " + (($status.Stderr + ' ' + $status.Stdout).Trim()))
     }
   }
-  try { return @{ ok = $true; leases = (Get-TreehouseLeasedPaths $status.Stdout $contract) } }
+  try { return @{ ok = $true; leases = (Get-TreehouseLeasedPaths $status.Stdout $status.Stderr $contract) } }
   catch { return @{ ok = $false; code = 'invalid_treehouse_status'; message = $_.Exception.Message } }
 }
 
