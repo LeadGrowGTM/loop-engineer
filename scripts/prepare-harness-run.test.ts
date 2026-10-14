@@ -1579,49 +1579,50 @@ describe('prepare-harness-run CLI', () => {
     });
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
-  test('typed status pools of zero, one and many trees each reach the pre-existing lease set', () => {
-    const leasedEntry = 'ConvertTo-Json -InputObject ([pscustomobject]@{ path = $env:TREEHOUSE_LEASE; status = "leased"; lease_holder = "prior-task" }) -Compress';
-    const availableEntry = 'ConvertTo-Json -InputObject ([pscustomobject]@{ path = "/pool/unrelated"; status = "available" }) -Compress';
-    for (const probe of [
-      { statusBody: ['[Console]::Out.WriteLine("[]")', 'exit 0'], preexisting: false },
-      { statusBody: [`[Console]::Out.WriteLine("[" + (${leasedEntry}) + "]")`, 'exit 0'], preexisting: true },
+  const leasedEntry = 'ConvertTo-Json -InputObject ([pscustomobject]@{ path = $env:TREEHOUSE_LEASE; status = "leased"; lease_holder = "prior-task" }) -Compress';
+  const availableEntry = 'ConvertTo-Json -InputObject ([pscustomobject]@{ path = "/pool/unrelated"; status = "available" }) -Compress';
+  // One prepare invocation per case, so each stays within the measured single-preparation bound.
+  test.each(
+    [
+      { trees: 'zero', statusBody: ['[Console]::Out.WriteLine("[]")', 'exit 0'], preexisting: false },
+      { trees: 'one', statusBody: [`[Console]::Out.WriteLine("[" + (${leasedEntry}) + "]")`, 'exit 0'], preexisting: true },
       {
+        trees: 'many',
         statusBody: [
           `[Console]::Out.WriteLine("[" + (${availableEntry}) + "," + (${leasedEntry}) + "]")`,
           'exit 0',
         ],
         preexisting: true,
       },
-    ]) {
-      for (const powershell of JSON_NORMALIZATION_RUNTIMES) {
-        const { workspace, repo } = createFeatureRepo();
-        const pool = configureCanonicalPool(repo);
-        const leasePath = join(pool, 'slot-1', 'repo');
-        const treehouse = fakeTreehouse(repo, probe.statusBody, undefined, 'main', leasePath);
+    ].flatMap((probe) => JSON_NORMALIZATION_RUNTIMES.map((powershell) => ({ ...probe, powershell }))),
+  )('typed status pool of $trees trees reaches the pre-existing lease set under $powershell', (probe) => {
+    const { workspace, repo } = createFeatureRepo();
+    const pool = configureCanonicalPool(repo);
+    const leasePath = join(pool, 'slot-1', 'repo');
+    const treehouse = fakeTreehouse(repo, probe.statusBody, undefined, 'main', leasePath);
 
-        const result = invokePrepareCommand(
-          repo,
-          workspace,
-          ['-PrepareIsolation', '-LeaseHolder', 'canonical-task', '-RunBranch', 'wt/canonical-task', '-RequiredPoolRoot', pool],
-          treehouse.env,
-          powershell,
-        );
+    const result = invokePrepareCommand(
+      repo,
+      workspace,
+      ['-PrepareIsolation', '-LeaseHolder', 'canonical-task', '-RunBranch', 'wt/canonical-task', '-RequiredPoolRoot', pool],
+      treehouse.env,
+      probe.powershell,
+    );
 
-        const readiness = JSON.parse(result.stdout.toString());
-        if (probe.preexisting) {
-          expect(result.exitCode).not.toBe(0);
-          expect(readiness.errorCodes).toContain('invalid_lease');
-          expect(readiness.errors.join(' ')).toContain('already leased before this invocation');
-        } else {
-          expect(result.exitCode).toBe(0);
-          expect(readiness).toMatchObject({ status: 'READY', leasePath, isolationPrepared: true });
-        }
-      }
+    const readiness = JSON.parse(result.stdout.toString());
+    if (probe.preexisting) {
+      expect(result.exitCode).not.toBe(0);
+      expect(readiness.errorCodes).toContain('invalid_lease');
+      expect(readiness.errors.join(' ')).toContain('already leased before this invocation');
+    } else {
+      expect(result.exitCode).toBe(0);
+      expect(readiness).toMatchObject({ status: 'READY', leasePath, isolationPrepared: true });
     }
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
-  test('status output that does not match the probed contract fails closed before any lease', () => {
-    for (const probe of [
+  // One prepare invocation per case, so each stays within the measured single-preparation bound.
+  test.each(
+    [
       { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("1 leased /pool/slot-1 (held by prior-task)")', 'exit 0'] },
       { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("[{""status"": ""leased""}]")', 'exit 0'] },
       { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("[{""path"": ""/pool/slot-1"", ""status"": ""frozen""}]")', 'exit 0'] },
@@ -1641,19 +1642,19 @@ describe('prepare-harness-run CLI', () => {
       { version: 'v1.8.0', statusBody: ['[Console]::Out.WriteLine("1     frozen       /pool/slot-1")', 'exit 0'] },
       { version: 'v1.8.0', statusBody: ['exit 0'] },
       { version: 'v2.0.0', statusBody: ['[Console]::Out.WriteLine("[]")', 'exit 0'] },
-    ]) {
-      const { workspace, repo } = createFeatureRepo();
-      const treehouse = fakeTreehouse(repo, probe.statusBody, undefined, 'HEAD', undefined, undefined, probe.version);
+    ],
+  )('status output %# that does not match the probed $version contract fails closed before any lease', (probe) => {
+    const { workspace, repo } = createFeatureRepo();
+    const treehouse = fakeTreehouse(repo, probe.statusBody, undefined, 'HEAD', undefined, undefined, probe.version);
 
-      const result = invokePrepareCommand(repo, workspace, ['-PrepareIsolation', '-Parallel'], treehouse.env);
+    const result = invokePrepareCommand(repo, workspace, ['-PrepareIsolation', '-Parallel'], treehouse.env);
 
-      expect(result.exitCode).not.toBe(0);
-      const readiness = JSON.parse(result.stdout.toString());
-      expect(readiness.errorCodes).toContain('invalid_treehouse_status');
-      const calls = readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/);
-      expect(calls).not.toContain('get');
-      expect(calls[0]).toBe('--version');
-    }
+    expect(result.exitCode).not.toBe(0);
+    const readiness = JSON.parse(result.stdout.toString());
+    expect(readiness.errorCodes).toContain('invalid_treehouse_status');
+    const calls = readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/);
+    expect(calls).not.toContain('get');
+    expect(calls[0]).toBe('--version');
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
   test('canonical preparation attaches the exact requested task branch beneath the required pool', () => {
