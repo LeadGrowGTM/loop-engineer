@@ -21,8 +21,8 @@ commit target.
 
 The coordinator must commit the exact approved Planner-produced BRIEF.md, PLAN.md
 and issue slices before invoking Maker, then supply fresh lifecycle validation.
-If those planning files are still dirty or untracked, stop before source edits and
-request the task-scoped planning checkpoint. Do not treat them as pre-existing
+If those planning files are still dirty or untracked, stop before modifying any
+file and request the task-scoped planning checkpoint. Do not treat them as pre-existing
 work that this phase may silently adopt or bypass the protected-work guard.
 
 ## Process
@@ -36,7 +36,7 @@ work that this phase may silently adopt or bypass the protected-work guard.
    `references/issue-tracker.md` for the schema); otherwise use the PLAN.md `## Phases` fallback.
 3. One approved ID equals one phase, one slice, and one commit. Never combine IDs or add newly discovered scope without a new approved proposal.
 4. **Reasoning before code** - read `references/first-principles-generation.md`. For non-trivial phase work, state what you will do, why, and the confirming signal before executing.
-5. `bun "$RUN_WORKTREE_PATH/scripts/guard-protected-work.ts" capture` must capture the branch, HEAD, `git status --short`, staged paths, and protected diff hashes before source edits for every slice. Allocate a unique baseline path outside `RUN_WORKTREE_PATH`, retain its absolute path, and redirect the guard's stdout there:
+5. `bun "$RUN_WORKTREE_PATH/scripts/guard-protected-work.ts" capture` must capture the branch, HEAD, `git status --short`, staged paths, and protected diff hashes before source edits for every slice. Capture is the first Bash call of the slice and must precede every Write and Edit, including the slice `Status:` flip and any PROGRESS.md bookkeeping; a status or bookkeeping edit written before capture makes the tree dirty and the guard will correctly block the commit. Allocate a unique baseline path outside `RUN_WORKTREE_PATH`, retain its absolute path, and redirect the guard's stdout there:
    ```bash
    PROTECTED_WORK_BASELINE="$(mktemp "${TMPDIR:-/tmp}/harness-protected-work.XXXXXX.json")"
    printf '%s\n' "$PROTECTED_WORK_BASELINE"
@@ -47,8 +47,8 @@ work that this phase may silently adopt or bypass the protected-work guard.
      --allowed-path "<exact goal-local bookkeeping path>" \
      > "$PROTECTED_WORK_BASELINE"
    ```
-   Pass each exact allowed file as its own `--allowed-path` argument. Pass any HARNESS-protected path beyond the defaults as its own `--protected-path` argument. Do not use directories, globs, ID prefixes, or a workspace-root guard path. The versioned JSON records the repo root, branch, HEAD, `git status --short`, staged paths, and protected diff hashes for `.claude/agent-context/snapshot.md`, `scripts/launch-gnhf.ps1`, and any extra protected paths. A nonzero capture exit or invalid JSON blocks the slice before edits.
-6. Work phases in order. Before a slice, set its `Status:` to `in-progress`. Do not start it until every number in `Blocked by:` is `Status: done`, confirmed by re-reading each prerequisite slice on disk.
+   Pass each exact allowed file as its own `--allowed-path` argument. Pass any HARNESS-protected path beyond the defaults as its own `--protected-path` argument. Do not use directories, globs, ID prefixes, or a workspace-root guard path. The versioned JSON records the repo root, branch, HEAD, `git status --short`, staged paths, and protected diff hashes for `.claude/agent-context/snapshot.md`, `scripts/launch-gnhf.ps1`, and any extra protected paths. A nonzero capture exit or invalid JSON blocks the slice before edits. Capture exactly once per slice: never re-run it after an edit to absorb that edit into a new baseline.
+6. Work phases in order. Once that slice's capture has succeeded, set its `Status:` to `in-progress`. Do not start it until every number in `Blocked by:` is `Status: done`, confirmed by re-reading each prerequisite slice on disk.
 7. For C03-like protected-dirty policy, avoid broad staging and destructive operations. `git add -A`, `git add .`, `git stash`, `git reset`, `git checkout`, overwrite, and equivalent broad/destructive operations are forbidden. The guard is read-only and never stages, restores, stashes, resets, checks out, cleans, forces, or edits.
 8. After implementation, run the mechanical gate. Only after it passes, mark the slice `done` and append proof to PROGRESS.md before the commit. Stage only the current ID's approved paths plus matching goal-local bookkeeping, verify that staged set, then commit from `RUN_WORKTREE_PATH`.
 9. Before every commit, recover the exact baseline path printed in step 5 and run:
