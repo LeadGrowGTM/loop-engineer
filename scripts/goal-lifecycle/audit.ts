@@ -8,15 +8,10 @@ import {
   type LifecycleResult,
 } from './contracts';
 import { pathInside, resolveRepository, runGit, samePath } from './repository';
-import { processSucceeded, runProcess } from './process';
+import { processSucceeded } from './process';
+import { readTreehouseLeases } from './treehouse';
 
 const OPERATION = 'audit';
-const TREEHOUSE_STATUS = [
-  '$command = Get-Command treehouse -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1',
-  'if (-not $command -or -not $command.Source) { exit 127 }',
-  '& $command.Source status',
-  'exit $LASTEXITCODE',
-].join('; ');
 
 export interface AuditLifecycleInput { repo: string; }
 export interface AuditRow {
@@ -52,14 +47,12 @@ function auditError(message: string): LifecycleCommandError {
 }
 
 async function treehouseLeases(repositoryRoot: string): Promise<Set<string>> {
-  const result = await runProcess('powershell', ['-NoProfile', '-NonInteractive', '-Command', TREEHOUSE_STATUS], { cwd: repositoryRoot });
-  if (!processSucceeded(result)) throw auditError('Treehouse status could not be read without mutation.');
-  const leases = new Set<string>();
-  for (const line of result.stdout.split(/\r?\n/)) {
-    const match = /^\s*\d+\s+leased\s+(.+?)(?:\s+\[[^\]\r\n]+\])?\s+\(held by [^)]+\)\s*$/.exec(line);
-    if (match) leases.add(resolve(match[1]).toLowerCase());
+  try {
+    const leases = await readTreehouseLeases(repositoryRoot);
+    return new Set(leases.map((lease) => resolve(lease.path).toLowerCase()));
+  } catch {
+    throw auditError('Treehouse status could not be read without mutation.');
   }
-  return leases;
 }
 
 function quotePowerShell(path: string): string {

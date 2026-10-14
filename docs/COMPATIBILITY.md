@@ -54,15 +54,36 @@ touched. Run with `LOOP_ENGINEER_LIVE_CLI_TEST=1 bun test scripts/live-lifecycle
 See [DEPENDENCIES.md](DEPENDENCIES.md) for the CLI-version contract and the
 [setup guide](../skills/setup-harness/SKILL.md) for pool creation and generated
 backlog handling. Restart validation reads the authoritative task from the source
-repository rather than an independently copied worktree backlog. Treehouse status
-parsing accepts the newer optional branch annotation while preserving exact lease
-path and holder checks.
+repository rather than an independently copied worktree backlog. Lease recognition
+consumes the typed `treehouse status --json` records (`path`, `status`,
+`lease_holder`) at one shared boundary, so a text-format change cannot silently
+drop a lease; output that is not readable as lease records fails closed.
+
+Deterministic `bun test` runs on `ubuntu-24.04` and `windows-latest` under `pwsh`
+through `.github/workflows/tests.yml`, which executes the Windows-specific tests
+that cannot run on a Linux host.
 
 Claude Code 2.1.299 installed the published v1.4.0 marketplace into an isolated
 config directory and initialized all seven agents with the expected model tiers
 and tool allowlists. Both skills and the benchmarking command appeared in session
-discovery. Native model execution was blocked by the account's weekly usage limit,
-so initialization does not prove prompt following or a complete agent loop.
+discovery. That install evidence is historical and belongs to v1.4.0; the manifest
+version here is the prospective 1.4.1 repair of this public-compatibility release,
+which invalidates the release cache and has not itself been published or installed.
+
+### Native execution evidence, this environment only
+
+Native Claude execution ran after the account quota reset: a Sonnet model call
+succeeded, native Planner produced real planning artifacts, a Haiku Maker phase
+created code and tests and landed guarded commit `ec7f299`, a real Prover returned
+a works verdict (`42`, `-6`, `0`, and `abc` exiting 2), and an independent Checker
+returned PASS with file:line citations. The same Maker run reproduced a bookkeeping
+ordering defect — the issue status edit preceded baseline capture and guard validate
+correctly blocked the overlapping hunk — which is fixed in
+`.claude/agents/harness-maker.md`. This is scoped evidence from one provisioned
+environment, not a claim about every environment or account.
+
+A hosted cloud run remains unproven: the first hosted test timed out and a
+test-bundle schema omission was repaired, but no hosted result has completed yet.
 
 Restart validation accepts committed progress only when the recorded source is an
 ancestor of the current task HEAD; acquisition still requires the exact source

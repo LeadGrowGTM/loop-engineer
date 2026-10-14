@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { decodeTaskDetail } from './goal-lifecycle/tasks-axi';
+import { parseTreehouseLeases } from './goal-lifecycle/treehouse';
 
 // Explicit opt-in: real installed CLI tools, disposable repository and HOME; no model calls.
 test.skipIf(process.env.LOOP_ENGINEER_LIVE_CLI_TEST !== '1')('real CLI setup, start, restart, blocked retention, success and exact lease return', async () => {
@@ -67,13 +68,13 @@ test.skipIf(process.env.LOOP_ENGINEER_LIVE_CLI_TEST !== '1')('real CLI setup, st
   const blocked = await lifecycle(['finish', '--run', run, '--outcome', 'blocked'], cwd);
   expect(blocked.body.ok).toBe(true);
   const held = await command(['treehouse', 'status', '--json']);
-  expect(JSON.parse(held.stdout).some((entry: any) => entry.path === cwd && entry.lease_holder === 'live-proof' && entry.status === 'leased')).toBe(true);
+  expect(parseTreehouseLeases(held.stdout).some((lease) => lease.path === cwd && lease.holder === 'live-proof')).toBe(true);
   await git(['add', '.harness'], cwd); await git(['commit', '-m', 'recovery fixture'], cwd);
   expect((await lifecycle(['finish', '--run', run], cwd)).body.ok).toBe(true);
   const task = await command(['tasks-axi', 'show', 'live-proof', '--full', '--file', join(repo, '.claude/backlog.md')]);
   expect(decodeTaskDetail(task.stdout).state).toBe('done');
   const pool = await command(['treehouse', 'status', '--json']);
-  expect(JSON.parse(pool.stdout).some((entry: any) => entry.path === cwd && entry.status === 'leased')).toBe(false);
+  expect(parseTreehouseLeases(pool.stdout).some((lease) => lease.path === cwd)).toBe(false);
   expect(await git(['branch', '--show-current'])).toBe('source-proof');
   console.log(`REAL_CLI_EVIDENCE ${root}`);
 }, 90_000);

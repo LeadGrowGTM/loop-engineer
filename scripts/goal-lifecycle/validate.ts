@@ -12,14 +12,9 @@ import { readRunManifest, writeRunManifest, type RunManifestV1 } from './manifes
 import { processSucceeded, runProcess } from './process';
 import { assertNoReparsePath, pathInside, resolveRepository, samePath, verifyManagedWorktree } from './repository';
 import { decodeTaskDetail } from './tasks-axi';
+import { readTreehouseLeases, type TreehouseLease } from './treehouse';
 
 const OPERATION = 'validate';
-const TREEHOUSE_STATUS_PROBE = [
-  '$command = Get-Command treehouse -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1',
-  'if (-not $command -or -not $command.Source) { exit 127 }',
-  '& $command.Source status',
-  'exit $LASTEXITCODE',
-].join('; ');
 
 export interface ValidateLifecycleInput {
   runPath: string;
@@ -108,20 +103,17 @@ async function assertRepositoryAndWorktree(run: RunManifestV1): Promise<void> {
 }
 
 async function assertTreehouseLease(run: RunManifestV1): Promise<void> {
-  const result = await runProcess(
-    'powershell',
-    ['-NoProfile', '-NonInteractive', '-Command', TREEHOUSE_STATUS_PROBE],
-    { cwd: run.worktreePath, timeoutMs: 10_000 },
-  );
-  if (!processSucceeded(result)) {
+  let leases: TreehouseLease[];
+  try {
+    leases = await readTreehouseLeases(run.worktreePath, 10_000);
+  } catch {
     throw new LifecycleCommandError('LEASE_IDENTITY_MISMATCH', 'Treehouse status could not verify the persisted lease holder.');
   }
   const expected = realpathSync.native(run.worktreePath);
-  const matching = result.stdout.split(/\r?\n/).some((line) => {
-    const match = /^\s*\d+\s+leased\s+(.+?)(?:\s+\[[^\]\r\n]+\])?\s+\(held by ([^)]+)\)\s*$/.exec(line);
-    if (!match || match[2] !== run.leaseHolder) return false;
+  const matching = leases.some((lease) => {
+    if (lease.holder !== run.leaseHolder) return false;
     try {
-      return samePath(realpathSync.native(match[1]), expected);
+      return samePath(realpathSync.native(lease.path), expected);
     } catch {
       return false;
     }

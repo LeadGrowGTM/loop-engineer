@@ -615,7 +615,7 @@ function invokePrepare(repo: string, workspace: string, extraArgs: string[] = []
 
 function fakeTreehouse(
   repo: string,
-  statusBody: string[] = ['exit 0'],
+  statusBody: string[] = ['[Console]::Out.WriteLine("[]")', 'exit 0'],
   getBody: string[] = ['[Console]::Out.WriteLine($env:TREEHOUSE_LEASE)', 'exit 0'],
   startRef = 'HEAD',
   leasePath?: string,
@@ -1510,7 +1510,7 @@ describe('prepare-harness-run CLI', () => {
   test('malformed output never returns a pre-existing same-repository lease', () => {
     const { workspace, repo } = createFeatureRepo();
     const statusBody = [
-      '[Console]::Out.WriteLine("1     leased       $env:TREEHOUSE_LEASE  (held by prior-task)")',
+      '[Console]::Out.WriteLine("[" + (ConvertTo-Json -InputObject ([pscustomobject]@{ path = $env:TREEHOUSE_LEASE; status = "leased"; lease_holder = "prior-task" }) -Compress) + "]")',
       'exit 0',
     ];
     const treehouse = fakeTreehouse(repo, statusBody, [
@@ -1699,7 +1699,7 @@ describe('prepare-harness-run CLI', () => {
     const { workspace, repo } = createFeatureRepo();
     run(['git', 'branch', 'harness'], repo);
     const statusBody = [
-      '[Console]::Out.WriteLine("1     leased       $env:TREEHOUSE_LEASE  (held by prior-task)")',
+      '[Console]::Out.WriteLine("[" + (ConvertTo-Json -InputObject ([pscustomobject]@{ path = $env:TREEHOUSE_LEASE; status = "leased"; lease_holder = "prior-task" }) -Compress) + "]")',
       'exit 0',
     ];
     const treehouse = fakeTreehouse(repo, statusBody);
@@ -1718,7 +1718,7 @@ describe('prepare-harness-run CLI', () => {
     const pool = configureCanonicalPool(repo);
     const leasePath = join(pool, 'pre-existing', 'repo');
     const statusBody = [
-      '[Console]::Out.WriteLine("1     leased       $env:TREEHOUSE_LEASE  (held by prior-task)")',
+      '[Console]::Out.WriteLine("[" + (ConvertTo-Json -InputObject ([pscustomobject]@{ path = $env:TREEHOUSE_LEASE; status = "leased"; lease_holder = "prior-task" }) -Compress) + "]")',
       'exit 0',
     ];
     const treehouse = fakeTreehouse(repo, statusBody, undefined, 'HEAD', leasePath);
