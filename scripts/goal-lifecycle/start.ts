@@ -216,7 +216,7 @@ function readinessFailure(readiness: ReadinessResult, processResult: ProcessResu
   if (codes.includes('invalid_lease') && /different repository|Git identity|common/i.test(detail)) {
     return new LifecycleCommandError('LEASE_IDENTITY_MISMATCH', detail);
   }
-  if (codes.includes('invalid_treehouse_output') || codes.includes('treehouse_lease_failed')) {
+  if (codes.includes('invalid_treehouse_output') || codes.includes('invalid_treehouse_status') || codes.includes('treehouse_lease_failed')) {
     return new LifecycleCommandError('TREEHOUSE_LEASE_FAILED', detail);
   }
   return new LifecycleCommandError('REPOSITORY_NOT_READY', detail, ['Resolve the readiness errors and retry lifecycle start.']);

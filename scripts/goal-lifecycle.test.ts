@@ -6,6 +6,7 @@ import { readRunManifest, writeRunManifest } from "./goal-lifecycle/manifest";
 import { runProcess } from "./goal-lifecycle/process";
 import { lifecycleFailure } from './goal-lifecycle/contracts';
 import { decodeTaskDetail } from './goal-lifecycle/tasks-axi';
+import { samePath } from './goal-lifecycle/repository';
 
 const CLI_PATH = join(import.meta.dir, "goal-lifecycle.ts");
 setDefaultTimeout(180_000);
@@ -58,6 +59,7 @@ interface LifecycleFixtureOptions {
   taskTitle?: string;
   tasksBroken?: boolean;
   treehouseMode?: 'valid' | 'malformed' | 'sibling' | 'foreign' | 'reparse';
+  treehouseContract?: 'text' | 'json';
   nested?: boolean;
 }
 
@@ -150,7 +152,7 @@ function createTreehouseFake(
       '}',
       '[System.IO.File]::AppendAllText($env:TREEHOUSE_CALLS, (($args -join " ") + "`r`n"))',
       '$command = $args[0]',
-      'if ($command -eq "--version") { [Console]::Out.WriteLine("v1.8.0"); exit 0 }',
+      'if ($command -eq "--version") { [Console]::Out.WriteLine($(if ($env:TREEHOUSE_CONTRACT -eq "text") { "v1.8.0" } else { "v3.1.0" })); exit 0 }',
       'if ($command -eq "get") {',
       '  [Console]::Out.WriteLine($env:TREEHOUSE_LEASE)',
       '  if ($env:TREEHOUSE_MODE -eq "malformed") { [Console]::Out.WriteLine("unexpected banner") }',
@@ -158,6 +160,10 @@ function createTreehouseFake(
       '}',
       'if ($command -eq "return") { exit 0 }',
       'if ($command -eq "status") {',
+      '  if ($env:TREEHOUSE_CONTRACT -eq "text") {',
+      '    if ($env:TREEHOUSE_STATUS_MODE -eq "validate") { [Console]::Out.WriteLine("  1  leased  " + $env:TREEHOUSE_LEASE + "  (held by " + $env:TREEHOUSE_HOLDER + ")") } else { [Console]::Out.WriteLine("treehouse pool .worktrees/ (0 trees)") }',
+      '    exit 0',
+      '  }',
       '  $entries = @()',
       '  if ($env:TREEHOUSE_STATUS_MODE -eq "validate") { $entries += [pscustomobject]@{ path = $env:TREEHOUSE_LEASE; status = "leased"; lease_holder = $env:TREEHOUSE_HOLDER } }',
       '  [Console]::Out.WriteLine("[" + ((@($entries | ForEach-Object { ConvertTo-Json -InputObject $_ -Compress })) -join ",") + "]")',
@@ -209,6 +215,7 @@ function createLifecycleFixture(options: LifecycleFixtureOptions = {}) {
     TREEHOUSE_LEASE: treehouse.lease,
     TREEHOUSE_MODE: options.treehouseMode ?? 'valid',
     TREEHOUSE_STATUS_MODE: 'start',
+    TREEHOUSE_CONTRACT: options.treehouseContract ?? 'json',
     TREEHOUSE_HOLDER: taskId,
     TREEHOUSE_RETURN_FAIL: '0',
     TREEHOUSE_RETURNED_FILE: treehouse.returned,
@@ -394,7 +401,25 @@ test('audit classifies registered worktrees without mutating files, refs, or man
   expect(runGit(['worktree', 'list', '--porcelain'], fixture.repo)).toBe(before.worktrees);
   expect(runGit(['show-ref'], fixture.repo)).toBe(before.refs);
   expect(existsSync(fixture.tasks.calls) ? readFileSync(fixture.tasks.calls, 'utf8') : '').toBe(before.tasks);
-  expect(existsSync(fixture.treehouse.calls) ? readFileSync(fixture.treehouse.calls, 'utf8') : '').toBe(before.treehouse + 'status --json\r\n');
+  expect(existsSync(fixture.treehouse.calls) ? readFileSync(fixture.treehouse.calls, 'utf8') : '').toBe(before.treehouse + '--version\r\nstatus --json\r\n');
+});
+
+test('audit reads leases from the tabular status contract on the older audited Treehouse', () => {
+  const fixture = createLifecycleFixture({ treehouseContract: 'text' });
+  const started = startFixture(fixture);
+  expect(started.exitCode).toBe(0);
+  fixture.env.TREEHOUSE_STATUS_MODE = 'validate';
+  const callsBefore = readFileSync(fixture.treehouse.calls, 'utf8');
+
+  const result = invokeLifecycle(['audit', '--repo', fixture.repo], fixture.env, fixture.repo);
+
+  expect(result.exitCode).toBe(0);
+  const rows = result.json.data.rows as Array<{ path: string; manager: string; classification: string }>;
+  expect(rows.find((row) => samePath(row.path, fixture.treehouse.lease))).toMatchObject({
+    manager: 'treehouse',
+    classification: 'managed',
+  });
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(callsBefore + '--version\r\nstatus\r\n');
 });
 
 test('finish retains a blocked lease with durable recovery', () => {
@@ -484,7 +509,7 @@ test('audit emits every legacy classification without manager or repository muta
   expect(runGit(['show-ref'], fixture.repo)).toBe(before.refs);
   expect([external, dirty, unreachable, sibling].map((path) => runGit(['status', '--porcelain=v1', '--untracked-files=all'], path)).join('|')).toBe(before.files);
   expect(existsSync(fixture.tasks.calls) ? readFileSync(fixture.tasks.calls, 'utf8') : '').toBe(before.tasks);
-  expect(existsSync(fixture.treehouse.calls) ? readFileSync(fixture.treehouse.calls, 'utf8') : '').toBe(before.treehouse + 'status --json\r\n');
+  expect(existsSync(fixture.treehouse.calls) ? readFileSync(fixture.treehouse.calls, 'utf8') : '').toBe(before.treehouse + '--version\r\nstatus --json\r\n');
 });
 
 test('finish reconciles task completion after a successful return without returning twice', () => {
@@ -498,7 +523,7 @@ test('finish reconciles task completion after a successful return without return
   fixture.env.TASKS_DONE_FAIL = '0';
   const retry = finishFixture(fixture, completed.manifestPath, { pr: 'https://example.invalid/pr/2' });
   expect(retry.exitCode).toBe(0);
-  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(callsBefore + 'status --json\r\n');
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(callsBefore + '--version\r\nstatus --json\r\n');
   expect(readFileSync(fixture.tasks.calls, 'utf8')).toContain('done canonical-goal --pr https://example.invalid/pr/2');
   const idempotent = finishFixture(fixture, completed.manifestPath, { pr: 'https://example.invalid/pr/2' });
   expect(idempotent.exitCode).toBe(0);
@@ -545,7 +570,7 @@ test('finish retry uses committed branch evidence after returned worktree artifa
   const beforeReturns = readFileSync(fixture.treehouse.calls, 'utf8');
   const retry = invokeLifecycle(['finish', '--run', completed.manifestPath], fixture.env, fixture.repo);
   expect(retry.exitCode).toBe(0);
-  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(beforeReturns + 'status --json\r\n');
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(beforeReturns + '--version\r\nstatus --json\r\n');
   expect(readFileSync(fixture.tasks.details, 'utf8')).toContain(fixture.repo + '|done canonical-goal');
 });
 
@@ -647,7 +672,7 @@ test('finish rejects a same-slug alternate RUN before status, return, or task co
   const beforeTasks = readFileSync(fixture.tasks.calls, 'utf8');
   const result = invokeLifecycle(['finish', '--run', alternatePath], fixture.env, fixture.repo);
   expect(result.json).toMatchObject({ code: 'LEASE_IDENTITY_MISMATCH' });
-  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(beforeTreehouse + 'status --json\r\n');
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(beforeTreehouse + '--version\r\nstatus --json\r\n');
   expect(readFileSync(fixture.tasks.calls, 'utf8')).toBe(beforeTasks + 'show canonical-goal --full\n');
 });
 
@@ -839,6 +864,7 @@ test('lifecycle start creates and starts one canonical task then persists the ex
   const treehouseCalls = readFileSync(fixture.treehouse.calls, 'utf8').trim().split(/\r?\n/);
   expect(treehouseCalls).toEqual([
     '--version',
+    '--version',
     'status --json',
     `get --lease --lease-holder ${fixture.taskId}`,
   ]);
@@ -921,6 +947,7 @@ test('lifecycle start rejects the original sibling worktree regression and retur
   const calls = readFileSync(fixture.treehouse.calls, 'utf8');
   expect(calls.trim().split(/\r?\n/)).toEqual([
     '--version',
+    '--version',
     'status --json',
     `get --lease --lease-holder ${fixture.taskId}`,
     `return ${fixture.treehouse.lease}`,
@@ -942,6 +969,7 @@ test('lifecycle start rejects reparse escapes and foreign Git common directories
   expectSafeRemediation(wrongIdentity.json);
   expect(readFileSync(foreign.treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual([
     '--version',
+    '--version',
     'status --json',
     `get --lease --lease-holder ${foreign.taskId}`,
   ]);
@@ -956,6 +984,7 @@ test('lifecycle start rejects malformed Treehouse output and returns its one ide
   expect(start.json.code).toBe('TREEHOUSE_LEASE_FAILED');
   expectSafeRemediation(start.json);
   expect(readFileSync(fixture.treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual([
+    '--version',
     '--version',
     'status --json',
     `get --lease --lease-holder ${fixture.taskId}`,

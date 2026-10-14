@@ -620,6 +620,7 @@ function fakeTreehouse(
   startRef = 'HEAD',
   leasePath?: string,
   outputLeasePath?: string,
+  version = 'v3.1.0',
 ): {
   env: Record<string, string | undefined>;
   calls: string;
@@ -640,6 +641,7 @@ function fakeTreehouse(
       '$command = $args[0]',
       '[System.IO.File]::AppendAllText($env:TREEHOUSE_CALLS, "$command`r`n")',
       '[System.IO.File]::AppendAllText($env:TREEHOUSE_CWD, "$($PWD.Path)`r`n")',
+      `if ($command -eq "--version") { [Console]::Out.WriteLine("${version}"); exit 0 }`,
       'if ($command -eq "status") {',
       ...statusBody.map((line) => `  ${line}`),
       '}',
@@ -1052,7 +1054,7 @@ describe('prepare-harness-run CLI', () => {
     });
     expect(readFileSync(treehouse.calls, 'utf8')).toContain('status');
     expect(readFileSync(treehouse.calls, 'utf8')).not.toContain('get');
-    expect(readFileSync(treehouse.cwdLog, 'utf8').trim()).toBe(repo);
+    expect(readFileSync(treehouse.cwdLog, 'utf8').trim().split(/\r?\n/)).toEqual([repo, repo]);
   }, TREEHOUSE_STATUS_TEST_TIMEOUT_MS);
 
   windowsTest('Windows PowerShell timeout retains target stderr written before cleanup', () => {
@@ -1413,7 +1415,7 @@ describe('prepare-harness-run CLI', () => {
 
   test('malformed successful lease output returns the identifiable lease', () => {
     const { workspace, repo } = createFeatureRepo();
-    const treehouse = fakeTreehouse(repo, ['exit 0'], [
+    const treehouse = fakeTreehouse(repo, undefined, [
       '[Console]::Out.WriteLine($env:TREEHOUSE_LEASE)',
       '[Console]::Out.WriteLine("unexpected banner")',
       'exit 0',
@@ -1425,7 +1427,7 @@ describe('prepare-harness-run CLI', () => {
     const readiness = JSON.parse(result.stdout.toString());
     expect(readiness.errorCodes).toContain('invalid_treehouse_output');
     expect(readiness.errors.join(' ')).toContain('Lease was returned');
-    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['status', 'get', 'return']);
+    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version', 'status', 'get', 'return']);
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
   test('CheckOnly cannot be combined with isolation preparation', () => {
@@ -1478,7 +1480,7 @@ describe('prepare-harness-run CLI', () => {
     run(['git', 'commit', '-m', 'feature fixture'], repo);
     const sourceBranch = run(['git', 'branch', '--show-current'], repo);
     const sourceHead = run(['git', 'rev-parse', 'HEAD'], repo);
-    const treehouse = fakeTreehouse(repo, ['exit 0'], undefined, 'main');
+    const treehouse = fakeTreehouse(repo, undefined, undefined, 'main');
     expect(run(['git', 'rev-parse', 'HEAD'], treehouse.lease)).not.toBe(sourceHead);
 
     const result = invokePrepareCommand(repo, workspace, ['-PrepareIsolation', '-Parallel'], treehouse.env);
@@ -1504,7 +1506,7 @@ describe('prepare-harness-run CLI', () => {
     expect(run(['git', 'rev-parse', 'HEAD'], repo)).toBe(sourceHead);
     expect(readiness.returnCommand).toContain(treehouse.lease);
     expect(readFileSync(treehouse.calls, 'utf8')).toContain('get');
-    expect(readFileSync(treehouse.cwdLog, 'utf8').trim().split(/\r?\n/)).toEqual([repo, repo]);
+    expect(readFileSync(treehouse.cwdLog, 'utf8').trim().split(/\r?\n/)).toEqual([repo, repo, repo]);
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
   test('malformed output never returns a pre-existing same-repository lease', () => {
@@ -1525,7 +1527,45 @@ describe('prepare-harness-run CLI', () => {
     const readiness = JSON.parse(result.stdout.toString());
     expect(readiness.errorCodes).toContain('invalid_treehouse_output');
     expect(readiness.errors.join(' ')).toContain('already leased before this invocation');
-    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['status', 'get']);
+    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version', 'status', 'get']);
+  }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
+
+  test('the older audited Treehouse reads pre-existing leases from its tabular status', () => {
+    const { workspace, repo } = createFeatureRepo();
+    const statusBody = [
+      '[Console]::Out.WriteLine("  1  leased  " + $env:TREEHOUSE_LEASE + "  (held by prior-task)")',
+      'exit 0',
+    ];
+    const treehouse = fakeTreehouse(repo, statusBody, undefined, 'HEAD', undefined, undefined, 'v1.8.0');
+
+    const result = invokePrepareCommand(repo, workspace, ['-PrepareIsolation', '-Parallel'], treehouse.env);
+
+    expect(result.exitCode).not.toBe(0);
+    const readiness = JSON.parse(result.stdout.toString());
+    expect(readiness.errorCodes).toContain('invalid_treehouse_output');
+    expect(readiness.errors.join(' ')).toContain('already leased before this invocation');
+    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version', 'status', 'get']);
+  }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
+
+  test('status output that does not match the probed contract fails closed before any lease', () => {
+    for (const probe of [
+      { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("1 leased /pool/slot-1 (held by prior-task)")', 'exit 0'] },
+      { version: 'v3.1.0', statusBody: ['[Console]::Out.WriteLine("[{""status"": ""leased""}]")', 'exit 0'] },
+      { version: 'v1.8.0', statusBody: ['[Console]::Out.WriteLine("  1  leased  /pool/slot-1")', 'exit 0'] },
+      { version: 'v2.0.0', statusBody: ['[Console]::Out.WriteLine("[]")', 'exit 0'] },
+    ]) {
+      const { workspace, repo } = createFeatureRepo();
+      const treehouse = fakeTreehouse(repo, probe.statusBody, undefined, 'HEAD', undefined, undefined, probe.version);
+
+      const result = invokePrepareCommand(repo, workspace, ['-PrepareIsolation', '-Parallel'], treehouse.env);
+
+      expect(result.exitCode).not.toBe(0);
+      const readiness = JSON.parse(result.stdout.toString());
+      expect(readiness.errorCodes).toContain('invalid_treehouse_status');
+      const calls = readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/);
+      expect(calls).not.toContain('get');
+      expect(calls[0]).toBe('--version');
+    }
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
   test('canonical preparation attaches the exact requested task branch beneath the required pool', () => {
@@ -1533,7 +1573,7 @@ describe('prepare-harness-run CLI', () => {
     const pool = configureCanonicalPool(repo);
     const sourceHead = run(['git', 'rev-parse', 'HEAD'], repo);
     const leasePath = join(pool, 'slot-1', 'repo');
-    const treehouse = fakeTreehouse(repo, ['exit 0'], undefined, 'main', leasePath);
+    const treehouse = fakeTreehouse(repo, undefined, undefined, 'main', leasePath);
 
     const result = invokePrepareCommand(
       repo,
@@ -1567,7 +1607,7 @@ describe('prepare-harness-run CLI', () => {
     const { workspace, repo } = createFeatureRepo();
     const pool = configureCanonicalPool(repo);
     const siblingLease = join(dirname(repo), 'gtm-orchestrator-funnel-batch');
-    const treehouse = fakeTreehouse(repo, ['exit 0'], undefined, 'HEAD', siblingLease);
+    const treehouse = fakeTreehouse(repo, undefined, undefined, 'HEAD', siblingLease);
 
     const result = invokePrepareCommand(
       repo,
@@ -1588,14 +1628,14 @@ describe('prepare-harness-run CLI', () => {
     const readiness = JSON.parse(result.stdout.toString());
     expect(readiness.errorCodes).toContain('lease_outside_pool');
     expect(readiness.errors.join(' ')).toContain('Lease was returned');
-    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['status', 'get', 'return']);
+    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version', 'status', 'get', 'return']);
     expect(readFileSync(treehouse.calls, 'utf8')).not.toContain('git worktree');
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
   test('required pool rejects traversal before invoking Treehouse', () => {
     const { workspace, repo } = createFeatureRepo();
     const pool = configureCanonicalPool(repo);
-    const treehouse = fakeTreehouse(repo, ['exit 0'], undefined, 'HEAD', join(pool, 'unused'));
+    const treehouse = fakeTreehouse(repo, undefined, undefined, 'HEAD', join(pool, 'unused'));
     const traversedPool = join(pool, '..', 'sibling-pool');
 
     const result = invokePrepareCommand(
@@ -1627,7 +1667,7 @@ describe('prepare-harness-run CLI', () => {
     const aliasRoot = join(pool, 'escape');
     symlinkSync(external, aliasRoot, 'junction');
     const aliasLease = join(aliasRoot, 'leased');
-    const treehouse = fakeTreehouse(repo, ['exit 0'], undefined, 'HEAD', actualLease, aliasLease);
+    const treehouse = fakeTreehouse(repo, undefined, undefined, 'HEAD', actualLease, aliasLease);
 
     const result = invokePrepareCommand(
       repo,
@@ -1655,7 +1695,7 @@ describe('prepare-harness-run CLI', () => {
     const pool = configureCanonicalPool(repo);
     const foreignRepo = createRootRepo();
     const foreignLease = join(pool, 'foreign', 'repo');
-    const treehouse = fakeTreehouse(foreignRepo, ['exit 0'], undefined, 'HEAD', foreignLease);
+    const treehouse = fakeTreehouse(foreignRepo, undefined, undefined, 'HEAD', foreignLease);
 
     const result = invokePrepareCommand(
       repo,
@@ -1676,7 +1716,7 @@ describe('prepare-harness-run CLI', () => {
     const readiness = JSON.parse(result.stdout.toString());
     expect(readiness.errorCodes).toContain('invalid_lease');
     expect(readiness.errors.join(' ')).toContain('different repository');
-    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['status', 'get']);
+    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version', 'status', 'get']);
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
   test('derived branch creation failure returns the acquired lease', () => {
@@ -1692,7 +1732,7 @@ describe('prepare-harness-run CLI', () => {
     expect(readiness.runBranch).toBeNull();
     expect(readiness.errors.join(' ')).toContain('Unable to attach run branch');
     expect(readiness.errors.join(' ')).toContain('Lease was returned');
-    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['status', 'get', 'return']);
+    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version', 'status', 'get', 'return']);
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
   test('branch failure never returns a pre-existing same-repository lease', () => {
@@ -1710,7 +1750,7 @@ describe('prepare-harness-run CLI', () => {
     const readiness = JSON.parse(result.stdout.toString());
     expect(readiness.errorCodes).toContain('invalid_lease');
     expect(readiness.errors.join(' ')).toContain('already leased before this invocation');
-    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['status', 'get']);
+    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version', 'status', 'get']);
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
   test('final validation rejects but never returns a fully valid pre-existing same-repository lease', () => {
@@ -1746,7 +1786,7 @@ describe('prepare-harness-run CLI', () => {
     expect(readiness.errors.join(' ')).toContain('already leased before this invocation');
     expect(readiness.errors.join(' ')).toContain('Lease return was not attempted');
     expect(run(['git', 'branch', '--show-current'], leasePath)).toBe('wt/canonical-task');
-    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['status', 'get']);
+    expect(readFileSync(treehouse.calls, 'utf8').trim().split(/\r?\n/)).toEqual(['--version', 'status', 'get']);
   }, ISOLATION_PREPARATION_TEST_TIMEOUT_MS);
 
   test('canonical monorepo pipeline requires isolation and maps prepared run path', () => {
@@ -1780,7 +1820,7 @@ describe('prepare-harness-run CLI', () => {
     expect(prepared.runBranch).toMatch(/^harness\/harness-readiness\/feature-readiness-[0-9a-f]{12}-[0-9a-f]{8}$/);
     expect(run(['git', 'branch', '--show-current'], treehouse.lease)).toBe(prepared.runBranch);
     expect(readFileSync(treehouse.calls, 'utf8')).toContain('get');
-    expect(readFileSync(treehouse.cwdLog, 'utf8').trim().split(/\r?\n/)).toEqual([workspace, workspace, workspace]);
+    expect(readFileSync(treehouse.cwdLog, 'utf8').trim().split(/\r?\n/)).toEqual([workspace, workspace, workspace, workspace, workspace]);
   }, CANONICAL_ISOLATION_TEST_TIMEOUT_MS);
 
   test('compatibility launcher reports current-branch readiness and never invokes a runner', () => {
