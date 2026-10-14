@@ -56,7 +56,7 @@ async function treehouseLeases(repositoryRoot: string): Promise<Set<string>> {
   if (!processSucceeded(result)) throw auditError('Treehouse status could not be read without mutation.');
   const leases = new Set<string>();
   for (const line of result.stdout.split(/\r?\n/)) {
-    const match = /^\s*\d+\s+leased\s+(.+?)\s+\(held by [^)]+\)\s*$/.exec(line);
+    const match = /^\s*\d+\s+leased\s+(.+?)(?:\s+\[[^\]\r\n]+\])?\s+\(held by [^)]+\)\s*$/.exec(line);
     if (match) leases.add(resolve(match[1]).toLowerCase());
   }
   return leases;

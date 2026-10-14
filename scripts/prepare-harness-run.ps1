@@ -1168,7 +1168,7 @@ function Get-OutputLines([string]$Text) {
 function Get-TreehouseLeasedPaths([string]$StatusText) {
   $leases = @{}
   foreach ($line in (Get-OutputLines $StatusText)) {
-    if ($line -match '^\s*\d+\s+leased\s+(.+)\s+\(held by ([^)]+)\)\s*$') {
+    if ($line -match '^\s*\d+\s+leased\s+(.+?)(?:\s+\[[^\]\r\n]+\])?\s+\(held by ([^)]+)\)\s*$') {
       $reportedPath = $Matches[1].Trim()
       if ($reportedPath.StartsWith('~\') -or $reportedPath.StartsWith('~/')) {
         $reportedPath = Join-Path $HOME $reportedPath.Substring(2)

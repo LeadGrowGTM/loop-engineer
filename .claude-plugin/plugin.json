@@ -1,6 +1,6 @@
 {
   "name": "loop-engineer",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Approval-gated goal loops for Claude Code with planner, maker, prover, checker and shipper agents.",
   "author": {
     "name": "LeadGrowGTM"

@@ -105,7 +105,7 @@ async function leaseState(run: Pick<RunManifestV1, 'repositoryRoot' | 'worktreeP
   if (!processSucceeded(result)) throw finishError('LEASE_IDENTITY_MISMATCH', 'Treehouse status could not verify the recorded lease.');
   let state: LeaseState = 'absent';
   for (const line of result.stdout.split(/\r?\n/).filter(Boolean)) {
-    const match = /^\s*\d+\s+leased\s+(.+?)\s+\(held by ([^)]+)\)\s*$/.exec(line);
+    const match = /^\s*\d+\s+leased\s+(.+?)(?:\s+\[[^\]\r\n]+\])?\s+\(held by ([^)]+)\)\s*$/.exec(line);
     if (!match) {
       if (/\bleased\b/i.test(line)) throw finishError('LEASE_IDENTITY_MISMATCH', 'Treehouse status is malformed.');
       continue;

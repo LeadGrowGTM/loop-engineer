@@ -43,3 +43,25 @@ the intended provisioned environment before claiming end-to-end compatibility.
 The four build roles are sibling agent calls from the coordinator; their sequence
 numbers are phases, not recursive nesting depth. Keep execution in the active
 session so approval requests can be answered.
+
+## Real CLI regression verification (2026-10-15)
+
+The opt-in `scripts/live-lifecycle.test.ts` executes the public setup/lifecycle
+commands against tasks-axi 0.2.6, Treehouse 3.1.0 and PowerShell 7.4.6. It uses a
+fresh disposable repository and home directory; no production task or lease is
+touched. Run with `LOOP_ENGINEER_LIVE_CLI_TEST=1 bun test` after placing `pwsh` on PATH.
+
+Setup and start share an explicit audited CLI-version allowlist. Unknown versions
+fail readiness instead of being assumed compatible. Setup creates and checks the
+physical pool and ignores generated project-local backlog/archive state. It does
+not untrack existing files: a previously tracked backlog that becomes dirty still
+blocks readiness. Restart validation reads the authoritative task from the source
+repository rather than an independently copied worktree backlog. Treehouse status
+parsing accepts the newer optional branch annotation while preserving exact lease
+path and holder checks.
+
+Claude Code 2.1.299 installed the published v1.4.0 marketplace into an isolated
+config directory and initialized all seven agents with the expected model tiers
+and tool allowlists. Both skills and the benchmarking command appeared in session
+discovery. Native model execution was blocked by the account's weekly usage limit,
+so initialization does not prove prompt following or a complete agent loop.

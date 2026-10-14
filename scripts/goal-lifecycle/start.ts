@@ -1,3 +1,4 @@
+import { supportedDependencyVersion } from '../lifecycle-dependencies';
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -68,7 +69,7 @@ async function doctorDependencies(repositoryRoot: string): Promise<void> {
   } catch (error) {
     throw dependencyFailure('tasks-axi', error instanceof Error ? error.message : 'launcher failed');
   }
-  if (!processSucceeded(tasks) || tasks.stdout.trim() !== TASKS_AXI_VERSION) {
+  if (!processSucceeded(tasks) || !supportedDependencyVersion('tasks-axi', tasks.stdout)) {
     throw dependencyFailure('tasks-axi', (tasks.stderr || tasks.stdout).trim() || `expected ${TASKS_AXI_VERSION}`);
   }
 
@@ -77,7 +78,7 @@ async function doctorDependencies(repositoryRoot: string): Promise<void> {
     ['-NoProfile', '-NonInteractive', '-Command', TREEHOUSE_VERSION_PROBE],
     { cwd: repositoryRoot, timeoutMs: 10_000 },
   );
-  if (!processSucceeded(treehouse) || treehouse.stdout.trim() !== TREEHOUSE_VERSION) {
+  if (!processSucceeded(treehouse) || !supportedDependencyVersion('treehouse', treehouse.stdout)) {
     throw dependencyFailure('Treehouse', (treehouse.stderr || treehouse.stdout).trim() || `expected ${TREEHOUSE_VERSION}`);
   }
 

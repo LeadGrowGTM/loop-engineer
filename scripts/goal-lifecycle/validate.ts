@@ -81,7 +81,7 @@ function assertCurrentWorktree(context: LifecycleContext, run: RunManifestV1): v
 }
 
 async function assertActiveTask(run: RunManifestV1): Promise<void> {
-  const result = await runProcess('tasks-axi', ['show', run.taskId, '--full'], { cwd: run.worktreePath });
+  const result = await runProcess('tasks-axi', ['show', run.taskId, '--full'], { cwd: run.repositoryRoot });
   if (!processSucceeded(result)) {
     throw restartInvalid(`The durable task ${run.taskId} is not available as an active lifecycle task.`);
   }
@@ -118,7 +118,7 @@ async function assertTreehouseLease(run: RunManifestV1): Promise<void> {
   }
   const expected = realpathSync.native(run.worktreePath);
   const matching = result.stdout.split(/\r?\n/).some((line) => {
-    const match = /^\s*\d+\s+leased\s+(.+?)\s+\(held by ([^)]+)\)\s*$/.exec(line);
+    const match = /^\s*\d+\s+leased\s+(.+?)(?:\s+\[[^\]\r\n]+\])?\s+\(held by ([^)]+)\)\s*$/.exec(line);
     if (!match || match[2] !== run.leaseHolder) return false;
     try {
       return samePath(realpathSync.native(match[1]), expected);

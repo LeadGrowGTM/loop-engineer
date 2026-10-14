@@ -150,7 +150,7 @@ function runChecked(command: string[]): void {
 
 function lifecycleTestEnvironment(
   root: string,
-  options: { tasksAxiExit?: number; treehouseExit?: number; treehouseStatus?: string } = {},
+  options: { tasksAxiExit?: number; treehouseExit?: number; treehouseStatus?: string; tasksAxiVersion?: string; treehouseVersion?: string } = {},
 ): Record<string, string | undefined> {
   const bin = join(root, 'lifecycle-bin');
   const home = join(root, 'home');
@@ -158,21 +158,21 @@ function lifecycleTestEnvironment(
   mkdirSync(home, { recursive: true });
   writeFileSync(
     join(bin, 'tasks-axi.cmd'),
-    `@echo off\r\nif "%1"=="--version" (echo tasks-axi 0.1.1 & exit /b ${options.tasksAxiExit ?? 0})\r\nexit /b 0\r\n`,
+    `@echo off\r\nif "%1"=="--version" (echo tasks-axi ${options.tasksAxiVersion ?? '0.1.1'} & exit /b ${options.tasksAxiExit ?? 0})\r\nexit /b 0\r\n`,
   );
   writeFileSync(
     join(bin, 'treehouse.cmd'),
     [
       '@echo off',
-      `if "%1"=="--version" (echo treehouse 1.8.0 & exit /b ${options.treehouseExit ?? 0})`,
+      `if "%1"=="--version" (echo treehouse ${options.treehouseVersion ?? '1.8.0'} & exit /b ${options.treehouseExit ?? 0})`,
       `if "%1"=="status" (echo ${options.treehouseStatus ?? 'NO_ACTIVE_LEASES'} & exit /b ${options.treehouseExit ?? 0})`,
       'exit /b 0',
       '',
     ].join('\r\n'),
   );
   if (process.platform !== 'win32') {
-    writeFileSync(join(bin, 'tasks-axi'), `#!/bin/sh\necho 'tasks-axi 0.1.1'\nexit ${options.tasksAxiExit ?? 0}\n`, { mode: 0o755 });
-    writeFileSync(join(bin, 'treehouse'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo 'treehouse 1.8.0'; else echo '${options.treehouseStatus ?? 'NO_ACTIVE_LEASES'}'; fi\nexit ${options.treehouseExit ?? 0}\n`, { mode: 0o755 });
+    writeFileSync(join(bin, 'tasks-axi'), `#!/bin/sh\necho 'tasks-axi ${options.tasksAxiVersion ?? '0.1.1'}'\nexit ${options.tasksAxiExit ?? 0}\n`, { mode: 0o755 });
+    writeFileSync(join(bin, 'treehouse'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo 'treehouse ${options.treehouseVersion ?? '1.8.0'}'; else echo '${options.treehouseStatus ?? 'NO_ACTIVE_LEASES'}'; fi\nexit ${options.treehouseExit ?? 0}\n`, { mode: 0o755 });
   }
   return {
     ...process.env,
@@ -762,4 +762,25 @@ describe('lifecycle dependency setup', () => {
     expect(readFileSync(join(target, 'treehouse.toml'), 'utf8')).toBe(legacy);
     expect(result.stdout.toString()).toContain('treehouse.toml repair blocked by active or unknown leases');
   });
+});
+
+
+test('setup fails readiness for a successful executable reporting an unaudited version', () => {
+  const root = mkdtempSync(join(tmpdir(), 'setup-unknown-version-'));
+  const target = join(root, 'target'); mkdirSync(target);
+  writeFileSync(join(target, 'CLAUDE.md'), '# Fixture\n');
+  const result = runInstall(target, lifecycleTestEnvironment(root, { tasksAxiVersion: '99.0.0' }));
+  expect(result.exitCode).toBe(1);
+  expect(result.stdout.toString()).toContain('tasks-axi: workspace onboarding required');
+});
+
+test('setup rejects a symlinked pool before writing global agents or repository assets', () => {
+  const root = mkdtempSync(join(tmpdir(), 'setup-pool-symlink-'));
+  const target = join(root, 'target'); const external = join(root, 'external');
+  mkdirSync(target); mkdirSync(external);
+  symlinkSync(external, join(target, '.worktrees'), process.platform === 'win32' ? 'junction' : 'dir');
+  const result = runInstall(target, lifecycleTestEnvironment(root));
+  expect(result.exitCode).not.toBe(0);
+  expect(existsSync(join(root, 'home', '.claude', 'agents'))).toBe(false);
+  expect(existsSync(join(target, '.tasks.toml'))).toBe(false);
 });

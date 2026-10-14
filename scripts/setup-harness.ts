@@ -22,6 +22,8 @@ import {
 } from 'fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'path';
 
+import { supportedDependencyVersion } from './lifecycle-dependencies';
+
 // ── types ──────────────────────────────────────────────────────────────────
 
 export interface SkillEntry {
@@ -336,6 +338,7 @@ type InstallPaths = {
 // the global agents directory - is untrusted, before any mkdir/copy/write runs.
 function validateInstallPaths(targetDir: string): InstallPaths {
   const trustedTargetDir = trustedTargetDirectory(targetDir);
+  trustedContainedPath(trustedTargetDir, '.worktrees', 'directory');
   return {
     targetDir: trustedTargetDir,
     agentsDir: trustedContainedPath(trustedHomeDirectory(), '.claude/agents', 'directory'),
@@ -362,7 +365,7 @@ function validateInstallPaths(targetDir: string): InstallPaths {
 function commandIsUsable(command: string, cwd: string): boolean {
   try {
     const result = Bun.spawnSync([command, '--version'], { cwd, stdout: 'pipe', stderr: 'pipe' });
-    return result.exitCode === 0;
+    return result.exitCode === 0 && supportedDependencyVersion(command as 'tasks-axi' | 'treehouse', result.stdout.toString());
   } catch {
     return false;
   }
@@ -666,7 +669,9 @@ if (import.meta.main) {
 
     // Keep the project-local worktree pool out of git.
     const gitignorePath = revalidated('.gitignore', 'regular-file');
-    const ignoreLines = ['.worktrees/'];
+    // Lifecycle verifies the physical pool before acquiring its first lease.
+    mkdirSync(revalidated('.worktrees', 'directory'), { recursive: true });
+    const ignoreLines = ['.worktrees/', '.claude/backlog.md', '.claude/done-archive.md'];
     const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
     const missing = ignoreLines.filter((l) => !existingIgnore.split(/\r?\n/).includes(l));
     if (missing.length) {
