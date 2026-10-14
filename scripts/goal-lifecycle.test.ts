@@ -1,7 +1,7 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, join, relative } from "node:path";
 import { readRunManifest, writeRunManifest } from "./goal-lifecycle/manifest";
 import { runProcess } from "./goal-lifecycle/process";
 import { lifecycleFailure } from './goal-lifecycle/contracts';
@@ -161,11 +161,12 @@ function createTreehouseFake(
       'if ($command -eq "return") { exit 0 }',
       'if ($command -eq "status") {',
       '  if ($env:TREEHOUSE_CONTRACT -eq "text") {',
-      '    if ($env:TREEHOUSE_STATUS_MODE -eq "validate") { [Console]::Out.WriteLine("1     leased       " + $env:TREEHOUSE_LEASE + "  (held by " + $env:TREEHOUSE_HOLDER + ")") } else { [Console]::Error.WriteLine("No worktrees in pool.") }',
+      '    if ($env:TREEHOUSE_STATUS_MODE -eq "validate") { [Console]::Out.WriteLine("1     leased       " + $env:TREEHOUSE_LEASE + "  (held by " + $env:TREEHOUSE_HOLDER + ")") } elseif ($env:TREEHOUSE_STATUS_MODE -eq "returned") { [Console]::Out.WriteLine("1     available    " + $env:TREEHOUSE_LEASE) } else { [Console]::Error.WriteLine("No worktrees in pool.") }',
       '    exit 0',
       '  }',
       '  $entries = @()',
       '  if ($env:TREEHOUSE_STATUS_MODE -eq "validate") { $entries += [pscustomobject]@{ path = $env:TREEHOUSE_LEASE; status = "leased"; lease_holder = $env:TREEHOUSE_HOLDER } }',
+      '  if ($env:TREEHOUSE_STATUS_MODE -eq "returned") { $entries += [pscustomobject]@{ path = $env:TREEHOUSE_LEASE; status = "available"; lease_holder = $null } }',
       '  [Console]::Out.WriteLine("[" + ((@($entries | ForEach-Object { ConvertTo-Json -InputObject $_ -Compress })) -join ",") + "]")',
       '  exit 0',
       '}',
@@ -180,7 +181,8 @@ function createTreehouseFake(
 }
 
 function createLifecycleFixture(options: LifecycleFixtureOptions = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'goal-lifecycle-start-'));
+  // Canonical root: Windows runners report tmpdir() as an 8.3 alias (C:\Users\RUNNER~1) of the physical path the lifecycle records.
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'goal-lifecycle-start-')));
   const outer = join(root, 'workspace');
   const repo = options.nested ? join(outer, 'outer-repository', 'nested-repository') : join(outer, 'repository');
   if (options.nested) {
@@ -420,6 +422,45 @@ test('audit reads leases from the tabular status contract on the older audited T
     classification: 'managed',
   });
   expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(callsBefore + '--version\r\nstatus\r\n');
+});
+
+// The same directory under another spelling: the runner's Windows 8.3 temp alias (RUNNER~1) when it differs, else a directory link.
+function physicalAlias(fixture: ReturnType<typeof createLifecycleFixture>, path: string): string {
+  const reported = tmpdir();
+  const physical = realpathSync.native(reported);
+  if (reported !== physical && path.startsWith(physical)) return reported + path.slice(physical.length);
+  const link = join(fixture.root, 'alias');
+  if (!existsSync(link)) symlinkSync(fixture.root, link, 'junction');
+  return join(link, relative(fixture.root, path));
+}
+
+test('finish and audit match Treehouse paths by physical identity and keep the returned slot manager-owned', () => {
+  const fixture = createLifecycleFixture();
+  const completed = completedRunFixture(fixture);
+  const alias = physicalAlias(fixture, completed.run.worktreePath);
+  expect(alias).not.toBe(completed.run.worktreePath);
+  expect(realpathSync.native(alias)).toBe(completed.run.worktreePath);
+  fixture.env.TREEHOUSE_LEASE = alias;
+  const stray = join(fixture.repo, '.worktrees', 'stray', 'repository');
+  runGit(['worktree', 'add', '-b', 'audit/stray', stray, 'HEAD'], fixture.repo);
+  const audit = () => {
+    const result = invokeLifecycle(['audit', '--repo', fixture.repo], fixture.env, fixture.repo);
+    expect(result.exitCode).toBe(0);
+    return result.json.data.rows as Array<{ path: string; manager: string; classification: string; suggestedCommand: string }>;
+  };
+  const managedSlot = { manager: 'treehouse', classification: 'managed', suggestedCommand: '' };
+
+  expect(audit().find((row) => samePath(row.path, completed.run.worktreePath))).toMatchObject(managedSlot);
+  const finished = finishFixture(fixture, completed.manifestPath);
+  expect(finished.json).toMatchObject({ ok: true, code: 'OK' });
+  expect(readFileSync(fixture.tasks.calls, 'utf8')).toContain('done canonical-goal');
+
+  const callsBefore = readFileSync(fixture.treehouse.calls, 'utf8');
+  const rows = audit();
+  expect(rows.find((row) => samePath(row.path, completed.run.worktreePath))).toMatchObject(managedSlot);
+  expect(rows.find((row) => samePath(row.path, stray))).toMatchObject({ manager: 'external', classification: 'MISPLACED_WORKTREE' });
+  expect(rows.find((row) => samePath(row.path, stray))?.suggestedCommand).toContain('worktree remove');
+  expect(readFileSync(fixture.treehouse.calls, 'utf8')).toBe(callsBefore + '--version\r\nstatus --json\r\n');
 });
 
 test('finish retains a blocked lease with durable recovery', () => {

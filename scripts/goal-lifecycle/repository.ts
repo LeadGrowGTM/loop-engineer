@@ -18,6 +18,19 @@ export function samePath(left: string, right: string): boolean {
   return comparable(left) === comparable(right);
 }
 
+/** Physical identity: the real path (resolving symlinks, junctions and Windows 8.3 aliases) when it exists, else the lexical path. */
+export function physicalPath(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+export function samePhysicalPath(left: string, right: string): boolean {
+  return samePath(physicalPath(left), physicalPath(right));
+}
+
 export function pathInside(parent: string, child: string): boolean {
   const remainder = relative(resolve(parent), resolve(child));
   return remainder.length > 0 && remainder !== '..' && !remainder.startsWith(`..${sep}`) && !isAbsolute(remainder);

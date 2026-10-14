@@ -10,7 +10,7 @@ import {
 import { validateCanonicalGrillReceipt } from './grill';
 import { readRunManifest, writeRunManifest, type RunManifestV1 } from './manifest';
 import { processSucceeded, runProcess } from './process';
-import { assertNoReparsePath, pathInside, resolveRepository, samePath, verifyManagedWorktree } from './repository';
+import { assertNoReparsePath, pathInside, resolveRepository, samePath, samePhysicalPath, verifyManagedWorktree } from './repository';
 import { decodeTaskDetail } from './tasks-axi';
 import { readTreehouseLeases, type TreehouseLease } from './treehouse';
 
@@ -109,15 +109,7 @@ async function assertTreehouseLease(run: RunManifestV1): Promise<void> {
   } catch {
     throw new LifecycleCommandError('LEASE_IDENTITY_MISMATCH', 'Treehouse status could not verify the persisted lease holder.');
   }
-  const expected = realpathSync.native(run.worktreePath);
-  const matching = leases.some((lease) => {
-    if (lease.holder !== run.leaseHolder) return false;
-    try {
-      return samePath(realpathSync.native(lease.path), expected);
-    } catch {
-      return false;
-    }
-  });
+  const matching = leases.some((lease) => lease.holder === run.leaseHolder && samePhysicalPath(lease.path, run.worktreePath));
   if (!matching) {
     throw new LifecycleCommandError('LEASE_IDENTITY_MISMATCH', 'Treehouse status does not report the persisted lease and exact holder.');
   }

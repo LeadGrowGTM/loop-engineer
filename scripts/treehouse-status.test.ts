@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { LIFECYCLE_DEPENDENCY_VERSIONS } from './lifecycle-dependencies';
-import { parseTreehouseLeases, treehouseStatusArgs, treehouseStatusContract } from './goal-lifecycle/treehouse';
+import { parseTreehouseLeases, parseTreehouseSlots, treehouseStatusArgs, treehouseStatusContract } from './goal-lifecycle/treehouse';
 
 // The real CLI contracts: Treehouse 1.8.0 `status` rows and 3.1.0 `status --json` records on stdout, banner and empty-pool notice on stderr.
 const parse = (stdout: string, contract: 'json' | 'text', stderr = '') => parseTreehouseLeases({ stdout, stderr }, contract);
@@ -66,6 +66,29 @@ test('typed Treehouse status accepts every audited non-lease pool status', () =>
   for (const status of ['available', 'dirty', 'in-use', "you're here", 'damaged', 'unverified']) {
     expect(parse(JSON.stringify([{ path: '/pool/slot-1/repository', status }]), 'json')).toEqual([]);
   }
+});
+
+test('Treehouse status reports every pool slot for audit while leases stay leased-only', () => {
+  const json = JSON.stringify([
+    { path: '/pool/slot-1/repository', status: 'leased', lease_holder: 'canonical-goal' },
+    { path: '/pool/slot-2/repository', status: 'available', lease_holder: null },
+    { path: '/pool/slot-3/repository', status: 'dirty', lease_holder: null },
+  ]);
+  const text = [
+    '1     leased       /pool/slot-1/repository  (held by canonical-goal)',
+    '                   bash (891911), bun (891912)',
+    '2     available    /pool/slot-2/repository',
+    '3     dirty        /pool/slot-3/repository',
+  ].join('\n');
+  const slots = [
+    { path: '/pool/slot-1/repository', status: 'leased', holder: 'canonical-goal' },
+    { path: '/pool/slot-2/repository', status: 'available', holder: null },
+    { path: '/pool/slot-3/repository', status: 'dirty', holder: null },
+  ];
+
+  expect(parseTreehouseSlots({ stdout: json, stderr: UPDATE_BANNER }, 'json')).toEqual(slots);
+  expect(parseTreehouseSlots({ stdout: text, stderr: UPDATE_BANNER }, 'text')).toEqual(slots);
+  expect(parse(json, 'json')).toEqual([{ path: '/pool/slot-1/repository', holder: 'canonical-goal' }]);
 });
 
 test('tabular Treehouse status reports exact leased paths and ignores available slots', () => {

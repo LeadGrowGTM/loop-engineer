@@ -1,13 +1,13 @@
 import { expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { decodeTaskDetail } from './goal-lifecycle/tasks-axi';
-import { parseTreehouseLeases, treehouseStatusArgs, treehouseStatusContract } from './goal-lifecycle/treehouse';
+import { parseTreehouseLeases, parseTreehouseSlots, treehouseStatusArgs, treehouseStatusContract } from './goal-lifecycle/treehouse';
 
 // Explicit opt-in: real installed CLI tools, disposable repository and HOME; no model calls.
 test.skipIf(process.env.LOOP_ENGINEER_LIVE_CLI_TEST !== '1')('real CLI setup, start, restart, blocked retention, success and exact lease return', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'loop-live-cli-test-'));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'loop-live-cli-test-')));
   const repo = join(root, 'repo');
   const home = join(root, 'home');
   mkdirSync(repo); mkdirSync(home);
@@ -68,13 +68,23 @@ test.skipIf(process.env.LOOP_ENGINEER_LIVE_CLI_TEST !== '1')('real CLI setup, st
   const blocked = await lifecycle(['finish', '--run', run, '--outcome', 'blocked'], cwd);
   expect(blocked.body.ok).toBe(true);
   const contract = treehouseStatusContract((await command(['treehouse', '--version'])).stdout);
-  const poolStatus = async () => parseTreehouseLeases(await command(['treehouse', ...treehouseStatusArgs(contract)]), contract);
+  const readStatus = async () => command(['treehouse', ...treehouseStatusArgs(contract)]);
+  const poolStatus = async () => parseTreehouseLeases(await readStatus(), contract);
   expect((await poolStatus()).some((lease) => lease.path === cwd && lease.holder === 'live-proof')).toBe(true);
   await git(['add', '.harness'], cwd); await git(['commit', '-m', 'recovery fixture'], cwd);
   expect((await lifecycle(['finish', '--run', run], cwd)).body.ok).toBe(true);
   const task = await command(['tasks-axi', 'show', 'live-proof', '--full', '--file', join(repo, '.claude/backlog.md')]);
   expect(decodeTaskDetail(task.stdout).state).toBe('done');
   expect((await poolStatus()).some((lease) => lease.path === cwd)).toBe(false);
+  // The returned slot stays Treehouse-owned: audit reports it managed, suggests no removal, and leaves manager state untouched.
+  const slotsBefore = parseTreehouseSlots(await readStatus(), contract);
+  expect(slotsBefore.some((slot) => slot.path === cwd && slot.status !== 'leased')).toBe(true);
+  const audit = await lifecycle(['audit', '--repo', repo]);
+  expect(audit.body.ok).toBe(true);
+  expect(audit.body.data.rows.find((row: { path: string }) => realpathSync.native(row.path) === cwd)).toMatchObject({
+    manager: 'treehouse', classification: 'managed', suggestedCommand: '',
+  });
+  expect(parseTreehouseSlots(await readStatus(), contract)).toEqual(slotsBefore);
   expect(await git(['branch', '--show-current'])).toBe('source-proof');
   console.log(`REAL_CLI_EVIDENCE ${root}`);
 }, 90_000);

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LifecycleCommandError } from './goal-lifecycle/contracts';
@@ -12,7 +12,7 @@ function git(args: string[], cwd: string): string {
 }
 
 function managedWorktreeFixture() {
-  const root = mkdtempSync(join(tmpdir(), 'managed-worktree-'));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'managed-worktree-')));
   const repo = join(root, 'repository');
   mkdirSync(repo, { recursive: true });
   git(['init', '-b', 'main'], repo);

@@ -9,7 +9,7 @@ import {
 } from './contracts';
 import { readRunManifest, writeJsonAtomic, type RunManifestV1 } from './manifest';
 import { processSucceeded, runProcess } from './process';
-import { assertNoReparsePath, pathInside, resolveRepository, runGit, samePath } from './repository';
+import { assertNoReparsePath, pathInside, resolveRepository, runGit, samePath, samePhysicalPath } from './repository';
 import { decodeTaskDetail } from './tasks-axi';
 import { readTreehouseLeases, type TreehouseLease } from './treehouse';
 
@@ -104,7 +104,7 @@ async function leaseState(run: Pick<RunManifestV1, 'repositoryRoot' | 'worktreeP
   }
   let state: LeaseState = 'absent';
   for (const lease of leases) {
-    if (samePath(lease.path, run.worktreePath)) state = lease.holder === run.leaseHolder ? 'exact_holder' : 'conflicting_holder';
+    if (samePhysicalPath(lease.path, run.worktreePath)) state = lease.holder === run.leaseHolder ? 'exact_holder' : 'conflicting_holder';
   }
   return state;
 }

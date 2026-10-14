@@ -7,15 +7,44 @@ on:
 permissions:
   contents: read
 
+env:
+  # Every tracked test file belongs to exactly one group; each job fails if any file is unassigned, unknown or listed twice.
+  TEST_GROUPS: >-
+    {
+      "lifecycle": [
+        "scripts/goal-lifecycle.test.ts",
+        "scripts/live-lifecycle.test.ts",
+        "scripts/managed-worktree.test.ts",
+        "scripts/treehouse-status.test.ts"
+      ],
+      "readiness": [
+        "scripts/prepare-harness-run.test.ts",
+        "scripts/validate-pipeline-layout.test.ts"
+      ],
+      "other": [
+        "scripts/detect-provider.test.ts",
+        "scripts/guard-protected-work.test.ts",
+        "scripts/harness-agent-contracts.test.ts",
+        "scripts/manage-pi-openai-server-compaction.test.ts",
+        "scripts/plugin-compatibility.test.ts",
+        "scripts/publish-policy.test.ts",
+        "scripts/resolve-role-model.test.ts",
+        "scripts/setup-harness.test.ts",
+        "scripts/triage.test.ts",
+        "skills/write-goal-prompt/scripts/resolve-skill-routing.test.ts"
+      ]
+    }
+
 jobs:
   bun-test:
-    name: bun test (${{ matrix.os }})
+    name: bun test (${{ matrix.os }}, ${{ matrix.group }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-latest]
+        group: [lifecycle, readiness, other]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -23,6 +52,20 @@ jobs:
           bun-version: 1.4.2
       - name: bun test
         shell: pwsh
+        env:
+          TEST_GROUP: ${{ matrix.group }}
         run: |
-          bun test
+          $groups = $env:TEST_GROUPS | ConvertFrom-Json
+          $assigned = @($groups.PSObject.Properties | ForEach-Object { $_.Value })
+          $all = @(git ls-files | Where-Object { $_ -match '[._](test|spec)\.[cm]?[jt]sx?$' })
+          $missing = @($all | Where-Object { $assigned -notcontains $_ })
+          $unknown = @($assigned | Where-Object { $all -notcontains $_ })
+          $duplicates = @($assigned | Group-Object | Where-Object Count -gt 1 | ForEach-Object Name)
+          if ($missing.Count -or $unknown.Count -or $duplicates.Count) {
+            Write-Error "Test groups must cover every test file exactly once. Missing: $missing Unknown: $unknown Duplicated: $duplicates"
+            exit 1
+          }
+          if (-not $groups.PSObject.Properties[$env:TEST_GROUP]) { Write-Error "Unknown test group $env:TEST_GROUP"; exit 1 }
+          $files = @($groups.$env:TEST_GROUP | ForEach-Object { "./$_" })
+          bun test @files
           exit $LASTEXITCODE
