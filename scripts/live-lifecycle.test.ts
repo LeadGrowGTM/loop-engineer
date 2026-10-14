@@ -56,6 +56,14 @@ test.skipIf(process.env.LOOP_ENGINEER_LIVE_CLI_TEST !== '1')('real CLI setup, st
   expect((await lifecycle(['finish', '--run', run], cwd)).body.code).toBe('FINISH_PRECONDITION_FAILED');
   writeFileSync(join(directory, 'HANDOFF.md'), '# Real CLI protocol proof, synthetic artifacts\n');
   await git(['add', '.harness'], cwd); await git(['commit', '-m', 'protocol fixture'], cwd);
+  expect((await lifecycle(['validate', '--run', run], cwd)).body.ok).toBe(true);
+  const progressHead = await git(['rev-parse', 'HEAD'], cwd);
+  const progressTree = await git(['rev-parse', 'HEAD^{tree}'], cwd);
+  const unrelatedHead = await git(['commit-tree', progressTree, '-m', 'unrelated fixture identity'], cwd);
+  await git(['update-ref', 'refs/heads/wt/live-proof', unrelatedHead], cwd);
+  expect((await lifecycle(['validate', '--run', run], cwd)).body.code).toBe('LEASE_IDENTITY_MISMATCH');
+  await git(['update-ref', 'refs/heads/wt/live-proof', progressHead], cwd);
+  expect((await lifecycle(['validate', '--run', run], cwd)).body.ok).toBe(true);
   const blocked = await lifecycle(['finish', '--run', run, '--outcome', 'blocked'], cwd);
   expect(blocked.body.ok).toBe(true);
   const held = await command(['treehouse', 'status', '--json']);

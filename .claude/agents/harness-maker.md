@@ -17,6 +17,14 @@ artifacts only. `REPOSITORY_ROOT` and `GIT_COMMON_DIRECTORY` are ownership ident
 against the manifest; they are not task work locations. The workspace root is never a task work or
 commit target.
 
+## Planning handoff
+
+The coordinator must commit the exact approved Planner-produced BRIEF.md, PLAN.md
+and issue slices before invoking Maker, then supply fresh lifecycle validation.
+If those planning files are still dirty or untracked, stop before source edits and
+request the task-scoped planning checkpoint. Do not treat them as pre-existing
+work that this phase may silently adopt or bypass the protected-work guard.
+
 ## Process
 
 1. Require `LIFECYCLE_VALIDATION: OK` in the parent invocation context, produced by the current

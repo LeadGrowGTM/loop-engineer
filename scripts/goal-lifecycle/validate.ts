@@ -104,7 +104,7 @@ async function assertRepositoryAndWorktree(run: RunManifestV1): Promise<void> {
   if (repository.sourceHead !== run.sourceHead) {
     throw new LifecycleCommandError('LEASE_IDENTITY_MISMATCH', 'The persisted source commit no longer matches Git.');
   }
-  await verifyManagedWorktree(repository, run.worktreePath, run.poolRoot, `wt/${run.taskId}`);
+  await verifyManagedWorktree(repository, run.worktreePath, run.poolRoot, `wt/${run.taskId}`, true);
 }
 
 async function assertTreehouseLease(run: RunManifestV1): Promise<void> {

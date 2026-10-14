@@ -1,7 +1,7 @@
 import { lstatSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { LifecycleCommandError } from './contracts';
-import { runProcess, type ProcessResult } from './process';
+import { processSucceeded, runProcess, type ProcessResult } from './process';
 
 export interface RepositoryIdentity {
   root: string;
@@ -93,6 +93,7 @@ export async function verifyManagedWorktree(
   candidate: string,
   poolRoot: string,
   expectedBranch: string,
+  allowCommittedProgress = false,
 ): Promise<VerifiedWorktree> {
   const lexicalCandidate = resolve(candidate);
   if (!pathInside(poolRoot, lexicalCandidate)) {
@@ -124,7 +125,14 @@ export async function verifyManagedWorktree(
   }
   const head = requireGitOutput(await runGit(['rev-parse', '--verify', 'HEAD^{commit}'], worktreePath), 'Lease HEAD verification');
   if (head !== repository.sourceHead) {
-    throw new LifecycleCommandError('LEASE_IDENTITY_MISMATCH', 'The returned lease HEAD does not match the checked source commit.');
+    // Acquisition must match the checked source exactly. A restart can resume
+    // committed task progress only when the recorded source remains its ancestor.
+    const progress = allowCommittedProgress
+      ? await runGit(['merge-base', '--is-ancestor', repository.sourceHead, head], worktreePath)
+      : null;
+    if (!progress || !processSucceeded(progress)) {
+      throw new LifecycleCommandError('LEASE_IDENTITY_MISMATCH', 'The returned lease HEAD is not permitted progress from the checked source commit.');
+    }
   }
   const branch = requireGitOutput(await runGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], worktreePath), 'Lease branch verification');
   if (branch !== expectedBranch) {

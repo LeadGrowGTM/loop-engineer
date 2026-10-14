@@ -63,3 +63,8 @@ config directory and initialized all seven agents with the expected model tiers
 and tool allowlists. Both skills and the benchmarking command appeared in session
 discovery. Native model execution was blocked by the account's weekly usage limit,
 so initialization does not prove prompt following or a complete agent loop.
+
+Restart validation accepts committed progress only when the recorded source is an
+ancestor of the current task HEAD; acquisition still requires the exact source
+HEAD. The coordinator commits the exact authorized planning artifacts before
+Maker captures its clean protected-work baseline, then revalidates the lifecycle.

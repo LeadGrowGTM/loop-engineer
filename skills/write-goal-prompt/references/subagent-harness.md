@@ -145,6 +145,16 @@ and the execution plan before any artifacts are produced. This is the only phase
 - Turn budget allocation: estimated turns per phase
 
 **Constraint:** Planner writes BRIEF.md and PLAN.md, then stops. It does not produce task artifacts.
+Before Maker starts, the coordinator persists an approved planning checkpoint:
+commit only the exact BRIEF.md, PLAN.md and issue-slice paths that Planner just
+produced, from the recorded worktree. The checkpoint needs explicit task-scoped
+local-commit authorization in HARNESS.md; it never authorizes shipping. Never
+stage an entire directory or unrelated changes. Re-run lifecycle validation after
+the checkpoint. If the checkpoint is not authorized or these paths overlap
+unrelated work, stop before invoking Maker. This leaves the Planner artifacts
+clean for Maker's protected-work baseline rather than pretending pre-existing
+uncommitted work belongs to the next phase.
+
 Maker reads both files on its first turn. Checker reads BRIEF.md to detect scope drift.
 
 **Template prompt for PLAN.md:**
