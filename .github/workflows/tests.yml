@@ -43,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest]
+        os: [blacksmith-2vcpu-ubuntu-2404, blacksmith-2vcpu-windows-2025]
         group: [lifecycle, readiness, other]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
