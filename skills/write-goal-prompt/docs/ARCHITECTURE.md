@@ -85,7 +85,8 @@ final artifacts with Read/Glob/Write only. Checker never spawns a verifier.
 
 ```
 start
-  -> unconditional pinned grill
+  -> load project overlay (.harness/write-goal-prompt.md, if present)
+  -> unconditional pinned grill (escalate to /grilling or /wayfinder inside it when needed)
   -> record-grill
   -> persist RUN.json, GRILL.json, BRIEF.md, HARNESS.md
   -> emit lean pointer or clear context

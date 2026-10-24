@@ -19,8 +19,10 @@ goal-lifecycle start --repo C:\work\myapp --task-id api-client-migration --title
 The `git` result is the target project's actual root. If `C:\work\myapp` were nested, its own
 reported root—not the containing workspace or monorepo—would still be passed to `start`. On
 successful `start`, use only its returned `worktreePath`, `runDirectory`, and `manifestPath`.
-Change into that run path, then unconditionally invoke `batch-grill-me`. Save its completed receipt
-as `<runDirectory>/candidate-GRILL.json`, even when it contains zero questions.
+Change into that run path. `C:workmyapp.harnesswrite-goal-prompt.md` does not exist, so no
+overlay applies. Unconditionally invoke `batch-grill-me`. The frontier settles in one round with no
+chained or investigative unknowns, so neither `/grilling` nor `/wayfinder` is needed. Save the
+completed receipt as `<runDirectory>/candidate-GRILL.json`, even when it contains zero questions.
 
 ```text
 goal-lifecycle record-grill --run <RUN.json> --receipt <candidate-GRILL.json>
